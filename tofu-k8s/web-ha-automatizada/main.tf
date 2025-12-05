@@ -3,12 +3,19 @@ variable "nombre" {
   type        = string
 }
 
+# Ya no necesitamos la variable ssh_password aquí
+# variable "ssh_password" { ... }
+
 provider "kubernetes" {
   config_path    = pathexpand("~/.kube/config")
   config_context = var.nombre
 }
 
-# 1. EL CONTENIDO WEB (ConfigMap v1)
+# =================================================================
+# CAPA WEB (Nginx Alta Disponibilidad)
+# =================================================================
+
+# CONTENIDO WEB
 resource "kubernetes_config_map_v1" "web_content" {
   metadata {
     name = "web-content-config"
@@ -36,7 +43,7 @@ resource "kubernetes_config_map_v1" "web_content" {
           <p>Estado: <span class="badge">OPERATIVO (2 Réplicas)</span></p>
           <div class="info">
             <p>Si uno de los servidores falla, el otro responderá inmediatamente.</p>
-            <small>Gestionado por SYLO Orchestrator v1.0</small>
+            <small>Gestionado por SYLO Orchestrator</small>
           </div>
         </div>
       </body>
@@ -45,14 +52,14 @@ resource "kubernetes_config_map_v1" "web_content" {
   }
 }
 
-# 2. EL SERVIDOR (Deployment v1)
+# SERVIDOR WEB (Deployment HA)
 resource "kubernetes_deployment_v1" "web_ha" {
   metadata {
     name = "nginx-ha"
   }
 
   spec {
-    replicas = 2 # HA: 2 Réplicas
+    replicas = 2
 
     selector {
       match_labels = {
@@ -104,7 +111,7 @@ resource "kubernetes_deployment_v1" "web_ha" {
   }
 }
 
-# 3. EL ACCESO (Service v1)
+# ACCESO WEB
 resource "kubernetes_service_v1" "web_service" {
   metadata {
     name = "web-service"
@@ -123,5 +130,5 @@ resource "kubernetes_service_v1" "web_service" {
 }
 
 output "mensaje_exito" {
-  value = "Infraestructura Web HA desplegada correctamente."
+  value = "Web HA desplegada con 2 réplicas."
 }

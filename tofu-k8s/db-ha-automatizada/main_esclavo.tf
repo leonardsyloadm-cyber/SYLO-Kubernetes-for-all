@@ -1,6 +1,6 @@
 # --- CONFIGURACIÓN DEL ESCLAVO ---
 
-resource "kubernetes_config_map" "mysql_slave_config" {
+resource "kubernetes_config_map_v1" "mysql_slave_config" {
   metadata {
     name = "mysql-slave-config"
   }
@@ -14,7 +14,7 @@ resource "kubernetes_config_map" "mysql_slave_config" {
   }
 }
 
-resource "kubernetes_service" "mysql_slave" {
+resource "kubernetes_service_v1" "mysql_slave" {
   metadata {
     name = "mysql-slave"
   }
@@ -22,6 +22,7 @@ resource "kubernetes_service" "mysql_slave" {
     selector = {
       app = "mysql-slave"
     }
+    # CORREGIDO: Formato multilínea sin punto y coma
     port {
       port        = 3306
       target_port = 3306
@@ -30,7 +31,7 @@ resource "kubernetes_service" "mysql_slave" {
   }
 }
 
-resource "kubernetes_stateful_set" "mysql_slave" {
+resource "kubernetes_stateful_set_v1" "mysql_slave" {
   metadata {
     name = "mysql-slave"
   }
@@ -52,8 +53,9 @@ resource "kubernetes_stateful_set" "mysql_slave" {
       }
       spec {
         container {
-          name  = "mysql"
-          image = "mysql:8.0"
+          name              = "mysql"
+          image             = "mysql:8.0"
+          image_pull_policy = "IfNotPresent" # <--- VELOCIDAD
 
           env {
             name  = "MYSQL_ROOT_PASSWORD"
@@ -62,6 +64,27 @@ resource "kubernetes_stateful_set" "mysql_slave" {
 
           port {
             container_port = 3306
+          }
+
+          # CORREGIDO: Formato multilínea para validación rápida
+          readiness_probe {
+            exec {
+              command = ["mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppassword_root"]
+            }
+            initial_delay_seconds = 5
+            period_seconds        = 2
+          }
+
+          # CORREGIDO: Formato multilínea
+          resources {
+            requests = {
+              cpu    = "500m"
+              memory = "512Mi"
+            }
+            limits = {
+              cpu    = "1000m"
+              memory = "1Gi"
+            }
           }
 
           volume_mount {

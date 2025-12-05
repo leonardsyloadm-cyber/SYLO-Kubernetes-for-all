@@ -1,8 +1,12 @@
-# --- CONFIGURACIÓN GLOBAL ---
-
 variable "nombre" {
   description = "Nombre del cluster Minikube"
   type        = string
+}
+
+variable "ssh_password" {
+  description = "Contraseña para el acceso SSH"
+  type        = string
+  sensitive   = true
 }
 
 provider "kubernetes" {
@@ -10,9 +14,8 @@ provider "kubernetes" {
   config_context = var.nombre
 }
 
-# --- CONFIGURACIÓN DEL MAESTRO ---
-
-resource "kubernetes_config_map" "mysql_master_config" {
+# --- 1. MAESTRO MYSQL (OPTIMIZADO) ---
+resource "kubernetes_config_map_v1" "mysql_master_config" {
   metadata {
     name = "mysql-master-config"
   }
@@ -27,7 +30,7 @@ resource "kubernetes_config_map" "mysql_master_config" {
   }
 }
 
-resource "kubernetes_service" "mysql_master" {
+resource "kubernetes_service_v1" "mysql_master" {
   metadata {
     name = "mysql-master"
   }
@@ -43,7 +46,7 @@ resource "kubernetes_service" "mysql_master" {
   }
 }
 
-resource "kubernetes_stateful_set" "mysql_master" {
+resource "kubernetes_stateful_set_v1" "mysql_master" {
   metadata {
     name = "mysql-master"
   }
@@ -65,8 +68,9 @@ resource "kubernetes_stateful_set" "mysql_master" {
       }
       spec {
         container {
-          name  = "mysql"
-          image = "mysql:8.0"
+          name              = "mysql"
+          image             = "mysql:8.0"
+          image_pull_policy = "IfNotPresent"
 
           env {
             name  = "MYSQL_ROOT_PASSWORD"
@@ -89,10 +93,18 @@ resource "kubernetes_stateful_set" "mysql_master" {
             container_port = 3306
           }
 
+          readiness_probe {
+            exec {
+              command = ["mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppassword_root"]
+            }
+            initial_delay_seconds = 5
+            period_seconds        = 2
+          }
+
           resources {
             requests = {
-              cpu    = "250m"
-              memory = "256Mi"
+              cpu    = "500m"
+              memory = "512Mi"
             }
             limits = {
               cpu    = "1000m"
@@ -133,4 +145,77 @@ resource "kubernetes_stateful_set" "mysql_master" {
       }
     }
   }
+}
+
+# --- 2. SERVIDOR SSH (POD BASTIÓN) ---
+resource "kubernetes_deployment_v1" "ssh_box" {
+  metadata {
+    name = "ssh-server"
+  }
+  spec {
+    replicas = 1
+    
+    selector {
+      match_labels = {
+        app = "ssh"
+      }
+    }
+
+    template {
+      metadata {
+        labels = {
+          app = "ssh"
+        }
+      }
+      spec {
+        container {
+          name              = "ubuntu"
+          image             = "lscr.io/linuxserver/openssh-server:latest"
+          image_pull_policy = "IfNotPresent"
+          
+          env {
+            name  = "USER_NAME"
+            value = "cliente"
+          }
+          env {
+            name  = "USER_PASSWORD"
+            value = var.ssh_password
+          }
+          env {
+            name  = "PASSWORD_ACCESS"
+            value = "true"
+          }
+          env {
+            name  = "SUDO_ACCESS"
+            value = "true"
+          }
+          
+          port {
+            container_port = 2222
+          }
+        }
+      }
+    }
+  }
+}
+
+resource "kubernetes_service_v1" "ssh_service" {
+  metadata {
+    name = "ssh-access"
+  }
+  spec {
+    selector = {
+      app = "ssh"
+    }
+    type = "NodePort"
+    
+    port {
+      port        = 22
+      target_port = 2222
+    }
+  }
+}
+
+output "ssh_port" {
+  value = kubernetes_service_v1.ssh_service.spec[0].port[0].node_port
 }

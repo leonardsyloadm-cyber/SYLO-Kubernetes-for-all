@@ -1,14 +1,15 @@
 #!/bin/bash
 
-# --- CONFIGURACIÓN ---
+# --- CONFIGURACIÓN DE RUTAS ---
 BASE_DIR="$HOME/proyecto"
 BUZON="$BASE_DIR/buzon-pedidos"
 
+# Rutas a los scripts de despliegue (Ajustadas a tu estructura)
 SCRIPT_BRONCE="$BASE_DIR/tofu-k8s/k8s-simple/deploy_simple.sh"
-SCRIPT_DB="$BASE_DIR/tofu-k8s/db-ha-automatizada/deploy_db_sylo.sh"
-SCRIPT_WEB="$BASE_DIR/tofu-k8s/web-ha/deploy_web_ha.sh"
+SCRIPT_PLATA="$BASE_DIR/tofu-k8s/db-ha-automatizada/deploy_db_sylo.sh"
+SCRIPT_ORO="$BASE_DIR/tofu-k8s/full-stack/deploy_oro.sh"
 
-# Asegurar buzón
+# Asegurar que el buzón existe
 mkdir -p "$BUZON"
 chmod 777 "$BUZON"
 
@@ -20,11 +21,12 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 echo -e "${BLUE}================================================${NC}"
-echo -e "${BLUE}   🤖 ORQUESTADOR SYLO - SISTEMA ACTIVO         ${NC}"
+echo -e "${BLUE}   🤖 ORQUESTADOR SYLO - MONITORIZANDO          ${NC}"
 echo -e "${BLUE}   Vigilando: $BUZON                            ${NC}"
 echo -e "${BLUE}================================================${NC}"
 
 while true; do
+    # Buscamos archivos .json
     shopt -s nullglob
     for pedido in "$BUZON"/orden_*.json; do
         
@@ -33,38 +35,65 @@ while true; do
             echo -e "${GREEN}📬 ¡NUEVA ORDEN RECIBIDA!${NC}"
             echo "📄 Archivo: $(basename "$pedido")"
             
-            # Extraer datos
+            # Extraer datos del JSON
             PLAN_RAW=$(grep -o '"plan":"[^"]*"' "$pedido" | cut -d'"' -f4)
             CLIENTE=$(grep -o '"cliente":"[^"]*"' "$pedido" | cut -d'"' -f4)
+            # Extraemos el ID numérico (ej: 17145...)
             ID=$(grep -o '"id":[^,]*' "$pedido" | cut -d':' -f2 | tr -d ' "')
 
             echo "👤 Cliente: $CLIENTE"
-            echo "📦 Plan: $PLAN_RAW (ID: $ID)"
+            echo "📦 Plan Solicitado: $PLAN_RAW"
+            echo "🆔 ID Orden: $ID"
+            
+            echo "🚀 Iniciando script de despliegue..."
+            echo "---------------------------------------------------"
             
             # --- CEREBRO DE DECISIÓN ---
             case "$PLAN_RAW" in
                 "Bronce")
-                    echo -e "${YELLOW}🥉 Ejecutando Plan BRONCE${NC}"
-                    # PASAMOS EL ID COMO ARGUMENTO
-                    bash "$SCRIPT_BRONCE" "$ID"
+                    if [ -f "$SCRIPT_BRONCE" ]; then
+                        echo -e "${YELLOW}🥉 Ejecutando Plan BRONCE (Script Simple)${NC}"
+                        # Pasamos el ID como argumento para que el script actualice el status
+                        bash "$SCRIPT_BRONCE" "$ID"
+                    else
+                        echo -e "${RED}❌ Error: Script Bronce no encontrado en $SCRIPT_BRONCE${NC}"
+                    fi
                     ;;
+                    
                 "Plata")
-                    echo -e "${BLUE}🥈 Ejecutando Plan PLATA${NC}"
-                    bash "$SCRIPT_DB"
+                    if [ -f "$SCRIPT_PLATA" ]; then
+                        echo -e "${BLUE}🥈 Ejecutando Plan PLATA (DB HA)${NC}"
+                        bash "$SCRIPT_PLATA" "$ID"
+                    else
+                        echo -e "${RED}❌ Error: Script Plata no encontrado en $SCRIPT_PLATA${NC}"
+                    fi
                     ;;
+                
                 "Oro")
-                    echo -e "${GREEN}🥇 Ejecutando Plan ORO${NC}"
-                    bash "$SCRIPT_DB"
-                    bash "$SCRIPT_WEB"
+                    if [ -f "$SCRIPT_ORO" ]; then
+                        echo -e "${GREEN}🥇 Ejecutando Plan ORO (Full Stack)${NC}"
+                        bash "$SCRIPT_ORO" "$ID"
+                    else
+                        echo -e "${RED}❌ Error: Script Oro no encontrado en $SCRIPT_ORO${NC}"
+                    fi
                     ;;
+                    
                 *)
-                    echo -e "${RED}❌ Error: Plan no reconocido.${NC}"
+                    echo -e "${RED}❌ Error: Plan '$PLAN_RAW' no reconocido.${NC}"
                     ;;
             esac
             
-            # Mover a procesados
+            echo "---------------------------------------------------"
+            
+            # Movemos el pedido a "procesados" para no repetirlo
             mv "$pedido" "$pedido.procesado"
+            
+            echo "🗑️  Orden procesada y archivada."
+            echo "👀 Volviendo a vigilar..."
         fi
+        
     done
+    
+    # Descanso de 1 segundo para no saturar CPU
     sleep 1
 done

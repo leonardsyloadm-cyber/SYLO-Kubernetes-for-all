@@ -1,16 +1,14 @@
 #!/bin/bash
 
-# --- CONFIGURACIÓN DE RUTAS (AJUSTADAS A TU ÁRBOL) ---
+# --- CONFIGURACIÓN ---
 BASE_DIR="$HOME/proyecto"
 BUZON="$BASE_DIR/buzon-pedidos"
 
-# Rutas exactas a tus scripts
 SCRIPT_BRONCE="$BASE_DIR/tofu-k8s/k8s-simple/deploy_simple.sh"
 SCRIPT_DB="$BASE_DIR/tofu-k8s/db-ha-automatizada/deploy_db_sylo.sh"
-# Fíjate que aquí apunto a la carpeta que sale en tu imagen "web-ha-automatizada"
-SCRIPT_WEB="$BASE_DIR/tofu-k8s/web-ha-automatizada/deploy_web_ha.sh"
+SCRIPT_WEB="$BASE_DIR/tofu-k8s/web-ha/deploy_web_ha.sh"
 
-# Asegurar que el buzón existe
+# Asegurar buzón
 mkdir -p "$BUZON"
 chmod 777 "$BUZON"
 
@@ -22,63 +20,51 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 echo -e "${BLUE}================================================${NC}"
-echo -e "${BLUE}   🤖 ORQUESTADOR SYLO - LISTO PARA TRABAJAR    ${NC}"
+echo -e "${BLUE}   🤖 ORQUESTADOR SYLO - SISTEMA ACTIVO         ${NC}"
 echo -e "${BLUE}   Vigilando: $BUZON                            ${NC}"
 echo -e "${BLUE}================================================${NC}"
 
 while true; do
     shopt -s nullglob
-    for pedido in "$BUZON"/*.json; do
+    for pedido in "$BUZON"/orden_*.json; do
         
         if [ -f "$pedido" ]; then
             echo ""
             echo -e "${GREEN}📬 ¡NUEVA ORDEN RECIBIDA!${NC}"
             echo "📄 Archivo: $(basename "$pedido")"
             
+            # Extraer datos
             PLAN_RAW=$(grep -o '"plan":"[^"]*"' "$pedido" | cut -d'"' -f4)
             CLIENTE=$(grep -o '"cliente":"[^"]*"' "$pedido" | cut -d'"' -f4)
-            
+            ID=$(grep -o '"id":[^,]*' "$pedido" | cut -d':' -f2 | tr -d ' "')
+
             echo "👤 Cliente: $CLIENTE"
-            echo "📦 Plan Solicitado: $PLAN_RAW"
+            echo "📦 Plan: $PLAN_RAW (ID: $ID)"
             
-            echo "🚀 Iniciando despliegue..."
-            echo "---------------------------------------------------"
-            
+            # --- CEREBRO DE DECISIÓN ---
             case "$PLAN_RAW" in
                 "Bronce")
-                    echo -e "${YELLOW}🥉 Ejecutando Plan BRONCE (Cluster Base)${NC}"
-                    bash "$SCRIPT_BRONCE"
+                    echo -e "${YELLOW}🥉 Ejecutando Plan BRONCE${NC}"
+                    # PASAMOS EL ID COMO ARGUMENTO
+                    bash "$SCRIPT_BRONCE" "$ID"
                     ;;
-                    
                 "Plata")
-                    echo -e "${BLUE}🥈 Ejecutando Plan PLATA (DB HA)${NC}"
+                    echo -e "${BLUE}🥈 Ejecutando Plan PLATA${NC}"
                     bash "$SCRIPT_DB"
                     ;;
-                
                 "Oro")
-                    echo -e "${GREEN}🥇 Ejecutando Plan ORO (WEB HA + DB HA)${NC}"
-                    
-                    # NOTA: En esta versión, ejecutamos el script WEB HA como demostración del Plan Oro
-                    # (Crea el cluster ClienteWeb-XXXX con Nginx Replicado)
-                    
-                    if [ -f "$SCRIPT_WEB" ]; then
-                        bash "$SCRIPT_WEB"
-                    else
-                        echo -e "${RED}❌ Error: No encuentro el script en: $SCRIPT_WEB${NC}"
-                    fi
+                    echo -e "${GREEN}🥇 Ejecutando Plan ORO${NC}"
+                    bash "$SCRIPT_DB"
+                    bash "$SCRIPT_WEB"
                     ;;
-                    
                 *)
-                    echo -e "${RED}❌ Error: Plan '$PLAN_RAW' no reconocido.${NC}"
+                    echo -e "${RED}❌ Error: Plan no reconocido.${NC}"
                     ;;
             esac
             
-            echo "---------------------------------------------------"
+            # Mover a procesados
             mv "$pedido" "$pedido.procesado"
-            echo "🗑️  Orden procesada y archivada."
-            echo "👀 Esperando siguientes pedidos..."
         fi
-        
     done
-    sleep 2
+    sleep 1
 done

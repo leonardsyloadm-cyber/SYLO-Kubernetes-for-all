@@ -1,14 +1,18 @@
-# Usamos la imagen oficial de PHP con Apache
 FROM php:8.2-apache
 
-# Habilitamos permisos para que Apache pueda escribir
+# 1. INSTALAR EXTENSIONES MYSQL (Vital para conectar con la BD)
+RUN docker-php-ext-install mysqli pdo pdo_mysql
+
+# 2. CONFIGURAR PERMISOS WEB
 RUN chown -R www-data:www-data /var/www/html
 
-# Creamos la carpeta del buzón dentro del contenedor para que exista el punto de montaje
-RUN mkdir -p /buzon && chown -R www-data:www-data /buzon && chmod 777 /buzon
+# 3. CREAR Y CONFIGURAR EL BUZÓN (Para comunicarse con el Orquestador)
+RUN mkdir -p /buzon && \
+    chown -R www-data:www-data /buzon && \
+    chmod 777 /buzon
 
-# Copiamos tu código web dentro del servidor
+# 4. COPIAR TU CÓDIGO
 COPY sylo-web /var/www/html/
 
-# Exponemos el puerto 80
+# 5. EXPONER PUERTO
 EXPOSE 80

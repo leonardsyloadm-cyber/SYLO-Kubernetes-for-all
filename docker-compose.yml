@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  # -------------------------------------------------------
+  # SERVICIO 1: BASE DE DATOS MAESTRA (KYLO DB)
+  # -------------------------------------------------------
+  kylo-db:
+    image: mysql:8.0
+    container_name: kylo-main-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root_secret_pass
+      MYSQL_DATABASE: kylo_main_db
+      MYSQL_USER: sylo_app
+      MYSQL_PASSWORD: sylo_app_pass
+    volumes:
+      # Persistencia de datos
+      - kylo_data:/var/lib/mysql
+      # Script de inicialización
+      - ./sylo-web/init_kylo.sql:/docker-entrypoint-initdb.d/init.sql
+    networks:
+      - sylo-net
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  # -------------------------------------------------------
+  # SERVICIO 2: SERVIDOR WEB (PHP + APACHE + TOOLS)
+  # -------------------------------------------------------
+  sylo-web:
+    build:
+      context: .
+      dockerfile: sylo-web/Dockerfile
+    container_name: sylo-web
+    restart: always
+    ports:
+      - "8080:80"
+    volumes:
+      # Conectamos el buzón para hablar con el Orquestador
+      - ./buzon-pedidos:/buzon
+      # Conectamos el socket de Docker para crear clústeres desde dentro
+      - /var/run/docker.sock:/var/run/docker.sock
+    privileged: true
+    networks:
+      - sylo-net
+    depends_on:
+      kylo-db:
+        condition: service_healthy
+
+# -------------------------------------------------------
+# REDES Y VOLÚMENES
+# -------------------------------------------------------
+networks:
+  sylo-net:
+    driver: bridge
+
+volumes:
+  kylo_data:

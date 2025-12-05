@@ -5,24 +5,24 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $data = json_decode(file_get_contents('php://input'), true);
     
     if ($data) {
-        $plan = htmlspecialchars($data['plan']); // "Bronce" o "Plata"
+        $plan = htmlspecialchars($data['plan']);
         $cliente = htmlspecialchars($data['cliente']);
         $id_pedido = time();
         
         // Estructura del pedido
         $contenido_pedido = json_encode([
             "id" => $id_pedido,
-            "plan" => $plan,
+            "plan" => $plan,         // "Bronce", "Plata" u "Oro"
             "cliente" => $cliente,
             "fecha" => date("Y-m-d H:i:s")
         ]);
         
-        // ESCRIBIMOS EN EL BUZÓN COMPARTIDO
+        // ESCRIBIMOS EN EL VOLUMEN COMPARTIDO
         $archivo = "/buzon/pedido_" . $id_pedido . ".json";
         
         if (file_put_contents($archivo, $contenido_pedido) !== false) {
              $mensaje = "¡ORDEN RECIBIDA! El despliegue del plan '$plan' ha comenzado en segundo plano (Pedido #$id_pedido).";
-             $mensaje .= "\nEl sistema Worker iniciará la creación del clúster en breve.";
+             $mensaje .= "\nEl sistema Worker iniciará la creación de la infraestructura en breve.";
              $status = "success";
         } else {
              $mensaje = "Error crítico: No se pudo escribir en el buzón de pedidos (/buzon).";
@@ -185,20 +185,23 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     </div>
                 </div>
 
-                <!-- PLAN ORO (Full Stack) -->
+                <!-- PLAN ORO (Full Stack) - DESBLOQUEADO -->
                 <div class="col-lg-4 col-md-6 mb-4">
-                    <div class="card card-price h-100">
-                        <div class="card-header bg-transparent border-0 pt-4 text-center" style="color: #d4af37; font-weight: bold;">ORO</div>
+                    <div class="card card-price h-100 border-warning border-1">
+                        <div class="card-header bg-transparent border-0 pt-4 text-center" style="color: #d4af37; font-weight: 900; font-size: 1.4rem;">
+                             <i class="fas fa-crown me-2"></i>ORO
+                        </div>
                         <div class="card-body text-center">
                             <div class="price-tag">30€<span class="text-muted-small">/mes</span></div>
                             <p class="text-muted mb-4">Máxima potencia y soporte.</p>
                             <ul class="list-unstyled feature-list text-start ps-4">
                                 <li><i class="fas fa-rocket text-danger me-2"></i> <strong>Infraestructura Total</strong></li>
-                                <li><i class="fas fa-network-wired text-primary me-2"></i> Web + DB Replicada + Balanceador</li>
+                                <li><i class="fas fa-network-wired text-primary me-2"></i> Web HA + DB Replicada</li>
                                 <li><i class="fas fa-microchip text-secondary me-2"></i> 6 vCPU / 8 GB RAM</li>
                                 <li><i class="fas fa-headset text-info me-2"></i> Soporte 24/7</li>
                             </ul>
-                            <button onclick="comprar('Oro')" class="btn btn-outline-dark w-100 mt-4 rounded-pill fw-bold" disabled>Próximamente</button>
+                            <!-- BOTÓN ACTIVADO -->
+                            <button onclick="comprar('Oro')" class="btn btn-warning text-white w-100 mt-4 rounded-pill fw-bold shadow-sm" style="background-color: #d4af37; border-color: #d4af37;">Desplegar Oro</button>
                         </div>
                     </div>
                 </div>
@@ -229,11 +232,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         async function comprar(plan) {
+            const statusAlert = document.getElementById('statusAlert');
+            const logContent = document.getElementById('logContent');
+
             if(confirm(`¿Confirmas la contratación del plan ${plan}?`)) {
                 
-                const statusAlert = document.getElementById('statusAlert');
-                const logContent = document.getElementById('logContent');
-
                 // 1. Mostrar estado de carga inmediato
                 logContent.innerHTML = '⏳ Procesando orden...';
                 statusAlert.className = 'mt-4 alert alert-info';
@@ -247,6 +250,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     });
                     const data = await response.json();
                     
+                    // 2. Mostrar respuesta inmediata del servidor
                     if (data.status === 'success') {
                         statusAlert.className = 'mt-4 alert alert-success';
                     } else {

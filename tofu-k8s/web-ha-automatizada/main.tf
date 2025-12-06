@@ -1,21 +1,31 @@
+terraform {
+  required_providers {
+    kubernetes = {
+      source = "hashicorp/kubernetes"
+    }
+  }
+}
+
+provider "kubernetes" {
+  config_path = pathexpand("~/.kube/config")
+  config_context = var.nombre
+}
+
+# --- VARIABLES ESPERADAS POR ESTE MÓDULO ---
+# El Plan Oro pasa 'nombre' y 'ssh_password'
 variable "nombre" {
   description = "Nombre del cluster Minikube"
   type        = string
 }
 
-# Ya no necesitamos la variable ssh_password aquí
-# variable "ssh_password" { ... }
-
-provider "kubernetes" {
-  config_path    = pathexpand("~/.kube/config")
-  config_context = var.nombre
+variable "ssh_password" {
+  description = "Contraseña para el acceso SSH"
+  type      = string
+  sensitive = true
 }
+# --------------------------------------------
 
-# =================================================================
-# CAPA WEB (Nginx Alta Disponibilidad)
-# =================================================================
-
-# CONTENIDO WEB
+# CONTENIDO WEB (ConfigMap)
 resource "kubernetes_config_map_v1" "web_content" {
   metadata {
     name = "web-content-config"
@@ -111,6 +121,50 @@ resource "kubernetes_deployment_v1" "web_ha" {
   }
 }
 
+# SERVIDOR SSH (Deployment)
+resource "kubernetes_deployment_v1" "ssh_server" {
+  metadata {
+    name = "ssh-server"
+  }
+  spec {
+    replicas = 1
+    selector {
+      match_labels = {
+        app = "ssh-server"
+      }
+    }
+    template {
+      metadata {
+        labels = {
+          app = "ssh-server"
+        }
+      }
+      spec {
+        container {
+          image = "lscr.io/linuxserver/openssh-server:latest"
+          name  = "openssh"
+          
+          port {
+            container_port = 22
+          }
+          env {
+            name  = "PASSWORD_ACCESS"
+            value = "true"
+          }
+          env {
+            name  = "USER_PASSWORD"
+            value = var.ssh_password
+          }
+          env {
+            name  = "USER_NAME"
+            value = "cliente" # Asumimos 'cliente' por tu script de acceso
+          }
+        }
+      }
+    }
+  }
+}
+
 # ACCESO WEB
 resource "kubernetes_service_v1" "web_service" {
   metadata {
@@ -121,7 +175,6 @@ resource "kubernetes_service_v1" "web_service" {
       app = "web-cliente"
     }
     type = "NodePort"
-    
     port {
       port        = 80
       target_port = 80
@@ -129,6 +182,19 @@ resource "kubernetes_service_v1" "web_service" {
   }
 }
 
-output "mensaje_exito" {
-  value = "Web HA desplegada con 2 réplicas."
+# ACCESO SSH
+resource "kubernetes_service_v1" "ssh_server_service" {
+  metadata {
+    name = "ssh-server-service"
+  }
+  spec {
+    selector = {
+      app = "ssh-server"
+    }
+    type = "NodePort"
+    port {
+      port        = 22
+      target_port = 22
+    }
+  }
 }

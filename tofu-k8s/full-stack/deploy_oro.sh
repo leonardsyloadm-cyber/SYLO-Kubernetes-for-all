@@ -1,127 +1,149 @@
 #!/bin/bash
-set -e
-# Directorio base del proyecto
-BASE_DIR="$HOME/proyecto/tofu-k8s"
+set -eE -o pipefail
 
-ORDER_ID=$1
-CLUSTER_NAME="ClienteOro-$ORDER_ID"
-BUZON_STATUS="$HOME/proyecto/buzon-pedidos/status_$ORDER_ID.json"
-TF_VAR_nombre="$CLUSTER_NAME"
-export TF_VAR_nombre
+# --- CONFIGURACIÓN DE LOGS ---
+# Archivo temporal para capturar el output detallado de Tofu/kubectl
+LOG_FILE="/tmp/deploy_oro_debug.log"
 
-# --- OPTIMIZACIÓN: USAR CACHÉ DE TOFU ---
-export TF_PLUGIN_CACHE_DIR="$HOME/.terraform.d/plugin-cache"
-mkdir -p "$TF_PLUGIN_CACHE_DIR"
-
-# Generar Password SSH Maestra (Para todo el entorno)
-SSH_PASS=$(openssl rand -base64 12)
-export TF_VAR_ssh_password="$SSH_PASS"
-
-# Gestión de errores
+# --- TRAP DE ERRORES ---
+# Si cualquier comando falla (set -eE), se ejecuta esta función.
 handle_error() {
-    echo "{\"percent\": 100, \"message\": \"Fallo en Plan Oro. Revisa logs.\", \"status\": \"error\"}" > "$BUZON_STATUS"
-    exit 1
+    local exit_code=$?
+    echo -e "\n\033[0;31m❌ ERROR CRÍTICO (Exit Code: $exit_code) en línea $LINENO.\033[0m"
+    echo -e "\033[0;33m--- ÚLTIMAS LÍNEAS DEL LOG DE ERROR ($LOG_FILE) ---\033[0m"
+    tail -n 20 "$LOG_FILE"
+    echo -e "\033[0;33m--------------------------------------------------\033[0m"
+    echo "{\"percent\": 100, \"message\": \"Fallo Crítico. Revisa la consola.\", \"status\": \"error\"}" > "$BUZON_STATUS"
+    exit $exit_code
 }
 trap 'handle_error' ERR
 
+# --- VARIABLES ---
+cd "$(dirname "$0")" # Aseguramos que el script se ejecute desde su directorio
+ORDER_ID=$1
+[ -z "$ORDER_ID" ] && ORDER_ID="manual"
+
+CLUSTER_NAME="ClienteOro-$ORDER_ID"
+BUZON_STATUS="$HOME/proyecto/buzon-pedidos/status_$ORDER_ID.json"
+
+# Generamos la contraseña aleatoria
+SSH_PASS=$(openssl rand -base64 12)
+
+# --- FUNCIÓN DE REPORTING ---
 update_status() {
     echo "{\"percent\": $1, \"message\": \"$2\", \"status\": \"running\"}" > "$BUZON_STATUS"
-    echo "🥇 [Oro $1%] $2"
+    echo -e "📊 \033[1;33m[Progreso $1%]\033[0m $2"
 }
 
-# Funciones MySQL
-MYSQL_CMD="mysql -h 127.0.0.1 -P 3306 --protocol=tcp -u root -ppassword_root"
-ADMIN_CMD="mysqladmin -h 127.0.0.1 -P 3306 --protocol=tcp -u root -ppassword_root"
-
-wait_for_mysql() {
-  local pod=$1
-  echo -n "   ⏳ Esperando conexión MySQL en $pod..."
-  for i in {1..60}; do
-    if kubectl exec "$pod" -- $ADMIN_CMD ping --silent > /dev/null 2>&1; then
-      echo " ¡Listo!"
-      return 0
-    fi
-    echo -n "."
-    sleep 2
-  done
-  echo " ❌ Timeout esperando MySQL."
-  return 1
+# --- FUNCIÓN CRÍTICA: ESPERA ACTIVA DE MYSQL ---
+wait_for_mysql_connection() {
+    local pod=$1
+    echo "   ⏳ Verificando salud interna de $pod..." >> "$LOG_FILE"
+    # 30 intentos * 2 segundos = 60 segundos de espera
+    for i in {1..30}; do
+        if kubectl exec "$pod" -- mysqladmin ping -h 127.0.0.1 -u root -ppassword_root --silent >> "$LOG_FILE" 2>&1; then
+             echo "   ✅ MySQL online en $pod" >> "$LOG_FILE"
+             return 0
+        fi
+        sleep 2
+    done
+    echo "   ❌ Timeout esperando a MySQL en $pod" >> "$LOG_FILE"
+    return 1
 }
 
-# --- INICIO ---
-update_status 0 "Iniciando Plan ORO (Full Stack)..."
+# --- INICIO DEL PROCESO ---
+echo "--- INICIO DEL LOG ORO ---" > "$LOG_FILE"
+update_status 0 "Iniciando Plan ORO..."
 
-# Limpieza
-sudo rm -f /tmp/juju-* 2>/dev/null
-if minikube profile list 2>/dev/null | grep -q "$CLUSTER_NAME"; then
-    sudo minikube delete -p "$CLUSTER_NAME" > /dev/null 2>&1
+# 1. LIMPIEZA INICIAL Y FIX MINIKUBE
+echo "🧹 Limpiando sistema..." >> "$LOG_FILE"
+sudo rm -f /tmp/juju-* 2>/dev/null || true
+sudo rm -rf /tmp/minikube.* 2>/dev/null || true
+if [ -f /proc/sys/fs/protected_regular ]; then
+    sudo sysctl fs.protected_regular=0 >> "$LOG_FILE" 2>&1
 fi
 
-# 15% - Minikube
-update_status 15 "Levantando Clúster de Alto Rendimiento..."
-(sudo minikube start -p "$CLUSTER_NAME" \
+if minikube profile list 2>/dev/null | grep -q "$CLUSTER_NAME"; then
+    update_status 5 "Limpiando despliegue anterior..."
+    sudo minikube delete -p "$CLUSTER_NAME" >> "$LOG_FILE" 2>&1
+fi
+
+# 2. LEVANTAR MINIKUBE (20-40%)
+update_status 20 "Levantando Cluster K8s (Oro)..."
+sudo minikube start -p "$CLUSTER_NAME" \
     --driver=docker \
     --cpus=3 \
-    --memory=3072m \
+    --memory=2800m \
     --addons=default-storageclass \
     --interactive=false \
-    --force --no-vtx-check) > /dev/null 2>&1
+    --force \
+    --no-vtx-check >> "$LOG_FILE" 2>&1
 
-# 25% - Permisos
-update_status 25 "Configurando red..."
-sudo rm -rf "$HOME/.minikube"
-sudo cp -r /root/.minikube "$HOME/"
-sudo chown -R "$USER":"$USER" "$HOME/.minikube"
-mkdir -p "$HOME/.kube"
-sudo cp /root/.kube/config "$HOME/.kube/config"
-sudo chown "$USER":"$USER" "$HOME/.kube/config"
-sed -i "s|/root/.minikube|$HOME/.minikube|g" "$HOME/.kube/config"
-kubectl config use-context "$CLUSTER_NAME" > /dev/null
+update_status 40 "Configurando kubectl..."
+{
+    sudo rm -rf "$HOME/.minikube"
+    sudo cp -r /root/.minikube "$HOME/"
+    sudo chown -R "$USER":"$USER" "$HOME/.minikube"
+    mkdir -p "$HOME/.kube"
+    sudo cp /root/.kube/config "$HOME/.kube/config"
+    sudo chown "$USER":"$USER" "$HOME/.kube/config"
+    sed -i "s|/root/.minikube|$HOME/.minikube|g" "$HOME/.kube/config"
+    kubectl config use-context "$CLUSTER_NAME"
+} >> "$LOG_FILE" 2>&1
 
-# --- FASE 1: DB + SSH ---
-update_status 35 "Fase 1: Desplegando Base de Datos y SSH..."
-cd "$BASE_DIR/db-ha-automatizada"
-rm -f terraform.tfstate*
-tofu init -upgrade > /dev/null
-# Pasamos ssh_password (esto crea el pod SSH)
-tofu apply -auto-approve -var="nombre=$CLUSTER_NAME" -var="ssh_password=$SSH_PASS" > /dev/null
+# 3. DESPLIEGUE MONOLÍTICO (DB + WEB + SSH)
+update_status 50 "Aplicando infraestructura DB, Web y SSH..."
 
-# GUARDAMOS EL PUERTO SSH AHORA (Vital)
-SSH_PORT_FINAL=$(tofu output -raw ssh_port)
+rm -f terraform.tfstate* # Limpiamos estado local antes de la aplicación
 
-update_status 50 "Sincronizando Replicación MySQL..."
-kubectl wait --for=condition=Ready pod/mysql-master-0 --timeout=180s > /dev/null
-kubectl wait --for=condition=Ready pod/mysql-slave-0 --timeout=180s > /dev/null
-wait_for_mysql "mysql-master-0"
-wait_for_mysql "mysql-slave-0"
+tofu init -upgrade >> "$LOG_FILE" 2>&1
 
-kubectl exec mysql-master-0 -- $MYSQL_CMD -e "CREATE USER IF NOT EXISTS 'repl'@'%' IDENTIFIED WITH mysql_native_password BY 'repl'; GRANT REPLICATION SLAVE ON *.* TO 'repl'@'%'; FLUSH PRIVILEGES;"
+# 💥 APLICACIÓN MONOLÍTICA: Pasamos las dos variables requeridas
+tofu apply -auto-approve \
+    -var="cluster_name=$CLUSTER_NAME" \
+    -var="ssh_password=$SSH_PASS" >> "$LOG_FILE" 2>&1
+
+# 4. ESPERA DE SERVICIOS (60% - 90%)
+update_status 60 "Esperando arranque MySQL..."
+kubectl wait --for=condition=Ready pod/mysql-master-0 --timeout=300s >> "$LOG_FILE" 2>&1 || true
+kubectl wait --for=condition=Ready pod/mysql-slave-0 --timeout=300s >> "$LOG_FILE" 2>&1 || true
+
+# Verificación de conexión (Solución al error 2003)
+wait_for_mysql_connection "mysql-master-0"
+wait_for_mysql_connection "mysql-slave-0"
+
+update_status 65 "Configurando replicación..."
+MYSQL_CMD="mysql -h 127.0.0.1 -P 3306 --protocol=tcp -u root -ppassword_root"
+kubectl exec mysql-master-0 -- $MYSQL_CMD -e "CREATE USER IF NOT EXISTS 'repl'@'%' IDENTIFIED WITH mysql_native_password BY 'repl'; GRANT REPLICATION SLAVE ON *.* TO 'repl'@'%'; FLUSH PRIVILEGES;" >> "$LOG_FILE" 2>&1 || true
+
 M_STATUS=$(kubectl exec mysql-master-0 -- $MYSQL_CMD -e "SHOW MASTER STATUS\G")
 FILE=$(echo "$M_STATUS" | grep "File:" | awk '{print $2}')
 POS=$(echo "$M_STATUS" | grep "Position:" | awk '{print $2}')
-kubectl exec mysql-slave-0 -- $MYSQL_CMD -e "STOP SLAVE; CHANGE MASTER TO MASTER_HOST='mysql-master.default.svc.cluster.local', MASTER_USER='repl', MASTER_PASSWORD='repl', MASTER_LOG_FILE='$FILE', MASTER_LOG_POS=$POS; START SLAVE;"
 
-# --- FASE 2: WEB (SIN SSH) ---
-update_status 70 "Fase 2: Desplegando Servidor Web HA..."
-cd "$BASE_DIR/web-ha-automatizada"
-rm -f terraform.tfstate*
-tofu init -upgrade > /dev/null
+if [ ! -z "$FILE" ]; then
+    kubectl exec mysql-slave-0 -- $MYSQL_CMD -e "STOP SLAVE; CHANGE MASTER TO MASTER_HOST='mysql-master.default.svc.cluster.local', MASTER_USER='repl', MASTER_PASSWORD='repl', MASTER_LOG_FILE='$FILE', MASTER_LOG_POS=$POS; START SLAVE;" >> "$LOG_FILE" 2>&1 || true
+fi
 
-# NOTA: No pasamos ssh_password aquí porque el main.tf de web YA NO DEBE tener el módulo SSH
-tofu apply -auto-approve -var="nombre=$CLUSTER_NAME" > /dev/null
+update_status 75 "Esperando Servidores Web y SSH..."
+# Esperamos a que los Deployment estén completamente listos
+kubectl wait --for=condition=available deployment/nginx-ha --timeout=240s >> "$LOG_FILE" 2>&1
+kubectl wait --for=condition=available deployment/ssh-server --timeout=240s >> "$LOG_FILE" 2>&1
 
-update_status 85 "Verificando balanceo web..."
-kubectl wait --for=condition=available --timeout=60s deployment/nginx-ha > /dev/null
-
-# Obtener URL de la web
-WEB_URL=$(sudo minikube service web-service -p "$CLUSTER_NAME" --url)
+# 5. FINALIZACIÓN Y REPORTE (100%)
 HOST_IP=$(sudo minikube ip -p "$CLUSTER_NAME")
 
-# 100% - FINAL
-# Usamos el puerto SSH que capturamos en la Fase 1 ($SSH_PORT_FINAL)
-INFO="[WEB ACCESO]\nURL: $WEB_URL\n\n[SSH ACCESO]\nIP: $HOST_IP\nUser: cliente / Pass: $SSH_PASS\nPuerto: $SSH_PORT_FINAL\n\n[DATABASE]\nMaster: mysql-master.default.svc.cluster.local"
+# Obtenemos los puertos del output de Tofu (lo más fiable)
+WEB_PORT=$(tofu output -raw web_port)
+SSH_PORT=$(tofu output -raw ssh_port)
 
-JSON_STRING=$(python3 -c "import json; print(json.dumps({'percent': 100, 'message': '¡Infraestructura ORO completada!', 'status': 'completed', 'ssh_cmd': 'ssh cliente@$HOST_IP -p $SSH_PORT_FINAL', 'ssh_pass': '''$INFO'''}))")
+[ -z "$WEB_PORT" ] && WEB_PORT="30080"
+[ -z "$SSH_PORT" ] && SSH_PORT="30022"
+WEB_URL="http://$HOST_IP:$WEB_PORT"
+
+CMD_SSH="ssh cliente@$HOST_IP -p $SSH_PORT"
+INFO_TEXT="[ACCESO WEB]\n$WEB_URL\n\n[ACCESO SSH]\nUser: cliente\nPass: $SSH_PASS\n\n[DB CONECTADA]\nCluster HA: Operativo"
+
+JSON_STRING=$(python3 -c "import json; print(json.dumps({'percent': 100, 'message': '¡Despliegue ORO Completado!', 'status': 'completed', 'ssh_cmd': '$CMD_SSH', 'ssh_pass': '''$INFO_TEXT'''}))")
 echo "$JSON_STRING" > "$BUZON_STATUS"
 
-echo "✅ Despliegue Oro completado."
+echo -e "✅ \033[0;32mDespliegue Oro completado con éxito.\033[0m"

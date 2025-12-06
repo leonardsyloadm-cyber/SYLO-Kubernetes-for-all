@@ -13,7 +13,7 @@ RUN mkdir -p /buzon && \
 
 # 3. COPIAR EL CÓDIGO WEB
 # Copiamos tu index.php, css, imágenes, etc. al servidor
-COPY sylo-web /var/www/html/
+COPY . /var/www/html/
 
 # 4. AJUSTAR PERMISOS WEB
 # Aseguramos que Apache sea el dueño de sus propios archivos

@@ -1,0 +1,42 @@
+services:
+  # --- SERVIDOR WEB ---
+  web:
+    build: ./sylo-web
+    container_name: sylo-web
+    ports:
+      - "80:80"
+    volumes:
+      # 1. Código fuente
+      - ./sylo-web:/var/www/html
+      
+      # 2. BUZÓN (Mapeo Clásico)
+      # Tu PHP antiguo escribía en "/buzon/orden_X.json"
+      # Así que montamos la carpeta local en la raíz del contenedor
+      - ./buzon-pedidos:/buzon
+      
+    depends_on:
+      - kylo-main-db
+    networks:
+      - sylo-network
+
+  # --- BASE DE DATOS ---
+  kylo-main-db:
+    image: mysql:5.7
+    container_name: kylo-main-db
+    environment:
+      MYSQL_DATABASE: kylo_main_db
+      MYSQL_USER: sylo_app
+      MYSQL_PASSWORD: sylo_app_pass
+      MYSQL_ROOT_PASSWORD: root
+    volumes:
+      - ./sylo-web/init_kylo.sql:/docker-entrypoint-initdb.d/init.sql
+      - db_data:/var/lib/mysql
+    networks:
+      - sylo-network
+
+volumes:
+  db_data:
+
+networks:
+  sylo-network:
+    driver: bridge

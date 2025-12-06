@@ -1,99 +1,118 @@
 #!/bin/bash
 
-# --- CONFIGURACIÓN DE RUTAS ---
+# ==========================================
+# CONFIGURACIÓN GENERAL
+# ==========================================
+# Ajusta BASE_DIR si tu proyecto está en otro lado
 BASE_DIR="$HOME/proyecto"
 BUZON="$BASE_DIR/buzon-pedidos"
 
-# Rutas a los scripts de despliegue (Ajustadas a tu estructura)
+# Rutas ABSOLUTAS a los scripts de despliegue
+# Asegúrate de que estos archivos existen en estas rutas exactas
 SCRIPT_BRONCE="$BASE_DIR/tofu-k8s/k8s-simple/deploy_simple.sh"
 SCRIPT_PLATA="$BASE_DIR/tofu-k8s/db-ha-automatizada/deploy_db_sylo.sh"
 SCRIPT_ORO="$BASE_DIR/tofu-k8s/full-stack/deploy_oro.sh"
 
-# Asegurar que el buzón existe
-mkdir -p "$BUZON"
-chmod 777 "$BUZON"
-
-# Colores
+# Colores para que se vea bonito y claro
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
+# Aseguramos que el buzón existe
+mkdir -p "$BUZON"
+chmod 777 "$BUZON" 2>/dev/null
+
+# ==========================================
+# FUNCIÓN DE EJECUCIÓN (EL CORAZÓN DEL SCRIPT)
+# ==========================================
+ejecutar_despliegue() {
+    local script_path=$1
+    local id_pedido=$2
+    local nombre_plan=$3
+
+    if [ -f "$script_path" ]; then
+        echo -e "${BLUE}▶ Iniciando despliegue del Plan ${nombre_plan}...${NC}"
+        echo -e "${BLUE}▶ Script: $script_path${NC}"
+        
+        # 1. Obtenemos el directorio donde vive el script
+        local work_dir=$(dirname "$script_path")
+        local script_name=$(basename "$script_path")
+        
+        # 2. Ejecutamos en una sub-shell para aislar el entorno
+        (
+            # Entramos al directorio del script para que Tofu encuentre los .tf
+            # y para que las rutas relativas (../../sylo-web/init.sql) funcionen.
+            cd "$work_dir" || exit 1
+            
+            echo -e "${YELLOW}📂 Directorio de trabajo cambiado a: $(pwd)${NC}"
+            
+            # Damos permisos por si acaso
+            chmod +x "$script_name"
+            
+            # 3. EJECUTAMOS EL SCRIPT
+            # Al no poner '&' ni redirigir a /dev/null, verás TODO el output en pantalla
+            ./"$script_name" "$id_pedido"
+        )
+        
+        # Capturamos si salió bien o mal
+        if [ $? -eq 0 ]; then
+            echo -e "${GREEN}✅ Plan ${nombre_plan} desplegado con éxito.${NC}"
+        else
+            echo -e "${RED}❌ Error al ejecutar el Plan ${nombre_plan}.${NC}"
+        fi
+    else
+        echo -e "${RED}❌ Error Crítico: No encuentro el script en: $script_path${NC}"
+    fi
+}
+
+# ==========================================
+# BUCLE PRINCIPAL
+# ==========================================
 echo -e "${BLUE}================================================${NC}"
-echo -e "${BLUE}   🤖 ORQUESTADOR SYLO - MONITORIZANDO          ${NC}"
-echo -e "${BLUE}   Vigilando: $BUZON                            ${NC}"
+echo -e "${BLUE}   🤖 ORQUESTADOR SYLO - MONITORIZANDO (LIVE)   ${NC}"
+echo -e "${BLUE}   Vigilando carpeta: $BUZON                    ${NC}"
 echo -e "${BLUE}================================================${NC}"
 
 while true; do
-    # Buscamos archivos .json
+    # shopt -s nullglob evita que el loop corra si no hay archivos
     shopt -s nullglob
     for pedido in "$BUZON"/orden_*.json; do
         
         if [ -f "$pedido" ]; then
             echo ""
-            echo -e "${GREEN}📬 ¡NUEVA ORDEN RECIBIDA!${NC}"
-            echo "📄 Archivo: $(basename "$pedido")"
+            echo -e "${GREEN}📬 ¡NUEVA ORDEN RECIBIDA! Procesando: $(basename "$pedido")${NC}"
             
-            # Extraer datos del JSON
+            # Extracción robusta de datos usando grep y cut
             PLAN_RAW=$(grep -o '"plan":"[^"]*"' "$pedido" | cut -d'"' -f4)
-            CLIENTE=$(grep -o '"cliente":"[^"]*"' "$pedido" | cut -d'"' -f4)
-            # Extraemos el ID numérico (ej: 17145...)
             ID=$(grep -o '"id":[^,]*' "$pedido" | cut -d':' -f2 | tr -d ' "')
 
-            echo "👤 Cliente: $CLIENTE"
-            echo "📦 Plan Solicitado: $PLAN_RAW"
-            echo "🆔 ID Orden: $ID"
+            echo "📦 Plan detectado: $PLAN_RAW"
+            echo "🆔 ID del pedido:  $ID"
             
-            echo "🚀 Iniciando script de despliegue..."
-            echo "---------------------------------------------------"
-            
-            # --- CEREBRO DE DECISIÓN ---
             case "$PLAN_RAW" in
                 "Bronce")
-                    if [ -f "$SCRIPT_BRONCE" ]; then
-                        echo -e "${YELLOW}🥉 Ejecutando Plan BRONCE (Script Simple)${NC}"
-                        # Pasamos el ID como argumento para que el script actualice el status
-                        bash "$SCRIPT_BRONCE" "$ID"
-                    else
-                        echo -e "${RED}❌ Error: Script Bronce no encontrado en $SCRIPT_BRONCE${NC}"
-                    fi
+                    ejecutar_despliegue "$SCRIPT_BRONCE" "$ID" "BRONCE"
                     ;;
                     
                 "Plata")
-                    if [ -f "$SCRIPT_PLATA" ]; then
-                        echo -e "${BLUE}🥈 Ejecutando Plan PLATA (DB HA)${NC}"
-                        bash "$SCRIPT_PLATA" "$ID"
-                    else
-                        echo -e "${RED}❌ Error: Script Plata no encontrado en $SCRIPT_PLATA${NC}"
-                    fi
+                    ejecutar_despliegue "$SCRIPT_PLATA" "$ID" "PLATA"
                     ;;
                 
                 "Oro")
-                    if [ -f "$SCRIPT_ORO" ]; then
-                        echo -e "${GREEN}🥇 Ejecutando Plan ORO (Full Stack)${NC}"
-                        bash "$SCRIPT_ORO" "$ID"
-                    else
-                        echo -e "${RED}❌ Error: Script Oro no encontrado en $SCRIPT_ORO${NC}"
-                    fi
+                    ejecutar_despliegue "$SCRIPT_ORO" "$ID" "ORO"
                     ;;
                     
                 *)
-                    echo -e "${RED}❌ Error: Plan '$PLAN_RAW' no reconocido.${NC}"
+                    echo -e "${RED}⚠️  Plan desconocido: $PLAN_RAW${NC}"
                     ;;
             esac
             
-            echo "---------------------------------------------------"
-            
-            # Movemos el pedido a "procesados" para no repetirlo
+            # Marcamos como procesado para no volver a leerlo
             mv "$pedido" "$pedido.procesado"
-            
-            echo "🗑️  Orden procesada y archivada."
-            echo "👀 Volviendo a vigilar..."
-        fi
-        
+            echo -e "${BLUE}💤 Esperando siguiente pedido...${NC}"
+        fi 
     done
-    
-    # Descanso de 1 segundo para no saturar CPU
-    sleep 1
+    sleep 2
 done

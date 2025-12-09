@@ -3,105 +3,85 @@
 # ==========================================
 # CONFIGURACIÓN GENERAL
 # ==========================================
-# Ajusta BASE_DIR si tu proyecto está en otro lado
-BASE_DIR="$HOME/proyecto"
+BASE_DIR="$(cd "$(dirname "$0")/.." && pwd)" # Detecta la raíz del proyecto automáticamente
 BUZON="$BASE_DIR/buzon-pedidos"
 
-# Rutas ABSOLUTAS a los scripts de despliegue
-# Asegúrate de que estos archivos existen en estas rutas exactas
+# Rutas a los scripts
 SCRIPT_BRONCE="$BASE_DIR/tofu-k8s/k8s-simple/deploy_simple.sh"
 SCRIPT_PLATA="$BASE_DIR/tofu-k8s/db-ha-automatizada/deploy_db_sylo.sh"
 SCRIPT_ORO="$BASE_DIR/tofu-k8s/full-stack/deploy_oro.sh"
+SCRIPT_CUSTOM="$BASE_DIR/tofu-k8s/custom-stack/deploy_custom.sh"
 
-# Colores para que se vea bonito y claro
+# Colores
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-# Aseguramos que el buzón existe
 mkdir -p "$BUZON"
 chmod 777 "$BUZON" 2>/dev/null
 
-# ==========================================
-# FUNCIÓN DE EJECUCIÓN (EL CORAZÓN DEL SCRIPT)
-# ==========================================
-ejecutar_despliegue() {
-    local script_path=$1
-    local id_pedido=$2
-    local nombre_plan=$3
-
-    if [ -f "$script_path" ]; then
-        echo -e "${BLUE}▶ Iniciando despliegue del Plan ${nombre_plan}...${NC}"
-        echo -e "${BLUE}▶ Script: $script_path${NC}"
-        
-        # 1. Obtenemos el directorio donde vive el script
-        local work_dir=$(dirname "$script_path")
-        local script_name=$(basename "$script_path")
-        
-        # 2. Ejecutamos en una sub-shell para aislar el entorno
-        (
-            # Entramos al directorio del script para que Tofu encuentre los .tf
-            # y para que las rutas relativas (../../sylo-web/init.sql) funcionen.
-            cd "$work_dir" || exit 1
-            
-            echo -e "${YELLOW}📂 Directorio de trabajo cambiado a: $(pwd)${NC}"
-            
-            # Damos permisos por si acaso
-            chmod +x "$script_name"
-            
-            # 3. EJECUTAMOS EL SCRIPT
-            # Al no poner '&' ni redirigir a /dev/null, verás TODO el output en pantalla
-            ./"$script_name" "$id_pedido"
-        )
-        
-        # Capturamos si salió bien o mal
-        if [ $? -eq 0 ]; then
-            echo -e "${GREEN}✅ Plan ${nombre_plan} desplegado con éxito.${NC}"
-        else
-            echo -e "${RED}❌ Error al ejecutar el Plan ${nombre_plan}.${NC}"
-        fi
-    else
-        echo -e "${RED}❌ Error Crítico: No encuentro el script en: $script_path${NC}"
-    fi
-}
-
-# ==========================================
-# BUCLE PRINCIPAL
-# ==========================================
 echo -e "${BLUE}================================================${NC}"
 echo -e "${BLUE}   🤖 ORQUESTADOR SYLO - MONITORIZANDO (LIVE)   ${NC}"
 echo -e "${BLUE}   Vigilando carpeta: $BUZON                    ${NC}"
 echo -e "${BLUE}================================================${NC}"
 
+# Loop infinito
 while true; do
-    # shopt -s nullglob evita que el loop corra si no hay archivos
     shopt -s nullglob
     for pedido in "$BUZON"/orden_*.json; do
-        
         if [ -f "$pedido" ]; then
             echo ""
             echo -e "${GREEN}📬 ¡NUEVA ORDEN RECIBIDA! Procesando: $(basename "$pedido")${NC}"
             
-            # Extracción robusta de datos usando grep y cut
-            PLAN_RAW=$(grep -o '"plan":"[^"]*"' "$pedido" | cut -d'"' -f4)
-            ID=$(grep -o '"id":[^,]*' "$pedido" | cut -d':' -f2 | tr -d ' "')
-
+            # Usamos Python para leer el JSON de forma segura y robusta
+            # Esto extrae las variables básicas
+            eval $(python3 -c "import json; d=json.load(open('$pedido')); print(f'PLAN_RAW={d.get(\"plan\")} ID={d.get(\"id\")}')")
+            
             echo "📦 Plan detectado: $PLAN_RAW"
             echo "🆔 ID del pedido:  $ID"
-            
+
             case "$PLAN_RAW" in
                 "Bronce")
-                    ejecutar_despliegue "$SCRIPT_BRONCE" "$ID" "BRONCE"
+                    if [ -f "$SCRIPT_BRONCE" ]; then
+                        bash "$SCRIPT_BRONCE" "$ID"
+                    fi
                     ;;
                     
                 "Plata")
-                    ejecutar_despliegue "$SCRIPT_PLATA" "$ID" "PLATA"
+                    if [ -f "$SCRIPT_PLATA" ]; then
+                        # Entramos al directorio para evitar errores de Tofu
+                        (cd "$(dirname "$SCRIPT_PLATA")" && bash "./$(basename "$SCRIPT_PLATA")" "$ID")
+                    fi
                     ;;
                 
                 "Oro")
-                    ejecutar_despliegue "$SCRIPT_ORO" "$ID" "ORO"
+                    if [ -f "$SCRIPT_ORO" ]; then
+                        bash "$SCRIPT_ORO" "$ID"
+                    fi
+                    ;;
+
+                "Personalizado")
+                    if [ -f "$SCRIPT_CUSTOM" ]; then
+                        echo -e "${BLUE}🎨 Iniciando Plan PERSONALIZADO...${NC}"
+                        
+                        # Extraemos los detalles técnicos (CPU, RAM, etc) usando Python
+                        # Si no vienen en el JSON, Python pondrá valores por defecto vacíos
+                        eval $(python3 -c "import json; d=json.load(open('$pedido')); s=d.get('specs',{}); print(f'CPU={s.get(\"cpu\")} RAM={s.get(\"ram\")} STORAGE={s.get(\"storage\")} DB_ENABLED={s.get(\"db_enabled\")} DB_TYPE={s.get(\"db_type\")} WEB_ENABLED={s.get(\"web_enabled\")} WEB_TYPE={s.get(\"web_type\")}')")
+
+                        # Convertimos los booleanos de Python (True/False) a string bash si es necesario, 
+                        # pero Python json.load ya suele manejarlos. Aseguramos minúsculas:
+                        DB_ENABLED=${DB_ENABLED,,} 
+                        WEB_ENABLED=${WEB_ENABLED,,}
+
+                        echo "   ⚙️ Specs: CPU=$CPU | RAM=$RAM | DB=$DB_ENABLED | WEB=$WEB_ENABLED"
+                        
+                        # Ejecutamos pasando TODOS los argumentos
+                        bash "$SCRIPT_CUSTOM" "$ID" "$CPU" "$RAM" "$STORAGE" "$DB_ENABLED" "$DB_TYPE" "$WEB_ENABLED" "$WEB_TYPE"
+                    else
+                        echo -e "${RED}❌ No encuentro el script custom: $SCRIPT_CUSTOM${NC}"
+                    fi
                     ;;
                     
                 *)
@@ -109,7 +89,7 @@ while true; do
                     ;;
             esac
             
-            # Marcamos como procesado para no volver a leerlo
+            # Movemos a procesado
             mv "$pedido" "$pedido.procesado"
             echo -e "${BLUE}💤 Esperando siguiente pedido...${NC}"
         fi 

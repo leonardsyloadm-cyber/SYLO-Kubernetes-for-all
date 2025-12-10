@@ -6,16 +6,24 @@ CREATE DATABASE IF NOT EXISTS kylo_main_db CHARACTER SET utf8mb4 COLLATE utf8mb4
 USE kylo_main_db;
 
 -- ------------------------------------------------------------
--- 1. Tabla de USUARIOS (Clientes)
+-- 1. Tabla de USUARIOS (ACTUALIZADA CON DATOS NUEVOS)
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(50) NOT NULL UNIQUE,
     email VARCHAR(100) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
-    company_name VARCHAR(100), -- Null si es particular
     full_name VARCHAR(100),
     role ENUM('admin', 'client') DEFAULT 'client',
+    
+    -- NUEVOS CAMPOS (Necesarios para el Admin y Registro nuevo)
+    tipo_usuario ENUM('autonomo', 'empresa') DEFAULT 'autonomo',
+    dni VARCHAR(20),            -- Para autónomos
+    telefono VARCHAR(20),       -- Para todos
+    company_name VARCHAR(100),  -- Razón social o Nombre comercial
+    tipo_empresa VARCHAR(50),   -- SL, SA, Cooperativa, etc.
+    calle VARCHAR(255),         -- Dirección fiscal
+    
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
@@ -26,32 +34,30 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE IF NOT EXISTS plans (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(50) NOT NULL UNIQUE,
-    price DECIMAL(10, 2) NOT NULL, -- Precio base
-    cpu_cores INT DEFAULT 0,       -- 0 indica "Variable" en planes custom
-    ram_gb INT DEFAULT 0,          -- 0 indica "Variable"
+    price DECIMAL(10, 2) NOT NULL, 
+    cpu_cores INT DEFAULT 0,       
+    ram_gb INT DEFAULT 0,          
     description TEXT,
     is_active BOOLEAN DEFAULT TRUE
 );
 
 -- ------------------------------------------------------------
--- 3. Tabla de ÓRDENES (Pedidos)
+-- 3. Tabla de ÓRDENES (SIN PROGRESS, GESTIONADO POR JSON)
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS orders (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
     plan_id INT NOT NULL,
-    status ENUM('pending', 'active', 'suspended', 'cancelled') DEFAULT 'pending',
+    -- Estados soportados
+    status ENUM('pending', 'creating', 'active', 'suspended', 'cancelled', 'terminating', 'error') DEFAULT 'pending',
     purchase_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
-    -- Relaciones
     CONSTRAINT fk_order_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     CONSTRAINT fk_order_plan FOREIGN KEY (plan_id) REFERENCES plans(id)
 );
 
 -- ------------------------------------------------------------
--- 4. Tabla de DETALLES CUSTOM (NUEVA)
--- Sirve para guardar qué eligió el cliente si el plan es Personalizado.
--- Aunque el JSON manda esto al orquestador, es bueno tener registro aquí.
+-- 4. Tabla de DETALLES CUSTOM
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS order_specs (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -67,36 +73,18 @@ CREATE TABLE IF NOT EXISTS order_specs (
     CONSTRAINT fk_specs_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
 );
 
--- ------------------------------------------------------------
--- 5. Tabla de CLÚSTERES (Infraestructura Desplegada)
--- Aquí es donde el orquestador podría escribir la IP final
--- ------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS clusters (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    order_id INT NOT NULL UNIQUE,
-    cluster_name VARCHAR(100) NOT NULL,
-    endpoint_url VARCHAR(255),
-    ssh_user VARCHAR(50),      -- Nuevo: Para mostrar en panel
-    ssh_port INT,              -- Nuevo
-    status ENUM('provisioning', 'running', 'stopped', 'error') DEFAULT 'provisioning',
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    CONSTRAINT fk_cluster_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
-);
-
 -- ============================================================
 -- DATOS INICIALES (SEMILLA)
 -- ============================================================
 
--- Planes Fijos + EL NUEVO PLAN PERSONALIZADO
--- Es vital que exista 'Personalizado' para que el index.php no falle.
 INSERT INTO plans (name, price, cpu_cores, ram_gb, description) VALUES
-('Bronce', 5.00, 1, 1, 'Kubernetes Simple para desarrollo'),
-('Plata', 15.00, 4, 4, 'K8s + MySQL HA Replicado'),
-('Oro', 30.00, 6, 8, 'Full Stack HA (Web + DB)'),
-('Personalizado', 0.00, 0, 0, 'Configuración a medida del cliente')
+('Bronce', 5.00, 1, 1, 'K8s Simple'),
+('Plata', 15.00, 4, 4, 'K8s + DB HA'),
+('Oro', 30.00, 6, 8, 'Full Stack HA'),
+('Personalizado', 0.00, 0, 0, 'Configurable')
 ON DUPLICATE KEY UPDATE price=VALUES(price);
 
--- Usuario Admin por defecto
+-- ADMIN POR DEFECTO
+-- User: admin_sylo / Pass: (lo que pongas, aquí es solo ejemplo)
 INSERT INTO users (username, email, password_hash, company_name, full_name, role) VALUES
-('admin_sylo', 'admin@sylobi.com', '$2y$10$E7...HashedPassword...', 'SYLO Corp', 'Administrador Sistema', 'admin');
+('admin_sylo', 'admin@sylo.com', '$2y$10$E7...TU_HASH_AQUI...', 'SYLO Corp', 'Super Admin', 'admin');

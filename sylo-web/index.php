@@ -18,6 +18,16 @@ try {
     if($_SERVER['REQUEST_METHOD'] == 'POST') die(json_encode(["status"=>"error", "mensaje"=>"Error Conexión DB"]));
 }
 
+// --- CHECK: ¿TIENE CLÚSTERES ACTIVOS? (Para mostrar el botón) ---
+$has_clusters = false;
+if (isset($_SESSION['user_id'])) {
+    $stmt = $conn->prepare("SELECT COUNT(*) FROM orders WHERE user_id = ? AND status IN ('active', 'suspended', 'creating')");
+    $stmt->execute([$_SESSION['user_id']]);
+    if ($stmt->fetchColumn() > 0) {
+        $has_clusters = true;
+    }
+}
+
 // --- 2. API CHECK STATUS ---
 if (isset($_GET['check_status'])) {
     header('Content-Type: application/json');
@@ -50,11 +60,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $calle = htmlspecialchars($input['calle'] ?? '');
         $tipo_emp = htmlspecialchars($input['tipo_empresa'] ?? '');
         
-        // Lógica de teléfono (unir prefijo si existe)
         $prefijo = $input['prefijo'] ?? '';
         $telefono_raw = $input['telefono'] ?? '';
         
-        // Validación estricta de teléfono (9 dígitos)
         if (!preg_match('/^[0-9]{9}$/', $telefono_raw)) {
             echo json_encode(["status"=>"error","mensaje"=>"El teléfono debe tener 9 dígitos exactos."]); 
             exit; 
@@ -172,6 +180,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         .terminal-body { padding: 20px; color: #4ade80; min-height: 200px; }
         .progress { height: 8px; background: #333; margin-top: 15px; border-radius: 4px; }
         .progress-bar { transition: width 0.5s ease; background-color: #10b981; }
+        
+        .btn-console { background: linear-gradient(45deg, #10b981, #3b82f6); color: white; border: none; font-weight: bold; padding: 5px 15px; }
+        .btn-console:hover { transform: scale(1.05); color: white; box-shadow: 0 0 10px rgba(59, 130, 246, 0.5); }
     </style>
 </head>
 <body>
@@ -188,7 +199,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     <li class="nav-item"><a class="nav-link" href="#team">Equipo & Datacenter</a></li>
                     <li class="nav-item"><a class="nav-link" href="#pricing">Planes</a></li>
                     
-                    <li class="nav-item ms-4 ps-4 border-start">
+                    <li class="nav-item ms-4 ps-4 border-start d-flex gap-2">
+                        <?php if ($has_clusters): ?>
+                            <a href="dashboard_cliente.php" class="btn btn-console rounded-pill shadow-sm">
+                                <i class="fas fa-terminal me-2"></i>MIS KUBERNETES
+                            </a>
+                        <?php endif; ?>
+
                         <?php if (isset($_SESSION['user_id'])): ?>
                             <div class="dropdown">
                                 <button class="btn btn-dark btn-sm dropdown-toggle rounded-pill px-3" data-bs-toggle="dropdown">
@@ -248,8 +265,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 </div>
                 <div class="col-lg-6 offset-lg-1">
                     <div class="row g-4">
-                        <div class="col-md-6"><div class="team-card text-center pb-4"><div class="team-header"></div><img src="https://ui-avatars.com/api/?name=Ivan+Arlanzon&background=0D8ABC&color=fff&size=128" class="team-img shadow"><h5 class="fw-bold mt-3">Ivan Arlanzon</h5><span class="badge-sylo">CEO & Arquitecto Cloud</span><p class="small text-muted px-3 mt-3">Visionario de la infraestructura automatizada.</p></div></div>
-                        <div class="col-md-6 mt-md-5"><div class="team-card text-center pb-4"><div class="team-header" style="background: linear-gradient(45deg, #10b981, #3b82f6);"></div><img src="https://ui-avatars.com/api/?name=Leonard+Baicu&background=10b981&color=fff&size=128" class="team-img shadow"><h5 class="fw-bold mt-3">Leonard Baicu</h5><span class="badge-sylo">CTO & DevOps Lead</span><p class="small text-muted px-3 mt-3">Maestro de Kubernetes y OpenTofu.</p></div></div>
+                        <div class="col-md-6"><div class="team-card text-center pb-4"><div class="team-header"></div><img src="https://ui-avatars.com/api/?name=Ivan+Arlanzon&background=0D8ABC&color=fff&size=128" class="team-img shadow"><h5 class="fw-bold mt-3">Ivan Arlanzon</h5><span class="badge-sylo">CEO & Arquitecto Cloud</span><p class="small text-muted px-3 mt-3">Visionario de la infraestructura automatizada. Diseñó el núcleo del orquestador Sylo.</p></div></div>
+                        <div class="col-md-6 mt-md-5"><div class="team-card text-center pb-4"><div class="team-header" style="background: linear-gradient(45deg, #10b981, #3b82f6);"></div><img src="https://ui-avatars.com/api/?name=Leonard+Baicu&background=10b981&color=fff&size=128" class="team-img shadow"><h5 class="fw-bold mt-3">Leonard Baicu</h5><span class="badge-sylo">CTO & DevOps Lead</span><p class="small text-muted px-3 mt-3">Maestro de Kubernetes y OpenTofu. Asegura que cada despliegue sea atómico.</p></div></div>
                     </div>
                 </div>
             </div>
@@ -380,9 +397,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         </div>
     </div>
 
-    <div class="modal fade" id="progressModal" data-bs-backdrop="static"><div class="modal-dialog modal-dialog-centered"><div class="modal-content terminal-window border-0"><div class="terminal-header"><div class="dot bg-danger"></div><div class="dot bg-warning"></div><div class="dot bg-success"></div></div><div class="terminal-body text-center"><div class="spinner-border text-success mb-3" role="status"></div><h5 id="progress-text" class="mb-3">Iniciando secuencia...</h5><div class="progress" style="height: 5px; background: #333;"><div id="progress-bar" class="progress-bar bg-success" style="width:0%"></div></div></div></div></div></div>
+    <div class="modal fade" id="progressModal" data-bs-backdrop="static"><div class="modal-dialog modal-dialog-centered"><div class="modal-content terminal-window border-0"><div class="terminal-header"><div class="dot bg-danger"></div><div class="dot bg-warning"></div><div class="dot bg-success"></div></div><div class="terminal-body text-center"><div class="spinner-border text-success mb-3" role="status"></div><h5 id="progress-text" class="mb-3">Iniciando secuencia...</h5><small id="prog-num" class="text-muted d-block mb-3">0%</small><div class="progress"><div id="prog-bar" class="progress-bar bg-success" style="width:0%"></div></div></div></div></div></div>
 
-    <div class="modal fade" id="successModal"><div class="modal-dialog modal-lg modal-dialog-centered"><div class="modal-content terminal-window border-0"><div class="terminal-header"><span class="text-white small ms-2">root@sylo-cloud:~# result.log</span></div><div class="terminal-body text-start position-relative"><button class="btn btn-sm btn-outline-light position-absolute top-0 end-0 m-3" onclick="copiarDatos()"><i class="fas fa-copy"></i></button><div class="mb-3 text-muted">Despliegue finalizado con éxito. Credenciales generadas:</div><div id="ssh-details" style="white-space: pre-wrap;"><span class="text-warning">$</span> <span id="ssh-cmd"></span><br><br><span class="text-info">OUTPUT:</span><br><span id="ssh-pass"></span></div><div class="mt-4 text-center"><a href="admin.php" class="btn btn-primary btn-sm rounded-pill">Ir al Panel de Admin</a></div></div></div></div></div>
+    <div class="modal fade" id="successModal"><div class="modal-dialog modal-lg modal-dialog-centered"><div class="modal-content terminal-window border-0"><div class="terminal-header"><span class="text-white small ms-2">root@sylo-cloud:~# result.log</span></div><div class="terminal-body text-start position-relative"><button class="btn btn-sm btn-outline-light position-absolute top-0 end-0 m-3" onclick="copiarDatos()"><i class="fas fa-copy"></i></button><div class="mb-3 text-muted">Despliegue finalizado con éxito. Credenciales generadas:</div><div id="ssh-details" style="white-space: pre-wrap;"><span class="text-warning">$</span> <span id="ssh-cmd"></span><br><br><span class="text-info">OUTPUT:</span><br><span id="ssh-pass"></span></div><div class="mt-4 text-center"><a href="dashboard_cliente.php" class="btn btn-primary btn-sm rounded-pill">IR A MI CONSOLA</a></div></div></div></div></div>
 
     <div class="modal fade" id="authModal"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow-lg p-4">
         <ul class="nav nav-pills nav-fill mb-4 p-1 bg-light rounded-pill"><li class="nav-item"><a class="nav-link active rounded-pill" data-bs-toggle="tab" href="#login-pane">Login</a></li><li class="nav-item"><a class="nav-link rounded-pill" data-bs-toggle="tab" href="#reg-pane">Registro</a></li></ul>
@@ -432,7 +449,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     </div>
 
                     <input id="reg_calle" class="form-control mb-2 rounded-pill bg-light border-0" placeholder="Dirección Fiscal">
-                    <input id="reg_tel_emp" class="form-control mb-2 rounded-pill bg-light border-0" placeholder="Teléfono Empresa">
+                    
+                    <div class="input-group mb-2 border-0">
+                        <select id="reg_pais_emp" class="form-select rounded-start-pill bg-light border-0" style="max-width: 100px;">
+                            <option value="+34">🇪🇸 +34</option>
+                            <option value="+49">🇩🇪 +49</option>
+                            <option value="+33">🇫🇷 +33</option>
+                        </select>
+                        <input id="reg_tel_emp" type="tel" class="form-control rounded-end-pill bg-light border-0" placeholder="Teléfono de Administración" maxlength="9">
+                    </div>
                 </div>
 
                 <button class="btn btn-success w-100 rounded-pill fw-bold mt-3" onclick="handleRegister()">Crear Cuenta</button>
@@ -446,7 +471,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         const isLogged = <?php echo isset($_SESSION['user_id']) ? 'true' : 'false'; ?>;
         const authModal = new bootstrap.Modal('#authModal'), customModal = new bootstrap.Modal('#customPlanModal'), progressModal = new bootstrap.Modal('#progressModal'), successModal = new bootstrap.Modal('#successModal');
         
-        // --- LOGICA DE REGISTRO VISUAL ---
         function toggleRegFields() {
             const type = document.getElementById('reg_type').value;
             document.getElementById('fields-autonomo').style.display = (type === 'autonomo') ? 'block' : 'none';
@@ -455,7 +479,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         function toggleRazonSocial() {
             const type = document.getElementById('reg_comp_type').value;
-            // Solo mostramos input de razón social si elige "Otra"
             document.getElementById('razon-social-group').style.display = (type === 'Otra') ? 'block' : 'none';
         }
 
@@ -488,7 +511,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 const s = await res.json();
                 
                 if (s.percent !== undefined) {
-                    document.getElementById('progress-bar').style.width = s.percent + "%";
+                    document.getElementById('prog-bar').style.width = s.percent + "%";
                     document.getElementById('progress-text').innerText = s.message;
                 }
 
@@ -520,27 +543,36 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 password: document.getElementById('reg_pass').value
             };
 
+            // VALIDACIÓN Y DATOS ESPECÍFICOS
+            let prefijo = "", movil = "";
+
             if (type === 'autonomo') {
-                const prefijo = document.getElementById('reg_pais').value;
-                const movil = document.getElementById('reg_tel').value;
+                prefijo = document.getElementById('reg_pais').value;
+                movil = document.getElementById('reg_tel').value;
                 data.dni = document.getElementById('reg_dni').value;
-                data.telefono = movil; // Se enviará tal cual, el prefijo se añade en PHP o se puede unir aquí
-                data.prefijo = prefijo; // Enviamos prefijo aparte para validarlo mejor
                 data.company_name = data.full_name;
             } else {
+                prefijo = document.getElementById('reg_pais_emp').value;
+                movil = document.getElementById('reg_tel_emp').value;
+                data.calle = document.getElementById('reg_calle').value;
+                
                 const tipoEmp = document.getElementById('reg_comp_type').value;
                 data.tipo_empresa = tipoEmp;
-                // Si es "Otra", cogemos el nombre del input manual, si no, del nombre general
                 if (tipoEmp === 'Otra') {
                     data.company_name = document.getElementById('reg_comp_name').value;
                 } else {
-                    // Si es SL o SA, usamos el nombre de usuario o un campo genérico como nombre empresa
-                    // Para simplificar, usamos el nombre completo como nombre empresa si no se especifica razón social
                     data.company_name = document.getElementById('reg_name').value + " " + tipoEmp; 
                 }
-                data.calle = document.getElementById('reg_calle').value;
-                data.telefono = document.getElementById('reg_tel_emp').value;
             }
+
+            // VALIDACIÓN MÓVIL (JS)
+            if (movil.length !== 9 || isNaN(movil)) {
+                document.getElementById('authMessage').innerText = "El teléfono debe tener 9 dígitos.";
+                return;
+            }
+
+            data.telefono = movil;
+            data.prefijo = prefijo;
 
             const r = await fetch('index.php', {
                 method: 'POST',

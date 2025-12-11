@@ -1,0 +1,1 @@
+{"percent": 100, "message": "\u00a1Despliegue PERSONALIZADO Completado!", "status": "completed", "ssh_cmd": "ssh cliente@192.168.49.2 -p 30326", "ssh_pass": "[CONFIGURACI\u00d3N]\nCPU: 2 / RAM: 2GB / HDD: 25GB\n\n[ACCESO WEB]\nhttp://192.168.49.2:32536\n\n[ACCESO SSH]\nUser: cliente\nPass: Bj8eT6DivMHqh6AK\n\n[BASE DE DATOS]\nTipo: mongodb\nHost Interno: custom-db-service"}

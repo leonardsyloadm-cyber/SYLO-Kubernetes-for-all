@@ -18,7 +18,7 @@ try {
     if($_SERVER['REQUEST_METHOD'] == 'POST') die(json_encode(["status"=>"error", "mensaje"=>"Error Conexión DB"]));
 }
 
-// --- CHECK: ¿TIENE CLÚSTERES ACTIVOS? (Para mostrar el botón) ---
+// --- CHECK: ¿TIENE CLÚSTERES ACTIVOS? ---
 $has_clusters = false;
 if (isset($_SESSION['user_id'])) {
     $stmt = $conn->prepare("SELECT COUNT(*) FROM orders WHERE user_id = ? AND status IN ('active', 'suspended', 'creating')");
@@ -28,7 +28,7 @@ if (isset($_SESSION['user_id'])) {
     }
 }
 
-// --- 2. API CHECK STATUS (MODIFICADA ANTI-CACHÉ) ---
+// --- 2. API CHECK STATUS (ANTI-CACHÉ) ---
 if (isset($_GET['check_status'])) {
     header('Content-Type: application/json');
     header("Cache-Control: no-cache, no-store, must-revalidate");
@@ -119,7 +119,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // LOGOUT
     if ($action === 'logout') { session_destroy(); echo json_encode(["status"=>"success"]); exit; }
 
-    // COMPRAR (¡AQUÍ ESTÁ LA CORRECCIÓN!)
+    // COMPRAR
     if ($action === 'comprar') {
         if (!isset($_SESSION['user_id'])) { echo json_encode(["status"=>"auth_required","mensaje"=>"Inicia sesión."]); exit; }
         $plan_name = htmlspecialchars($input['plan']);
@@ -138,8 +138,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
             $orden_data = ["id"=>$order_id, "plan"=>$plan_name, "cliente"=>$_SESSION['username'], "fecha"=>date("c")];
             
-            // --- BLOQUE CRÍTICO QUE FALTABA ---
-            // Guardamos los datos técnicos en la base de datos si es Personalizado
+            // Si es personalizado, guardamos specs
             if ($plan_name === 'Personalizado' && $detalles) {
                 $stmtSpecs = $conn->prepare("
                     INSERT INTO order_specs (order_id, cpu_cores, ram_gb, storage_gb, db_enabled, db_type, web_enabled, web_type)
@@ -155,11 +154,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                     'web' => $detalles['web_enabled'] ? 1 : 0,
                     'webt'=> $detalles['web_type']
                 ]);
-                
-                // Y añadimos al JSON para que el script de bash sepa qué crear
                 $orden_data['specs'] = $detalles;
             }
-            // ----------------------------------
             
             $f_ord = "/buzon/orden_" . $order_id . ".json";
             $f_sta = "/buzon/status_" . $order_id . ".json";
@@ -257,13 +253,105 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         </div>
     </nav>
 
-    <section class="hero text-center d-flex align-items-center"><div class="container"><span class="badge bg-white text-primary mb-3 px-3 py-2 rounded-pill fw-bold shadow-sm">🚀 Nueva Arquitectura v2.0 Live</span><h1 class="display-3 fw-bold mb-4">La Nube Privada<br><span class="text-gradient">Sin Complicaciones</span></h1><p class="lead text-white-50 mb-5 w-75 mx-auto">Orquestación automática de Kubernetes, Bases de Datos y Servidores Web.<br>Diseñado por ingenieros, para desarrolladores.</p><div class="d-flex justify-content-center gap-3"><a href="#pricing" class="btn btn-primary btn-lg rounded-pill px-5 fw-bold shadow-lg">Ver Planes</a><a href="#tecnologias" class="btn btn-outline-light btn-lg rounded-pill px-5 fw-bold">Cómo Funciona</a></div></div></section>
-    
-    <section id="tecnologias" class="py-5"><div class="container"><div class="text-center mb-5"><h6 class="text-primary fw-bold text-uppercase">Nuestro Stack</h6><h2 class="fw-bold">Potenciado por Gigantes</h2></div><div class="row g-4 justify-content-center"><div class="col-6 col-md-3 col-lg-2"><div class="tech-card"><i class="fab fa-aws tech-icon text-warning"></i><h6 class="fw-bold mb-0">AWS Cloud</h6></div></div><div class="col-6 col-md-3 col-lg-2"><div class="tech-card"><i class="fab fa-docker tech-icon text-primary"></i><h6 class="fw-bold mb-0">Docker</h6></div></div><div class="col-6 col-md-3 col-lg-2"><div class="tech-card"><i class="fas fa-cubes tech-icon text-info"></i><h6 class="fw-bold mb-0">Kubernetes</h6></div></div><div class="col-6 col-md-3 col-lg-2"><div class="tech-card"><i class="fas fa-code-branch tech-icon text-success"></i><h6 class="fw-bold mb-0">OpenTofu</h6></div></div><div class="col-6 col-md-3 col-lg-2"><div class="tech-card"><i class="fab fa-python tech-icon text-warning"></i><h6 class="fw-bold mb-0">Python</h6></div></div><div class="col-6 col-md-3 col-lg-2"><div class="tech-card"><i class="fas fa-server tech-icon text-dark"></i><h6 class="fw-bold mb-0">Nginx/Apache</h6></div></div></div></div></section>
+    <section class="hero text-center d-flex align-items-center">
+        <div class="container">
+            <span class="badge bg-white text-primary mb-3 px-3 py-2 rounded-pill fw-bold shadow-sm">🚀 Nueva Arquitectura v2.0 Live</span>
+            <h1 class="display-3 fw-bold mb-4">La Nube Privada<br><span class="text-gradient">Sin Complicaciones</span></h1>
+            <p class="lead text-white-50 mb-5 w-75 mx-auto">Orquestación automática de Kubernetes, Bases de Datos y Servidores Web.<br>Diseñado por ingenieros, para desarrolladores.</p>
+            <div class="d-flex justify-content-center gap-3">
+                <a href="#pricing" class="btn btn-primary btn-lg rounded-pill px-5 fw-bold shadow-lg">Ver Planes</a>
+                <a href="#tecnologias" class="btn btn-outline-light btn-lg rounded-pill px-5 fw-bold">Cómo Funciona</a>
+            </div>
+        </div>
+    </section>
 
-    <section id="team" class="py-5 bg-white"><div class="container"><div class="row align-items-center"><div class="col-lg-5 mb-5 mb-lg-0"><h6 class="text-primary fw-bold text-uppercase">Infraestructura Física</h6><h2 class="fw-bold mb-4">El Corazón de Sylo</h2><p class="text-muted mb-4">Nuestros "Datacenters" no son simples ordenadores. Son nodos de alto rendimiento optimizados para la virtualización extrema.</p><div class="d-flex align-items-start mb-3"><div class="me-3 text-primary"><i class="fas fa-hdd fa-2x"></i></div><div><h6 class="fw-bold">Almacenamiento NVMe</h6><p class="small text-muted">Velocidad de escritura instantánea para tus bases de datos.</p></div></div><div class="d-flex align-items-start mb-3"><div class="me-3 text-primary"><i class="fas fa-network-wired fa-2x"></i></div><div><h6 class="fw-bold">Red 10Gbps</h6><p class="small text-muted">Baja latencia entre nodos maestros y esclavos.</p></div></div><div class="d-flex align-items-start"><div class="me-3 text-primary"><i class="fas fa-shield-alt fa-2x"></i></div><div><h6 class="fw-bold">Seguridad Perimetral</h6><p class="small text-muted">Firewalls físicos y lógicos protegiendo cada bit.</p></div></div></div><div class="col-lg-6 offset-lg-1"><div class="row g-4"><div class="col-md-6"><div class="team-card text-center pb-4"><div class="team-header"></div><img src="https://ui-avatars.com/api/?name=Ivan+Arlanzon&background=0D8ABC&color=fff&size=128" class="team-img shadow"><h5 class="fw-bold mt-3">Ivan Arlanzon</h5><span class="badge-sylo">CEO & Arquitecto Cloud</span><p class="small text-muted px-3 mt-3">Visionario de la infraestructura automatizada. Diseñó el núcleo del orquestador Sylo.</p></div></div><div class="col-md-6 mt-md-5"><div class="team-card text-center pb-4"><div class="team-header" style="background: linear-gradient(45deg, #10b981, #3b82f6);"></div><img src="https://ui-avatars.com/api/?name=Leonard+Baicu&background=10b981&color=fff&size=128" class="team-img shadow"><h5 class="fw-bold mt-3">Leonard Baicu</h5><span class="badge-sylo">CTO & DevOps Lead</span><p class="small text-muted px-3 mt-3">Maestro de Kubernetes y OpenTofu. Asegura que cada despliegue sea atómico.</p></div></div></div></div></div></div></section>
+    <section id="tecnologias" class="py-5">
+        <div class="container">
+            <div class="text-center mb-5"><h6 class="text-primary fw-bold text-uppercase">Nuestro Stack</h6><h2 class="fw-bold">Potenciado por Gigantes</h2></div>
+            <div class="row g-4 justify-content-center">
+                <div class="col-6 col-md-3 col-lg-2"><div class="tech-card"><i class="fab fa-aws tech-icon text-warning"></i><h6 class="fw-bold mb-0">AWS Cloud</h6></div></div>
+                <div class="col-6 col-md-3 col-lg-2"><div class="tech-card"><i class="fab fa-docker tech-icon text-primary"></i><h6 class="fw-bold mb-0">Docker</h6></div></div>
+                <div class="col-6 col-md-3 col-lg-2"><div class="tech-card"><i class="fas fa-cubes tech-icon text-info"></i><h6 class="fw-bold mb-0">Kubernetes</h6></div></div>
+                <div class="col-6 col-md-3 col-lg-2"><div class="tech-card"><i class="fas fa-code-branch tech-icon text-success"></i><h6 class="fw-bold mb-0">OpenTofu</h6></div></div>
+                <div class="col-6 col-md-3 col-lg-2"><div class="tech-card"><i class="fab fa-python tech-icon text-warning"></i><h6 class="fw-bold mb-0">Python</h6></div></div>
+                <div class="col-6 col-md-3 col-lg-2"><div class="tech-card"><i class="fas fa-server tech-icon text-dark"></i><h6 class="fw-bold mb-0">Nginx/Apache</h6></div></div>
+            </div>
+        </div>
+    </section>
 
-    <section id="pricing" class="py-5 bg-light"><div class="container"><div class="text-center mb-5"><h6 class="text-primary fw-bold text-uppercase">Catálogo de Servicios</h6><h2 class="fw-bold">Escalabilidad Instantánea</h2></div><div class="row g-4 justify-content-center"><div class="col-xl-3 col-md-6"><div class="card card-price h-100 p-4"><h5 class="fw-bold text-muted">Bronce</h5><div class="price-tag my-3">5€<span class="fs-6 text-muted fw-normal">/mes</span></div><ul class="list-unstyled mb-4 small text-secondary"><li class="mb-2"><i class="fas fa-check text-success me-2"></i>1 Nodo K8s</li><li class="mb-2"><i class="fas fa-check text-success me-2"></i>2 vCPU / 2 GB RAM</li><li class="mb-2 text-muted"><i class="fas fa-times me-2"></i>Sin Persistencia</li></ul><button onclick="intentarCompra('Bronce')" class="btn btn-outline-dark w-100 rounded-pill fw-bold">Elegir Bronce</button></div></div><div class="col-xl-3 col-md-6"><div class="card card-price h-100 p-4 border-primary"><div class="d-flex justify-content-between align-items-center"><h5 class="fw-bold text-primary">Plata</h5><span class="badge bg-primary rounded-pill">DB</span></div><div class="price-tag my-3">15€<span class="fs-6 text-muted fw-normal">/mes</span></div><ul class="list-unstyled mb-4 small text-secondary"><li class="mb-2"><i class="fas fa-check text-success me-2"></i>MySQL Cluster HA</li><li class="mb-2"><i class="fas fa-check text-success me-2"></i>4 vCPU / 4 GB RAM</li><li class="mb-2"><i class="fas fa-check text-success me-2"></i>Replicación Activa</li></ul><button onclick="intentarCompra('Plata')" class="btn btn-primary w-100 rounded-pill fw-bold shadow-sm">Elegir Plata</button></div></div><div class="col-xl-3 col-md-6"><div class="card card-price h-100 p-4"><h5 class="fw-bold" style="color: #d4af37;">Oro</h5><div class="price-tag my-3">30€<span class="fs-6 text-muted fw-normal">/mes</span></div><ul class="list-unstyled mb-4 small text-secondary"><li class="mb-2"><i class="fas fa-check text-success me-2"></i><strong>Full Stack HA</strong></li><li class="mb-2"><i class="fas fa-check text-success me-2"></i>6 vCPU / 8 GB RAM</li><li class="mb-2"><i class="fas fa-check text-success me-2"></i>Soporte Prioritario</li></ul><button onclick="intentarCompra('Oro')" class="btn btn-dark w-100 rounded-pill fw-bold">Elegir Oro</button></div></div><div class="col-xl-3 col-md-6"><div class="card card-price card-custom h-100 p-4"><div class="d-flex justify-content-between align-items-center"><h5 class="fw-bold text-primary">A Medida</h5><i class="fas fa-sliders-h text-primary"></i></div><div class="price-tag my-3 fs-2">Flexible</div><p class="text-muted small mb-4">Diseña tu infraestructura componente a componente.</p><ul class="list-unstyled mb-4 small text-secondary"><li class="mb-2"><i class="fas fa-check text-primary me-2"></i>CPU/RAM Variable</li><li class="mb-2"><i class="fas fa-check text-primary me-2"></i>Multi-Engine DB</li></ul><button onclick="abrirConfigurador()" class="btn btn-outline-primary w-100 rounded-pill fw-bold">Configurar</button></div></div></div></div></section>
+    <section id="team" class="py-5 bg-white">
+        <div class="container">
+            <div class="row align-items-center">
+                <div class="col-lg-5 mb-5 mb-lg-0">
+                    <h6 class="text-primary fw-bold text-uppercase">Infraestructura Física</h6>
+                    <h2 class="fw-bold mb-4">El Corazón de Sylo</h2>
+                    <p class="text-muted mb-4">Nuestros "Datacenters" no son simples ordenadores. Son nodos de alto rendimiento optimizados para la virtualización extrema.</p>
+                    <div class="d-flex align-items-start mb-3"><div class="me-3 text-primary"><i class="fas fa-hdd fa-2x"></i></div><div><h6 class="fw-bold">Almacenamiento NVMe</h6><p class="small text-muted">Velocidad de escritura instantánea para tus bases de datos.</p></div></div>
+                    <div class="d-flex align-items-start mb-3"><div class="me-3 text-primary"><i class="fas fa-network-wired fa-2x"></i></div><div><h6 class="fw-bold">Red 10Gbps</h6><p class="small text-muted">Baja latencia entre nodos maestros y esclavos.</p></div></div>
+                    <div class="d-flex align-items-start"><div class="me-3 text-primary"><i class="fas fa-shield-alt fa-2x"></i></div><div><h6 class="fw-bold">Seguridad Perimetral</h6><p class="small text-muted">Firewalls físicos y lógicos protegiendo cada bit.</p></div></div>
+                </div>
+                <div class="col-lg-6 offset-lg-1">
+                    <div class="row g-4">
+                        <div class="col-md-6"><div class="team-card text-center pb-4"><div class="team-header"></div><img src="https://ui-avatars.com/api/?name=Ivan+Arlanzon&background=0D8ABC&color=fff&size=128" class="team-img shadow"><h5 class="fw-bold mt-3">Ivan Arlanzon</h5><span class="badge-sylo">CEO & Arquitecto Cloud</span><p class="small text-muted px-3 mt-3">Visionario de la infraestructura automatizada. Diseñó el núcleo del orquestador Sylo.</p></div></div>
+                        <div class="col-md-6 mt-md-5"><div class="team-card text-center pb-4"><div class="team-header" style="background: linear-gradient(45deg, #10b981, #3b82f6);"></div><img src="https://ui-avatars.com/api/?name=Leonard+Baicu&background=10b981&color=fff&size=128" class="team-img shadow"><h5 class="fw-bold mt-3">Leonard Baicu</h5><span class="badge-sylo">CTO & DevOps Lead</span><p class="small text-muted px-3 mt-3">Maestro de Kubernetes y OpenTofu. Asegura que cada despliegue sea atómico.</p></div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="pricing" class="py-5 bg-light">
+        <div class="container">
+            <div class="text-center mb-5"><h6 class="text-primary fw-bold text-uppercase">Catálogo de Servicios</h6><h2 class="fw-bold">Escalabilidad Instantánea</h2></div>
+            <div class="row g-4 justify-content-center">
+                <div class="col-xl-3 col-md-6">
+                    <div class="card card-price h-100 p-4">
+                        <h5 class="fw-bold text-muted">Bronce</h5>
+                        <div class="price-tag my-3">5€<span class="fs-6 text-muted fw-normal">/mes</span></div>
+                        <ul class="list-unstyled mb-4 small text-secondary">
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>1 Nodo K8s</li>
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>1 vCPU / 1 GB RAM</li> <li class="mb-2 text-muted"><i class="fas fa-times me-2"></i>Sin Persistencia</li>
+                        </ul>
+                        <button onclick="intentarCompra('Bronce')" class="btn btn-outline-dark w-100 rounded-pill fw-bold">Elegir Bronce</button>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-md-6">
+                    <div class="card card-price h-100 p-4 border-primary">
+                        <div class="d-flex justify-content-between align-items-center"><h5 class="fw-bold text-primary">Plata</h5><span class="badge bg-primary rounded-pill">DB</span></div>
+                        <div class="price-tag my-3">15€<span class="fs-6 text-muted fw-normal">/mes</span></div>
+                        <ul class="list-unstyled mb-4 small text-secondary">
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>MySQL Cluster HA</li>
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>2 vCPU / 2 GB RAM</li> <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Replicación Activa</li>
+                        </ul>
+                        <button onclick="intentarCompra('Plata')" class="btn btn-primary w-100 rounded-pill fw-bold shadow-sm">Elegir Plata</button>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-md-6">
+                    <div class="card card-price h-100 p-4">
+                        <h5 class="fw-bold" style="color: #d4af37;">Oro</h5>
+                        <div class="price-tag my-3">30€<span class="fs-6 text-muted fw-normal">/mes</span></div>
+                        <ul class="list-unstyled mb-4 small text-secondary">
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i><strong>Full Stack HA</strong></li>
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>3 vCPU / 3 GB RAM</li> <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Soporte Prioritario</li>
+                        </ul>
+                        <button onclick="intentarCompra('Oro')" class="btn btn-dark w-100 rounded-pill fw-bold">Elegir Oro</button>
+                    </div>
+                </div>
+                <div class="col-xl-3 col-md-6">
+                    <div class="card card-price card-custom h-100 p-4">
+                        <div class="d-flex justify-content-between align-items-center"><h5 class="fw-bold text-primary">A Medida</h5><i class="fas fa-sliders-h text-primary"></i></div>
+                        <div class="price-tag my-3 fs-2">Flexible</div>
+                        <p class="text-muted small mb-4">Diseña tu infraestructura componente a componente.</p>
+                        <ul class="list-unstyled mb-4 small text-secondary">
+                            <li class="mb-2"><i class="fas fa-check text-primary me-2"></i>CPU/RAM Variable</li>
+                            <li class="mb-2"><i class="fas fa-check text-primary me-2"></i>Multi-Engine DB</li>
+                        </ul>
+                        <button onclick="abrirConfigurador()" class="btn btn-outline-primary w-100 rounded-pill fw-bold">Configurar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
 
     <div class="modal fade" id="customPlanModal" tabindex="-1">
         <div class="modal-dialog modal-lg">
@@ -441,40 +529,23 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             } catch(e) { alert("Error red"); progressModal.hide(); }
         }
 
-        // --- POLLING CORREGIDO CON ANTI-CACHÉ Y FIX DE IDs ---
         function startPolling(oid) {
             let int = setInterval(async () => {
-                try {
-                    // Truco del timestamp para evitar caché del navegador
-                    const res = await fetch(`index.php?check_status=${oid}&t=${Date.now()}`);
-                    const s = await res.json();
-                    
-                    if (s.percent !== undefined) {
-                        // AQUÍ ESTABA EL ERROR: prog-bar es el ID correcto
-                        const bar = document.getElementById('prog-bar'); 
-                        const text = document.getElementById('progress-text');
-                        const num = document.getElementById('prog-num');
-
-                        if(bar) bar.style.width = s.percent + "%";
-                        if(text) text.innerText = s.message;
-                        if(num) num.innerText = s.percent + "%";
-                    }
-
-                    if(s.status === 'completed' || s.percent >= 100) { 
-                        clearInterval(int); 
-                        progressModal.hide(); 
-                        document.getElementById('ssh-details').innerText = (s.ssh_cmd || "") + "\n\n" + (s.ssh_pass || "");
-                        successModal.show(); 
-                    }
-                    
-                    if(s.status === 'error') { 
-                        clearInterval(int); 
-                        alert("Error crítico: " + s.message); 
-                        progressModal.hide(); 
-                    }
-                } catch(e) {
-                    console.log("Error de polling:", e);
+                const res = await fetch(`index.php?check_status=${oid}`);
+                const s = await res.json();
+                
+                if (s.percent !== undefined) {
+                    document.getElementById('prog-bar').style.width = s.percent + "%";
+                    document.getElementById('progress-text').innerText = s.message;
                 }
+
+                if(s.status === 'completed' || s.percent >= 100) { 
+                    clearInterval(int); 
+                    progressModal.hide(); 
+                    document.getElementById('ssh-details').innerText = (s.ssh_cmd || "") + "\n\n" + (s.ssh_pass || "");
+                    successModal.show(); 
+                }
+                if(s.status==='error') { clearInterval(int); alert("Error crítico"); progressModal.hide(); }
             }, 1000);
         }
 

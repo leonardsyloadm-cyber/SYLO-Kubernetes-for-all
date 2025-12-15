@@ -2,11 +2,12 @@
 -- BASE DE DATOS MAESTRA DE SYLO (KYLO Main DB)
 -- ============================================================
 
+-- 1. Configuración Inicial
 CREATE DATABASE IF NOT EXISTS kylo_main_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE kylo_main_db;
 
 -- ------------------------------------------------------------
--- 1. Tabla de USUARIOS (ACTUALIZADA CON DATOS NUEVOS)
+-- 2. Tabla de USUARIOS (Con datos fiscales extendidos)
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS users (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -16,12 +17,12 @@ CREATE TABLE IF NOT EXISTS users (
     full_name VARCHAR(100),
     role ENUM('admin', 'client') DEFAULT 'client',
     
-    -- NUEVOS CAMPOS (Necesarios para el Admin y Registro nuevo)
+    -- Campos de Registro Detallado
     tipo_usuario ENUM('autonomo', 'empresa') DEFAULT 'autonomo',
-    dni VARCHAR(20),            -- Para autónomos
-    telefono VARCHAR(20),       -- Para todos
-    company_name VARCHAR(100),  -- Razón social o Nombre comercial
-    tipo_empresa VARCHAR(50),   -- SL, SA, Cooperativa, etc.
+    dni VARCHAR(20),            -- Autónomos
+    telefono VARCHAR(20),       -- Ambos
+    company_name VARCHAR(100),  -- Nombre comercial o Razón Social
+    tipo_empresa VARCHAR(50),   -- SL, SA, etc.
     calle VARCHAR(255),         -- Dirección fiscal
     
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -29,7 +30,7 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 -- ------------------------------------------------------------
--- 2. Tabla de PLANES
+-- 3. Tabla de PLANES (Catálogo Actualizado)
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS plans (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -42,13 +43,12 @@ CREATE TABLE IF NOT EXISTS plans (
 );
 
 -- ------------------------------------------------------------
--- 3. Tabla de ÓRDENES (SIN PROGRESS, GESTIONADO POR JSON)
+-- 4. Tabla de ÓRDENES (Pedidos)
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS orders (
     id INT AUTO_INCREMENT PRIMARY KEY,
     user_id INT NOT NULL,
     plan_id INT NOT NULL,
-    -- Estados soportados
     status ENUM('pending', 'creating', 'active', 'suspended', 'cancelled', 'terminating', 'error') DEFAULT 'pending',
     purchase_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     
@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS orders (
 );
 
 -- ------------------------------------------------------------
--- 4. Tabla de DETALLES CUSTOM
+-- 5. Tabla de DETALLES CUSTOM (Hardware Specs)
 -- ------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS order_specs (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -74,17 +74,23 @@ CREATE TABLE IF NOT EXISTS order_specs (
 );
 
 -- ============================================================
--- DATOS INICIALES (SEMILLA)
+-- DATOS SEMILLA (INICIALES)
 -- ============================================================
 
+-- Planes con los RECURSOS REDUCIDOS que pediste:
+-- Bronce: 1 CPU / 1 GB
+-- Plata:  2 CPU / 2 GB
+-- Oro:    3 CPU / 3 GB
 INSERT INTO plans (name, price, cpu_cores, ram_gb, description) VALUES
 ('Bronce', 5.00, 1, 1, 'K8s Simple'),
-('Plata', 15.00, 4, 4, 'K8s + DB HA'),
-('Oro', 30.00, 6, 8, 'Full Stack HA'),
+('Plata', 15.00, 2, 2, 'K8s + DB HA'),
+('Oro', 30.00, 3, 3, 'Full Stack HA'),
 ('Personalizado', 0.00, 0, 0, 'Configurable')
-ON DUPLICATE KEY UPDATE price=VALUES(price);
+ON DUPLICATE KEY UPDATE 
+    price=VALUES(price), 
+    cpu_cores=VALUES(cpu_cores), 
+    ram_gb=VALUES(ram_gb);
 
--- ADMIN POR DEFECTO
--- User: admin_sylo / Pass: (lo que pongas, aquí es solo ejemplo)
-INSERT INTO users (username, email, password_hash, company_name, full_name, role) VALUES
-('admin_sylo', 'admin@sylo.com', '$2y$10$E7...TU_HASH_AQUI...', 'SYLO Corp', 'Super Admin', 'admin');
+-- Usuario Admin por defecto (Pass: admin123)
+INSERT IGNORE INTO users (username, email, password_hash, company_name, full_name, role) VALUES
+('admin_sylo', 'admin@sylo.com', '$2y$10$E741.gJz4.gJz4.gJz4.gJz4.gJz4.gJz4.gJz4.gJz4.gJz4', 'SYLO Corp', 'Super Admin', 'admin');

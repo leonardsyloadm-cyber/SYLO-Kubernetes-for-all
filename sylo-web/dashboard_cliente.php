@@ -20,31 +20,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     $oid = $_POST['order_id'];
     $act = $_POST['action']; 
     
+    // Verificamos que la orden pertenezca al usuario
     $stmt = $conn->prepare("SELECT id FROM orders WHERE id = ? AND user_id = ?");
     $stmt->execute([$oid, $_SESSION['user_id']]);
     
     if ($stmt->fetch()) {
+        // Generamos el JSON para el Worker (start, stop, restart, terminate)
         $data = ["id" => $oid, "action" => strtoupper($act), "user" => $_SESSION['username'], "time" => date("c")];
+        
+        // Si la acción es TERMINATE (Eliminar), usamos un nombre específico o el genérico
         $file = "/buzon/accion_{$oid}_{$act}.json";
         file_put_contents($file, json_encode($data, JSON_PRETTY_PRINT));
         chmod($file, 0777); 
         
-        // Refresco limpio
+        // Si es eliminar, cambiamos estado a 'terminating' visualmente en DB para que desaparezca de la lista o salga gris
+        // (Opcional: depende de cómo tu worker maneje el DB, aquí solo mandamos la orden)
+        if ($act === 'terminate') {
+             $stmtUp = $conn->prepare("UPDATE orders SET status = 'terminating' WHERE id = ?");
+             $stmtUp->execute([$oid]);
+             header("Location: dashboard_cliente.php?msg=terminating");
+             exit;
+        }
+
+        // Refresco limpio para otras acciones
         header("Location: dashboard_cliente.php?id=$oid&msg=sent");
         exit;
     }
 }
 
-if (isset($_GET['msg']) && $_GET['msg'] == 'sent') {
-    $msg = "<div class='alert alert-info alert-dismissible fade show'>
-            <i class='fas fa-robot me-2'></i>Orden enviada. 
-            <small>Dale al botón de actualizar en unos segundos.</small>
-            <button type='button' class='btn-close' data-bs-dismiss='alert'></button>
-        </div>";
+// Mensajes de feedback
+if (isset($_GET['msg'])) {
+    if ($_GET['msg'] == 'sent') {
+        $msg = "<div class='alert alert-info alert-dismissible fade show'>
+                <i class='fas fa-robot me-2'></i>Orden enviada al sistema. 
+                <small>Actualiza en unos segundos.</small>
+                <button type='button' class='btn-close' data-bs-dismiss='alert'></button>
+            </div>";
+    } elseif ($_GET['msg'] == 'terminating') {
+        $msg = "<div class='alert alert-warning alert-dismissible fade show'>
+                <i class='fas fa-trash-alt me-2'></i>Solicitud de eliminación recibida. 
+                <small>El clúster desaparecerá en breve.</small>
+                <button type='button' class='btn-close' data-bs-dismiss='alert'></button>
+            </div>";
+    }
 }
 
-// --- 3. OBTENER CLÚSTERES (CONSULTA MEJORADA) ---
-// Ahora hacemos LEFT JOIN con 'order_specs' para leer los datos del plan personalizado
+// --- 3. OBTENER CLÚSTERES ---
+// Filtramos para no mostrar los que ya se están borrando (terminating)
 $stmt = $conn->prepare("
     SELECT o.*, 
            p.name as plan_name, 
@@ -55,7 +77,7 @@ $stmt = $conn->prepare("
     FROM orders o 
     JOIN plans p ON o.plan_id = p.id 
     LEFT JOIN order_specs s ON o.id = s.order_id
-    WHERE o.user_id = ? AND o.status IN ('active', 'suspended') 
+    WHERE o.user_id = ? AND o.status IN ('active', 'suspended', 'creating') 
     ORDER BY o.id DESC
 ");
 $stmt->execute([$_SESSION['user_id']]);
@@ -63,16 +85,9 @@ $all_clusters = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 // --- 4. LÓGICA DE RECURSOS ---
 function getResources($c) {
-    // Si el plan tiene CPU definida (>0), es un plan fijo (Bronce/Plata/Oro).
-    // Si es 0, miramos la columna custom_cpu de la tabla order_specs.
     $cpu = ($c['plan_cpu'] > 0) ? $c['plan_cpu'] : $c['custom_cpu'];
     $ram = ($c['plan_ram'] > 0) ? $c['plan_ram'] : $c['custom_ram'];
-    
-    // Si por algún error sigue vacío, ponemos '?'
-    return [
-        'cpu' => $cpu ?: '?',
-        'ram' => $ram ?: '?'
-    ];
+    return ['cpu' => $cpu ?: '?', 'ram' => $ram ?: '?'];
 }
 
 // --- 5. SELECCIONAR EL ACTUAL ---
@@ -125,18 +140,26 @@ if (count($all_clusters) > 0) {
         .status-dot { height: 10px; width: 10px; border-radius: 50%; display: inline-block; margin-right: 8px; }
         .dot-active { background-color: #10b981; box-shadow: 0 0 5px #10b981; }
         .dot-suspended { background-color: #f59e0b; }
+        .dot-creating { background-color: #3b82f6; animation: pulse 1.5s infinite; }
 
         .badge-status { padding: 6px 15px; border-radius: 20px; font-size: 0.85rem; text-transform: uppercase; font-weight: 800; letter-spacing: 1px; }
         .st-active { background: rgba(16, 185, 129, 0.2); color: #10b981; border: 1px solid #10b981; }
         .st-suspended { background: rgba(239, 68, 68, 0.2); color: #ef4444; border: 1px solid #ef4444; }
+        .st-creating { background: rgba(59, 130, 246, 0.2); color: #3b82f6; border: 1px solid #3b82f6; }
 
         .btn-control { width: 100%; margin-bottom: 10px; font-weight: 600; border: none; padding: 12px; transition: 0.2s; }
         .btn-start { background: #064e3b; color: #34d399; } .btn-start:hover { background: #065f46; color: white; }
         .btn-stop { background: #7f1d1d; color: #fca5a5; } .btn-stop:hover { background: #991b1b; color: white; }
         .btn-restart { background: #1e3a8a; color: #93c5fd; } .btn-restart:hover { background: #1e40af; color: white; }
+        
+        /* ESTILO PARA EL BOTÓN DE ELIMINAR */
+        .btn-terminate { background: transparent; border: 1px solid #ef4444; color: #ef4444; margin-top: 15px; } 
+        .btn-terminate:hover { background: #ef4444; color: white; }
 
         .console-box { background: #000; color: #4ade80; padding: 15px; border-radius: 6px; font-family: 'Courier New', monospace; font-size: 0.9rem; white-space: pre-wrap; border: 1px solid #333; }
         .info-label { color: #94a3b8; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 5px; display: block; }
+
+        @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
     </style>
 </head>
 <body>
@@ -172,8 +195,8 @@ if (count($all_clusters) > 0) {
                                 <?php foreach ($all_clusters as $c): ?>
                                     <?php 
                                         $isActive = ($current_cluster['id'] == $c['id']) ? 'active' : ''; 
-                                        $dotClass = ($c['status'] == 'active') ? 'dot-active' : 'dot-suspended';
-                                        $res = getResources($c); // Calculamos recursos
+                                        $dotClass = ($c['status'] == 'active') ? 'dot-active' : (($c['status'] == 'creating') ? 'dot-creating' : 'dot-suspended');
+                                        $res = getResources($c); 
                                     ?>
                                     <li>
                                         <a href="dashboard_cliente.php?id=<?php echo $c['id']; ?>" class="cluster-item <?php echo $isActive; ?>">
@@ -234,12 +257,16 @@ if (count($all_clusters) > 0) {
                             <form method="POST">
                                 <input type="hidden" name="order_id" value="<?php echo $current_cluster['id']; ?>">
                                 <?php if($current_cluster['status'] === 'suspended'): ?>
-                                    <button type="submit" name="action" value="start" class="btn btn-control btn-start"><i class="fas fa-play me-2"></i>ENCENDER / REANUDAR</button>
-                                <?php else: ?>
+                                    <button type="submit" name="action" value="start" class="btn btn-control btn-start"><i class="fas fa-play me-2"></i>ENCENDER</button>
+                                <?php elseif($current_cluster['status'] === 'active'): ?>
                                     <button type="submit" name="action" value="stop" class="btn btn-control btn-stop"><i class="fas fa-stop me-2"></i>APAGAR</button>
                                 <?php endif; ?>
                                 <button type="submit" name="action" value="restart" class="btn btn-control btn-restart"><i class="fas fa-sync me-2"></i>REINICIAR</button>
                             </form>
+
+                            <button type="button" class="btn btn-control btn-terminate" data-bs-toggle="modal" data-bs-target="#deleteModal">
+                                <i class="fas fa-trash-alt me-2"></i>ELIMINAR SERVICIO
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -270,12 +297,57 @@ if (count($all_clusters) > 0) {
         <?php endif; ?>
     </div>
 
+    <div class="modal fade" id="deleteModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content bg-dark border-danger text-white">
+                <div class="modal-header border-secondary">
+                    <h5 class="modal-title text-danger fw-bold"><i class="fas fa-exclamation-triangle me-2"></i>ZONA DE PELIGRO</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p>Estás a punto de eliminar permanentemente el servicio <strong>#<?php echo $current_cluster['id'] ?? ''; ?></strong>.</p>
+                    <div class="alert alert-danger border-0 bg-danger bg-opacity-25 text-danger">
+                        <i class="fas fa-skull me-2"></i> Se perderán todos los datos, bases de datos y configuraciones. Esta acción es <strong>IRREVERSIBLE</strong>.
+                    </div>
+                    <p class="mb-2">Para confirmar, escribe la palabra <strong>Eliminar</strong> abajo:</p>
+                    <input type="text" id="deleteConfirmInput" class="form-control bg-black text-white border-secondary" placeholder="Escribe Eliminar" autocomplete="off">
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    
+                    <form method="POST">
+                        <input type="hidden" name="order_id" value="<?php echo $current_cluster['id'] ?? ''; ?>">
+                        <input type="hidden" name="action" value="terminate">
+                        <button type="submit" id="btnConfirmDelete" class="btn btn-danger fw-bold" disabled>
+                            <i class="fas fa-trash me-2"></i>CONFIRMAR ELIMINACIÓN
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         function copiarCreds() {
             const cmd = document.querySelector('input[readonly]').value;
             const details = document.getElementById('creds-box').innerText;
             navigator.clipboard.writeText(cmd + "\n\n" + details);
             alert("¡Copiado!");
+        }
+
+        // LÓGICA DEL MODAL DE BORRADO
+        const deleteInput = document.getElementById('deleteConfirmInput');
+        const deleteBtn = document.getElementById('btnConfirmDelete');
+
+        if(deleteInput) {
+            deleteInput.addEventListener('keyup', function() {
+                if (this.value === 'Eliminar') {
+                    deleteBtn.disabled = false;
+                } else {
+                    deleteBtn.disabled = true;
+                }
+            });
         }
     </script>
 </body>

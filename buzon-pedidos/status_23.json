@@ -1,1 +1,0 @@
-{"percent": 100, "message": "\u00a1Despliegue ORO Completado!", "status": "completed", "ssh_cmd": "ssh cliente@192.168.49.2 -p 32720", "ssh_pass": "[ACCESO WEB]\nhttp://192.168.49.2:32200\n\n[ACCESO SSH]\nUser: cliente\nPass: 6cySA/rv3bqVeBY6\n\n[DB CONECTADA]\nCluster HA: Operativo"}

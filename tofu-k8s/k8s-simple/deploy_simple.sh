@@ -1,107 +1,128 @@
 #!/bin/bash
-set -e
+set -eE -o pipefail
+
+# --- CONFIGURACIÓN DE LOGS ---
+LOG_FILE="/tmp/deploy_simple_debug.log"
+
+# --- TRAP DE ERRORES ---
+handle_error() {
+    local exit_code=$?
+    echo -e "\n\033[0;31m❌ ERROR CRÍTICO (Exit Code: $exit_code) en línea $LINENO.\033[0m"
+    echo -e "\033[0;33m--- ÚLTIMAS LÍNEAS DEL LOG ($LOG_FILE) ---\033[0m"
+    tail -n 15 "$LOG_FILE"
+    echo "{\"percent\": 100, \"message\": \"Fallo en despliegue. Revisa logs.\", \"status\": \"error\"}" > "$BUZON_STATUS"
+    exit $exit_code
+}
+trap 'handle_error' ERR
+
+# --- 1. RECEPCIÓN DE ARGUMENTOS ---
 cd "$(dirname "$0")"
 
-# Recibimos el ID de la orden desde el Orquestador
 ORDER_ID=$1
+RAW_CLIENT_NAME=$2 # <--- ARGUMENTO CLIENTE
+
+# Validación
+[ -z "$ORDER_ID" ] && ORDER_ID="manual"
+
+# --- SANITIZACIÓN DE USUARIO SSH ---
+if [ -z "$RAW_CLIENT_NAME" ]; then
+    SSH_USER="cliente"
+else
+    SSH_USER=$(echo "$RAW_CLIENT_NAME" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]')
+fi
+[ -z "$SSH_USER" ] && SSH_USER="cliente"
 
 # Variables de entorno
-CLUSTER_NAME="ClienteBronce-$ORDER_ID"
+CLUSTER_NAME="sylo-cliente-$ORDER_ID"
 BUZON_STATUS="$HOME/proyecto/buzon-pedidos/status_$ORDER_ID.json"
-TF_VAR_nombre="$CLUSTER_NAME"
-export TF_VAR_nombre
+SSH_PASS=$(openssl rand -base64 12)
 
-# --- FUNCIÓN PARA GESTIONAR ERRORES ---
-handle_error() {
-    echo "❌ Error crítico en la línea $1"
-    echo "{\"percent\": 100, \"message\": \"Error crítico en el despliegue. Revisa los logs del servidor.\", \"status\": \"error\"}" > "$BUZON_STATUS"
-    # No hacemos exit aquí para permitir que el trap termine limpiamente, pero el proceso morirá
-}
-# Si hay un error, ejecutamos la función
-trap 'handle_error $LINENO' ERR
-
-# --- FUNCIÓN PARA ACTUALIZAR ESTADO EN LA WEB ---
+# --- FUNCIÓN STATUS ---
 update_status() {
-    local percent=$1
-    local msg=$2
-    # Escribimos el JSON que leerá el PHP/JS
-    echo "{\"percent\": $percent, \"message\": \"$msg\", \"status\": \"running\"}" > "$BUZON_STATUS"
-    # Feedback en la terminal del orquestador
-    echo "📊 [Progreso $percent%] $msg"
+    echo "{\"percent\": $1, \"message\": \"$2\", \"status\": \"running\"}" > "$BUZON_STATUS"
+    echo "📊 [Progreso $1%] $2"
 }
 
-# ==============================================================================
-# INICIO DEL PROCESO
-# ==============================================================================
+# --- INICIO ---
+echo "--- INICIO LOG BRONCE ($ORDER_ID) ---" > "$LOG_FILE"
+update_status 0 "Iniciando Plan Bronce (Simple)..."
 
-# 0% - Inicio
-update_status 0 "Iniciando maquinaria de despliegue..."
+# ==========================================
+# 🛑 BLOQUE ANTI-ZOMBIES (FIXED)
+# ==========================================
+update_status 5 "Limpiando residuos..."
+echo "🧹 Buscando zombies del ID $ORDER_ID..." >> "$LOG_FILE"
 
-# Limpieza de candados y clústeres previos
+# AÑADIDO "|| true" PARA EVITAR EL ERROR FANTASMA
+ZOMBIES=$(minikube profile list 2>/dev/null | grep "\-$ORDER_ID" | awk '{print $2}' || true)
+
+for ZOMBIE in $ZOMBIES; do
+    if [ ! -z "$ZOMBIE" ]; then
+        echo "💀 Eliminando zombie: $ZOMBIE" >> "$LOG_FILE"
+        sudo minikube delete -p "$ZOMBIE" >> "$LOG_FILE" 2>&1 || true
+    fi
+done
+
+# Limpieza sistema
 sudo rm -f /tmp/juju-* 2>/dev/null
-if minikube profile list 2>/dev/null | grep -q "$CLUSTER_NAME"; then
-    update_status 5 "Limpiando instalación anterior..."
-    sudo minikube delete -p "$CLUSTER_NAME" > /dev/null 2>&1
-fi
+# ==========================================
 
-# 25% - Creando VM
-update_status 20 "Provisionando máquina virtual (Minikube)..."
-# Usamos sudo + force para evitar errores de permisos de Docker
+
+# 20% - Creando VM
+update_status 20 "Provisionando Minikube..."
 (sudo minikube start -p "$CLUSTER_NAME" \
     --driver=docker \
     --cpus=2 \
-    --memory=1024m \
+    --memory=1200m \
     --addons=default-storageclass \
     --interactive=false \
-    --force) > /dev/null 2>&1
+    --force \
+    --no-vtx-check) >> "$LOG_FILE" 2>&1
 
 # 40% - Configuración de Red y Permisos
-update_status 40 "Configurando certificados y contexto..."
+update_status 40 "Configurando entorno..."
 
-# --- ARREGLO DE PERMISOS (Vital para que Tofu funcione) ---
-sudo rm -rf "$HOME/.minikube"
-sudo cp -r /root/.minikube "$HOME/"
-sudo chown -R "$USER":"$USER" "$HOME/.minikube"
+# --- ARREGLO DE PERMISOS ---
+{
+    sudo rm -rf "$HOME/.minikube"
+    sudo cp -r /root/.minikube "$HOME/"
+    sudo chown -R "$USER":"$USER" "$HOME/.minikube"
+    mkdir -p "$HOME/.kube"
+    sudo cp /root/.kube/config "$HOME/.kube/config"
+    sudo chown "$USER":"$USER" "$HOME/.kube/config"
+    sed -i "s|/root/.minikube|$HOME/.minikube|g" "$HOME/.kube/config"
+    kubectl config use-context "$CLUSTER_NAME"
+} >> "$LOG_FILE" 2>&1
 
-mkdir -p "$HOME/.kube"
-sudo cp /root/.kube/config "$HOME/.kube/config"
-sudo chown "$USER":"$USER" "$HOME/.kube/config"
-
-# Reemplazamos la ruta de root por la de usuario en el config
-sed -i "s|/root/.minikube|$HOME/.minikube|g" "$HOME/.kube/config"
-# ---------------------------------------------------------
-
-kubectl config use-context "$CLUSTER_NAME" > /dev/null
 
 # 60% - OpenTofu
-update_status 60 "Inicializando motor OpenTofu..."
-# Generamos contraseña segura para el cliente
-SSH_PASS=$(openssl rand -base64 12)
+update_status 60 "Desplegando infraestructura..."
 
-rm -f terraform.tfstate terraform.tfstate.backup
-tofu init -upgrade > /dev/null
+rm -f terraform.tfstate*
+tofu init -upgrade >> "$LOG_FILE" 2>&1
 
-update_status 70 "Desplegando Pod SSH (VPS Simulado)..."
-tofu apply -auto-approve -var="nombre=$CLUSTER_NAME" -var="ssh_password=$SSH_PASS" > /dev/null
+# APLICAMOS CON USUARIO Y PASSWORD
+tofu apply -auto-approve \
+    -var="nombre=$CLUSTER_NAME" \
+    -var="ssh_password=$SSH_PASS" \
+    -var="ssh_user=$SSH_USER" >> "$LOG_FILE" 2>&1
 
-# 90% - Espera final
-update_status 85 "Esperando IP pública y asignación de puertos..."
-# Esperamos a que el deployment esté listo
-kubectl wait --for=condition=available --timeout=90s deployment/ssh-server > /dev/null
-
-# Recopilación de datos finales
-update_status 95 "Finalizando configuración..."
-
-# Obtenemos la IP (En local es la de Minikube, en prod sería tu IP pública)
-# Para que el comando funcione con sudo minikube, a veces hay que especificar el perfil
-HOST_IP=$(sudo minikube ip -p "$CLUSTER_NAME")
-# Obtenemos el puerto NodePort asignado desde el output de Tofu
-NODE_PORT=$(tofu output -raw ssh_port)
-
-CMD_SSH="ssh cliente@$HOST_IP -p $NODE_PORT"
+# 85% - Espera final
+update_status 85 "Verificando servicio SSH..."
+kubectl wait --for=condition=available --timeout=120s deployment/ssh-server >> "$LOG_FILE" 2>&1
 
 # 100% - FINALIZADO
-# Escribimos el JSON final con los datos de conexión. La web detectará "completed" y mostrará la ventana verde.
-echo "{\"percent\": 100, \"message\": \"¡Clúster Creado!\", \"status\": \"completed\", \"ssh_cmd\": \"$CMD_SSH\", \"ssh_pass\": \"$SSH_PASS\"}" > "$BUZON_STATUS"
+update_status 95 "Generando accesos..."
 
-echo "✅ Despliegue Bronce completado para Orden #$ORDER_ID."
+HOST_IP=$(sudo minikube ip -p "$CLUSTER_NAME")
+NODE_PORT=$(tofu output -raw ssh_port)
+
+# Usamos el usuario sanitizado
+CMD_SSH="ssh $SSH_USER@$HOST_IP -p $NODE_PORT"
+INFO_FINAL="[SSH ACCESO]\nUser: $SSH_USER\nPass: $SSH_PASS"
+
+# JSON FINAL
+JSON_STRING=$(python3 -c "import json; print(json.dumps({'percent': 100, 'message': '¡Clúster Bronce Listo!', 'status': 'completed', 'ssh_cmd': '$CMD_SSH', 'ssh_pass': '''$INFO_FINAL'''}))")
+echo "$JSON_STRING" > "$BUZON_STATUS"
+
+echo "✅ Despliegue Bronce completado."

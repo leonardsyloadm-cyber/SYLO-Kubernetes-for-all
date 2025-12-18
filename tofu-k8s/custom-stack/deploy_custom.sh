@@ -26,13 +26,23 @@ DB_ENABLED=$5
 DB_TYPE=$6
 WEB_ENABLED=$7
 WEB_TYPE=$8
+RAW_CLIENT_NAME=$9
 
 # Validación básica
 [ -z "$ORDER_ID" ] && ORDER_ID="manual"
 [ -z "$CPU_REQ" ] && CPU_REQ="2"
 [ -z "$RAM_REQ" ] && RAM_REQ="4"
 
-CLUSTER_NAME="ClienteCustom-$ORDER_ID"
+# --- SANITIZACIÓN DE USUARIO SSH ---
+if [ -z "$RAW_CLIENT_NAME" ]; then
+    SSH_USER="cliente"
+else
+    SSH_USER=$(echo "$RAW_CLIENT_NAME" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]')
+fi
+[ -z "$SSH_USER" ] && SSH_USER="cliente"
+
+# NOMBRE DEL CLUSTER
+CLUSTER_NAME="sylo-cliente-$ORDER_ID"
 BUZON_STATUS="$HOME/proyecto/buzon-pedidos/status_$ORDER_ID.json"
 SSH_PASS=$(openssl rand -base64 12)
 
@@ -43,33 +53,45 @@ update_status() {
 }
 
 # --- INICIO ---
-echo "--- INICIO DEL LOG CUSTOM ---" > "$LOG_FILE"
-update_status 0 "Iniciando Plan PERSONALIZADO..."
+echo "--- INICIO DEL LOG CUSTOM ($ORDER_ID) ---" > "$LOG_FILE"
 
-# 2. CÁLCULO DE RECURSOS PARA MINIKUBE
-# Minikube necesita lo que pide el cliente + un poco de overhead para K8s
-# Si el cliente pide 4GB, le damos 5GB a la VM.
+# ==========================================
+# 🛑 BLOQUE ANTI-ZOMBIES (FIXED)
+# ==========================================
+update_status 5 "Escaneando procesos zombies..."
+echo "🧹 Buscando residuos del Cliente #$ORDER_ID..." >> "$LOG_FILE"
+
+# --- LA CORRECCIÓN ESTÁ AQUÍ (AÑADIDO || true) ---
+ZOMBIES=$(minikube profile list 2>/dev/null | grep "\-$ORDER_ID" | awk '{print $2}' || true)
+
+for ZOMBIE in $ZOMBIES; do
+    if [ ! -z "$ZOMBIE" ]; then
+        echo "💀 Detectado zombie: $ZOMBIE. Eliminando..." >> "$LOG_FILE"
+        sudo minikube delete -p "$ZOMBIE" >> "$LOG_FILE" 2>&1 || true
+    fi
+done
+
+rm -f /tmp/sylo_web_${ORDER_ID}.html
+# ==========================================
+
+# 2. CÁLCULO DE RECURSOS
+update_status 10 "Calculando recursos..."
 VM_CPU=$((CPU_REQ + 1))
 VM_RAM_MB=$((RAM_REQ * 1024 + 1024)) 
 
-echo "🔧 Configuración solicitada: CPU=$CPU_REQ, RAM=${RAM_REQ}GB" >> "$LOG_FILE"
+echo "🔧 Configuración solicitada: CPU=$CPU_REQ, RAM=${RAM_REQ}GB, User=$SSH_USER" >> "$LOG_FILE"
 echo "🔧 Configuración VM Host: CPU=$VM_CPU, RAM=${VM_RAM_MB}MB" >> "$LOG_FILE"
 
-# 3. LIMPIEZA
-echo "🧹 Limpiando sistema..." >> "$LOG_FILE"
+# 3. LIMPIEZA DE SISTEMA
+echo "🧹 Limpiando sistema archivos..." >> "$LOG_FILE"
 sudo rm -f /tmp/juju-* 2>/dev/null || true
 sudo rm -rf /tmp/minikube.* 2>/dev/null || true
 if [ -f /proc/sys/fs/protected_regular ]; then
     sudo sysctl fs.protected_regular=0 >> "$LOG_FILE" 2>&1
 fi
 
-if minikube profile list 2>/dev/null | grep -q "$CLUSTER_NAME"; then
-    update_status 5 "Limpiando despliegue anterior..."
-    sudo minikube delete -p "$CLUSTER_NAME" >> "$LOG_FILE" 2>&1
-fi
-
-# 4. LEVANTAR MINIKUBE ADAPTATIVO
-update_status 20 "Levantando Cluster (${CPU_REQ}vCPU / ${RAM_REQ}GB)..."
+# 4. LEVANTAR MINIKUBE
+update_status 20 "Levantando Cluster Limpio ($CLUSTER_NAME)..."
 
 sudo minikube start -p "$CLUSTER_NAME" \
     --driver=docker \
@@ -92,16 +114,15 @@ update_status 40 "Configurando kubectl..."
     kubectl config use-context "$CLUSTER_NAME"
 } >> "$LOG_FILE" 2>&1
 
-# 5. DESPLIEGUE TOFU CON VARIABLES DINÁMICAS
-update_status 50 "Aplicando configuración a medida..."
-
+# 5. DESPLIEGUE TOFU
+update_status 50 "Aplicando infraestructura..."
 rm -f terraform.tfstate*
 tofu init -upgrade >> "$LOG_FILE" 2>&1
 
-# Pasamos TODAS las variables al main.tf
 tofu apply -auto-approve \
     -var="cluster_name=$CLUSTER_NAME" \
     -var="ssh_password=$SSH_PASS" \
+    -var="ssh_user=$SSH_USER" \
     -var="cpu=$CPU_REQ" \
     -var="ram=$RAM_REQ" \
     -var="storage=$STORAGE_REQ" \
@@ -110,37 +131,29 @@ tofu apply -auto-approve \
     -var="web_enabled=$WEB_ENABLED" \
     -var="web_type=$WEB_TYPE" >> "$LOG_FILE" 2>&1
 
-# 6. ESPERAS CONDICIONALES
-update_status 70 "Esperando arranque de recursos..."
-
-# Si activó DB, esperamos por la DB
+# 6. ESPERAS
+update_status 70 "Esperando arranque de servicios..."
 if [ "$DB_ENABLED" = "true" ]; then
     echo "⏳ Esperando Base de Datos..." >> "$LOG_FILE"
     kubectl wait --for=condition=Ready pod -l app=custom-db --timeout=300s >> "$LOG_FILE" 2>&1 || true
 fi
-
-# Si activó Web, esperamos por la Web
 if [ "$WEB_ENABLED" = "true" ]; then
     echo "⏳ Esperando Servidor Web..." >> "$LOG_FILE"
     kubectl wait --for=condition=available deployment/custom-web --timeout=300s >> "$LOG_FILE" 2>&1 || true
 fi
 
-# 7. FINALIZACIÓN Y REPORTE
-update_status 90 "Obteniendo datos de acceso..."
-
+# 7. FINALIZACIÓN
+update_status 90 "Generando credenciales..."
 HOST_IP=$(sudo minikube ip -p "$CLUSTER_NAME")
-
-# Obtenemos puertos de forma segura (pueden ser N/A si no se desplegó)
 WEB_PORT=$(tofu output -raw web_port)
 SSH_PORT=$(tofu output -raw ssh_port)
 
-# Formateo del mensaje final
 INFO_TEXT="[CONFIGURACIÓN]\nCPU: ${CPU_REQ} / RAM: ${RAM_REQ}GB / HDD: ${STORAGE_REQ}GB\n"
 
 if [ "$WEB_ENABLED" = "true" ]; then
     WEB_URL="http://$HOST_IP:$WEB_PORT"
-    CMD_SSH="ssh cliente@$HOST_IP -p $SSH_PORT"
-    INFO_TEXT="${INFO_TEXT}\n[ACCESO WEB]\n$WEB_URL\n\n[ACCESO SSH]\nUser: cliente\nPass: $SSH_PASS"
+    CMD_SSH="ssh $SSH_USER@$HOST_IP -p $SSH_PORT"
+    INFO_TEXT="${INFO_TEXT}\n[ACCESO WEB]\n$WEB_URL\n\n[ACCESO SSH]\nUser: $SSH_USER\nPass: $SSH_PASS"
 else
     CMD_SSH="N/A"
     INFO_TEXT="${INFO_TEXT}\n[WEB/SSH]\nNo solicitado."

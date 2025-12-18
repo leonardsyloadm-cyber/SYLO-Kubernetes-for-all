@@ -21,25 +21,39 @@ if (!$currentUser || ($currentUser['username'] !== 'ivan' && $currentUser['role'
     header("Location: dashboard_cliente.php"); exit;
 }
 
-// --- 3. UTILIDADES ESTADO SISTEMA ---
-function getContainerStatus($containerName) {
-    if($containerName === 'kylo-main-db') { global $conn; return ($conn) ? 'RUNNING' : 'STOPPED'; }
-    return 'RUNNING'; 
+// --- 3. UTILIDADES ESTADO SISTEMA (ACTUALIZADO PARA PYTHON) ---
+function checkProcess($processName) {
+    // Busca el proceso python ejecutándose. '-f' busca en toda la línea de comando.
+    $output = shell_exec("pgrep -f " . escapeshellarg($processName));
+    return (trim($output) != "") ? 'RUNNING' : 'STOPPED';
 }
+
+function getContainerStatus($containerName) {
+    // Verificación simple de Docker (para la DB)
+    if($containerName === 'kylo-main-db') { global $conn; return ($conn) ? 'RUNNING' : 'STOPPED'; }
+    return 'STOPPED'; 
+}
+
+// Monitorizamos los nuevos scripts de Python
 $dbStatus = getContainerStatus('kylo-main-db');
-$webStatus = getContainerStatus('sylo-web');
-$systemOverall = ($dbStatus == 'RUNNING' && $webStatus == 'RUNNING') ? 'ONLINE' : 'ISSUES';
+$operatorStatus = checkProcess('operator_sylo.py');
+$terminatorStatus = checkProcess('terminator_sylo.py');
+
+// El sistema está ONLINE solo si la DB y el Operator funcionan. 
+// El Terminator puede estar dormido, pero marcamos alerta si el Operator cae.
+$systemOverall = ($dbStatus == 'RUNNING' && $operatorStatus == 'RUNNING') ? 'ONLINE' : 'ISSUES';
 
 // --- 4. API INTERNAL (AJAX HANDLERS) ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $input = json_decode(file_get_contents('php://input'), true);
     
-    // BOMBA TÁCTICA
+    // BOMBA TÁCTICA (Genera JSON compatible con Terminator Python)
     if (isset($input['action']) && $input['action'] === 'tactical_nuke') {
         $targets = $input['targets'] ?? [];
         if(empty($targets)) { echo json_encode(["status"=>"error", "message"=>"No targets."]); exit; }
         foreach ($targets as $oid) {
             $kill = ["id"=>$oid, "action"=>"TERMINATE", "admin"=>"GOD_MODE_TACTICAL", "timestamp"=>date("c")];
+            // El Terminator Python busca accion_*_terminate.json. Esto cumple el patrón.
             file_put_contents("/buzon/accion_{$oid}_terminate.json", json_encode($kill));
             $conn->prepare("UPDATE orders SET status='terminating' WHERE id=?")->execute([$oid]);
         }
@@ -168,12 +182,12 @@ function getJSONData($oid) {
             padding: 20px;
         }
 
-        /* DISEÑO DE CAJAS DE DETALLE - CORREGIDO: HEIGHT AUTO */
+        /* DISEÑO DE CAJAS DE DETALLE */
         .detail-box { 
             background: #1e293b; 
             border-radius: 8px; 
             padding: 20px; 
-            height: auto; /* IMPORTANTE: Altura automática para ajustarse al contenido */
+            height: auto; 
             border: 1px solid #334155; 
         }
         .detail-title { text-transform: uppercase; font-weight: 800; font-size: 0.8rem; margin-bottom: 15px; letter-spacing: 1px; }
@@ -223,8 +237,12 @@ function getJSONData($oid) {
                 </button>
                 <ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end p-2">
                     <li><h6 class="dropdown-header text-uppercase text-muted small">Estado de Servicios</h6></li>
+                    
                     <li><div class="dropdown-item d-flex align-items-center"><span class="service-status-indicator status-<?php echo strtolower($dbStatus);?>"></span><div><strong>Base de Datos</strong><br><small class="text-muted"><?php echo $dbStatus; ?></small></div></div></li>
-                    <li><div class="dropdown-item d-flex align-items-center"><span class="service-status-indicator status-<?php echo strtolower($webStatus);?>"></span><div><strong>Servidor Web</strong><br><small class="text-muted"><?php echo $webStatus; ?></small></div></div></li>
+                    
+                    <li><div class="dropdown-item d-flex align-items-center"><span class="service-status-indicator status-<?php echo strtolower($operatorStatus);?>"></span><div><strong>Operator (Energía)</strong><br><small class="text-muted">Python: <?php echo $operatorStatus; ?></small></div></div></li>
+                    
+                    <li><div class="dropdown-item d-flex align-items-center"><span class="service-status-indicator status-<?php echo strtolower($terminatorStatus);?>"></span><div><strong>Terminator (Killer)</strong><br><small class="text-muted">Python: <?php echo $terminatorStatus; ?></small></div></div></li>
                 </ul>
             </div>
             <a href="index.php" class="btn btn-dark border-secondary"><i class="fas fa-store me-2"></i>Ir a Tienda</a>

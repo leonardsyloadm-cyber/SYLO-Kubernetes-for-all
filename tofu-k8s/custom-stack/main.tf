@@ -357,7 +357,7 @@ resource "kubernetes_deployment_v1" "web_nginx" {
           }
           env {
             name  = "USER_NAME"
-            value = "cliente"
+            value = "var.ssh_user"
           }
           # Variable para SUDO
           env {

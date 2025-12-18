@@ -2,11 +2,9 @@
 set -eE -o pipefail
 
 # --- CONFIGURACIÓN DE LOGS ---
-# Archivo temporal para capturar el output detallado de Tofu/kubectl
 LOG_FILE="/tmp/deploy_oro_debug.log"
 
 # --- TRAP DE ERRORES ---
-# Si cualquier comando falla (set -eE), se ejecuta esta función.
 handle_error() {
     local exit_code=$?
     echo -e "\n\033[0;31m❌ ERROR CRÍTICO (Exit Code: $exit_code) en línea $LINENO.\033[0m"
@@ -19,14 +17,23 @@ handle_error() {
 trap 'handle_error' ERR
 
 # --- VARIABLES ---
-cd "$(dirname "$0")" # Aseguramos que el script se ejecute desde su directorio
+cd "$(dirname "$0")" 
 ORDER_ID=$1
+RAW_CLIENT_NAME=$2 # <--- ARGUMENTO CLIENTE
+
 [ -z "$ORDER_ID" ] && ORDER_ID="manual"
 
-CLUSTER_NAME="ClienteOro-$ORDER_ID"
-BUZON_STATUS="$HOME/proyecto/buzon-pedidos/status_$ORDER_ID.json"
+# --- SANITIZACIÓN DE USUARIO ---
+if [ -z "$RAW_CLIENT_NAME" ]; then
+    SSH_USER="cliente"
+else
+    SSH_USER=$(echo "$RAW_CLIENT_NAME" | tr '[:upper:]' '[:lower:]' | tr -cd '[:alnum:]')
+fi
+[ -z "$SSH_USER" ] && SSH_USER="cliente"
 
-# Generamos la contraseña aleatoria
+
+CLUSTER_NAME="sylo-cliente-$ORDER_ID"
+BUZON_STATUS="$HOME/proyecto/buzon-pedidos/status_$ORDER_ID.json"
 SSH_PASS=$(openssl rand -base64 12)
 
 # --- FUNCIÓN DE REPORTING ---
@@ -39,7 +46,6 @@ update_status() {
 wait_for_mysql_connection() {
     local pod=$1
     echo "   ⏳ Verificando salud interna de $pod..." >> "$LOG_FILE"
-    # 30 intentos * 2 segundos = 60 segundos de espera
     for i in {1..30}; do
         if kubectl exec "$pod" -- mysqladmin ping -h 127.0.0.1 -u root -ppassword_root --silent >> "$LOG_FILE" 2>&1; then
              echo "   ✅ MySQL online en $pod" >> "$LOG_FILE"
@@ -55,18 +61,30 @@ wait_for_mysql_connection() {
 echo "--- INICIO DEL LOG ORO ---" > "$LOG_FILE"
 update_status 0 "Iniciando Plan ORO..."
 
-# 1. LIMPIEZA INICIAL Y FIX MINIKUBE
-echo "🧹 Limpiando sistema..." >> "$LOG_FILE"
+# ==========================================
+# 🛑 BLOQUE ANTI-ZOMBIES (FIXED)
+# ==========================================
+update_status 5 "Limpiando sistema..."
+echo "🧹 Buscando residuos del Cliente #$ORDER_ID..." >> "$LOG_FILE"
+
+# AÑADIDO "|| true" PARA EVITAR EL ERROR FANTASMA
+ZOMBIES=$(minikube profile list 2>/dev/null | grep "\-$ORDER_ID" | awk '{print $2}' || true)
+
+for ZOMBIE in $ZOMBIES; do
+    if [ ! -z "$ZOMBIE" ]; then
+        echo "💀 Detectado zombie: $ZOMBIE. Eliminando..." >> "$LOG_FILE"
+        sudo minikube delete -p "$ZOMBIE" >> "$LOG_FILE" 2>&1 || true
+    fi
+done
+
+# Limpieza sistema
 sudo rm -f /tmp/juju-* 2>/dev/null || true
 sudo rm -rf /tmp/minikube.* 2>/dev/null || true
 if [ -f /proc/sys/fs/protected_regular ]; then
     sudo sysctl fs.protected_regular=0 >> "$LOG_FILE" 2>&1
 fi
+# ==========================================
 
-if minikube profile list 2>/dev/null | grep -q "$CLUSTER_NAME"; then
-    update_status 5 "Limpiando despliegue anterior..."
-    sudo minikube delete -p "$CLUSTER_NAME" >> "$LOG_FILE" 2>&1
-fi
 
 # 2. LEVANTAR MINIKUBE (20-40%)
 update_status 20 "Levantando Cluster K8s (Oro)..."
@@ -94,21 +112,21 @@ update_status 40 "Configurando kubectl..."
 # 3. DESPLIEGUE MONOLÍTICO (DB + WEB + SSH)
 update_status 50 "Aplicando infraestructura DB, Web y SSH..."
 
-rm -f terraform.tfstate* # Limpiamos estado local antes de la aplicación
+rm -f terraform.tfstate*
 
 tofu init -upgrade >> "$LOG_FILE" 2>&1
 
-# 💥 APLICACIÓN MONOLÍTICA: Pasamos las dos variables requeridas
+# APLICACIÓN MONOLÍTICA CON USUARIO PERSONALIZADO
 tofu apply -auto-approve \
     -var="cluster_name=$CLUSTER_NAME" \
-    -var="ssh_password=$SSH_PASS" >> "$LOG_FILE" 2>&1
+    -var="ssh_password=$SSH_PASS" \
+    -var="ssh_user=$SSH_USER" >> "$LOG_FILE" 2>&1
 
 # 4. ESPERA DE SERVICIOS (60% - 90%)
 update_status 60 "Esperando arranque MySQL..."
 kubectl wait --for=condition=Ready pod/mysql-master-0 --timeout=300s >> "$LOG_FILE" 2>&1 || true
 kubectl wait --for=condition=Ready pod/mysql-slave-0 --timeout=300s >> "$LOG_FILE" 2>&1 || true
 
-# Verificación de conexión (Solución al error 2003)
 wait_for_mysql_connection "mysql-master-0"
 wait_for_mysql_connection "mysql-slave-0"
 
@@ -125,14 +143,12 @@ if [ ! -z "$FILE" ]; then
 fi
 
 update_status 75 "Esperando Servidores Web y SSH..."
-# Esperamos a que los Deployment estén completamente listos
 kubectl wait --for=condition=available deployment/nginx-ha --timeout=240s >> "$LOG_FILE" 2>&1
 kubectl wait --for=condition=available deployment/ssh-server --timeout=240s >> "$LOG_FILE" 2>&1
 
 # 5. FINALIZACIÓN Y REPORTE (100%)
 HOST_IP=$(sudo minikube ip -p "$CLUSTER_NAME")
 
-# Obtenemos los puertos del output de Tofu (lo más fiable)
 WEB_PORT=$(tofu output -raw web_port)
 SSH_PORT=$(tofu output -raw ssh_port)
 
@@ -140,8 +156,9 @@ SSH_PORT=$(tofu output -raw ssh_port)
 [ -z "$SSH_PORT" ] && SSH_PORT="30022"
 WEB_URL="http://$HOST_IP:$WEB_PORT"
 
-CMD_SSH="ssh cliente@$HOST_IP -p $SSH_PORT"
-INFO_TEXT="[ACCESO WEB]\n$WEB_URL\n\n[ACCESO SSH]\nUser: cliente\nPass: $SSH_PASS\n\n[DB CONECTADA]\nCluster HA: Operativo"
+# USAMOS EL USUARIO PERSONALIZADO EN EL OUTPUT
+CMD_SSH="ssh $SSH_USER@$HOST_IP -p $SSH_PORT" 
+INFO_TEXT="[ACCESO WEB]\n$WEB_URL\n\n[ACCESO SSH]\nUser: $SSH_USER\nPass: $SSH_PASS\n\n[DB CONECTADA]\nCluster HA: Operativo"
 
 JSON_STRING=$(python3 -c "import json; print(json.dumps({'percent': 100, 'message': '¡Despliegue ORO Completado!', 'status': 'completed', 'ssh_cmd': '$CMD_SSH', 'ssh_pass': '''$INFO_TEXT'''}))")
 echo "$JSON_STRING" > "$BUZON_STATUS"

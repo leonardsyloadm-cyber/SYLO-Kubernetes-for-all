@@ -22,7 +22,6 @@ resource "kubernetes_service_v1" "mysql_slave" {
     selector = {
       app = "mysql-slave"
     }
-    # CORREGIDO: Formato multilínea sin punto y coma
     port {
       port        = 3306
       target_port = 3306
@@ -55,7 +54,7 @@ resource "kubernetes_stateful_set_v1" "mysql_slave" {
         container {
           name              = "mysql"
           image             = "mysql:8.0"
-          image_pull_policy = "IfNotPresent" # <--- VELOCIDAD
+          image_pull_policy = "IfNotPresent"
 
           env {
             name  = "MYSQL_ROOT_PASSWORD"
@@ -66,7 +65,6 @@ resource "kubernetes_stateful_set_v1" "mysql_slave" {
             container_port = 3306
           }
 
-          # CORREGIDO: Formato multilínea para validación rápida
           readiness_probe {
             exec {
               command = ["mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppassword_root"]
@@ -75,7 +73,6 @@ resource "kubernetes_stateful_set_v1" "mysql_slave" {
             period_seconds        = 2
           }
 
-          # CORREGIDO: Formato multilínea
           resources {
             requests = {
               cpu    = "500m"

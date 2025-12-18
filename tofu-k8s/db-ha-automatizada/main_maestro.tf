@@ -1,3 +1,12 @@
+terraform {
+  required_providers {
+    kubernetes = {
+      source = "hashicorp/kubernetes"
+    }
+  }
+}
+
+# --- VARIABLES (DEFINIDAS AQUÍ PARA NO USAR VARIABLES.TF) ---
 variable "nombre" {
   description = "Nombre del cluster Minikube"
   type        = string
@@ -7,6 +16,13 @@ variable "ssh_password" {
   description = "Contraseña para el acceso SSH"
   type        = string
   sensitive   = true
+}
+
+# Variable para el usuario SSH
+variable "ssh_user" {
+  description = "Usuario SSH personalizado"
+  type        = string
+  default     = "cliente"
 }
 
 provider "kubernetes" {
@@ -173,10 +189,13 @@ resource "kubernetes_deployment_v1" "ssh_box" {
           image             = "lscr.io/linuxserver/openssh-server:latest"
           image_pull_policy = "IfNotPresent"
           
+          # --- USAMOS LA VARIABLE DE USUARIO ---
           env {
             name  = "USER_NAME"
-            value = "cliente"
+            value = var.ssh_user 
           }
+          # -------------------------------------
+
           env {
             name  = "USER_PASSWORD"
             value = var.ssh_password
@@ -189,7 +208,7 @@ resource "kubernetes_deployment_v1" "ssh_box" {
             name  = "SUDO_ACCESS"
             value = "true"
           }
-          
+           
           port {
             container_port = 2222
           }

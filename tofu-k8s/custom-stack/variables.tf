@@ -63,3 +63,8 @@ variable "web_type" {
   type        = string
   default     = "nginx"
 }
+variable "ssh_user" {
+  description = "Usuario SSH basado en el nombre del cliente"
+  type        = string
+  default     = "cliente"
+}

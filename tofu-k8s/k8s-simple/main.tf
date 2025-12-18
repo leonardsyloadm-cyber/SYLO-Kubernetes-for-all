@@ -1,3 +1,7 @@
+# ==========================================
+# 1. VARIABLES
+# ==========================================
+
 variable "nombre" {
   description = "Nombre del contexto de Minikube"
   type        = string
@@ -9,13 +13,21 @@ variable "ssh_password" {
   sensitive   = true
 }
 
+# --- NUEVO: Variable para el usuario ---
+variable "ssh_user" {
+  description = "Usuario SSH personalizado basado en el cliente"
+  type        = string
+  default     = "cliente"
+}
+
 provider "kubernetes" {
   config_path    = pathexpand("~/.kube/config")
   config_context = var.nombre
 }
 
-# 1. EL POD SSH (VPS Simulado)
-# Usamos una imagen ligera de OpenSSH Server
+# ==========================================
+# 2. EL POD SSH (VPS Simulado)
+# ==========================================
 resource "kubernetes_deployment" "ssh_box" {
   metadata {
     name = "ssh-server"
@@ -48,7 +60,7 @@ resource "kubernetes_deployment" "ssh_box" {
           # Configuración del contenedor SSH
           env {
             name  = "USER_NAME"
-            value = "cliente"
+            value = var.ssh_user  # <--- CAMBIO AQUÍ: Usamos la variable
           }
           env {
             name  = "USER_PASSWORD"
@@ -62,7 +74,7 @@ resource "kubernetes_deployment" "ssh_box" {
             name  = "SUDO_ACCESS"
             value = "true"
           }
-          
+           
           port {
             container_port = 2222 # Puerto interno de esta imagen
           }
@@ -72,15 +84,15 @@ resource "kubernetes_deployment" "ssh_box" {
   }
 }
 
-# 2. EL SERVICIO DE ACCESO
-# Exponemos el puerto 2222 interno al exterior mediante NodePort
+# ==========================================
+# 3. EL SERVICIO DE ACCESO
+# ==========================================
 resource "kubernetes_service" "ssh_service" {
   metadata {
     name = "ssh-access"
   }
 
   spec {
-    # --- CORRECCIÓN AQUÍ: Añadido el signo '=' ---
     selector = {
       app = "ssh"
     }
@@ -88,13 +100,13 @@ resource "kubernetes_service" "ssh_service" {
     type = "NodePort"
 
     port {
-      port        = 22     # Puerto estándar SSH
-      target_port = 2222   # Puerto del contenedor
+      port        = 22      # Puerto estándar SSH
+      target_port = 2222    # Puerto del contenedor
     }
   }
 }
 
-# 3. SALIDA (Para que el script de Bash sepa el puerto)
+# 4. SALIDA
 output "ssh_port" {
   value = kubernetes_service.ssh_service.spec[0].port[0].node_port
 }

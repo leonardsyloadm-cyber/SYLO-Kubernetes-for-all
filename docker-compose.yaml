@@ -1,22 +1,27 @@
+version: '3.8'
+
 services:
-  # --- SERVIDOR WEB ---
+  # --- SERVIDOR WEB (PHP + Apache) ---
   web:
     build: ./sylo-web
     container_name: sylo-web
     ports:
       - "8000:80"
     volumes:
+      # Código fuente en vivo (para que Leonard pueda editar y ver cambios)
       - ./sylo-web:/var/www/html
+      # El Buzón: La tubería de comunicación con Python
       - ./buzon-pedidos:/buzon
-      # CONEXIONES VITALES QUE FALTABAN:
+      # Conexión al cerebro de Docker del Host (Vital)
       - /var/run/docker.sock:/var/run/docker.sock
-      - /usr/bin/docker:/usr/bin/docker
+      # NOTA: Hemos quitado /usr/bin/docker porque tu Dockerfile ya lo instala.
+      # Esto hace que sea compatible con cualquier Linux.
     depends_on:
       - kylo-main-db
     networks:
       - sylo-network
 
-  # --- BASE DE DATOS ---
+  # --- BASE DE DATOS (Cerebro) ---
   kylo-main-db:
     image: mysql:5.7
     container_name: kylo-main-db
@@ -25,8 +30,13 @@ services:
       MYSQL_USER: sylo_app
       MYSQL_PASSWORD: sylo_app_pass
       MYSQL_ROOT_PASSWORD: root
+    # Puerto expuesto para que Oktopus (Python) pueda entrar desde fuera
+    ports:
+      - "3306:3306"
     volumes:
+      # Script inicial (Tablas y usuarios)
       - ./sylo-web/init_kylo.sql:/docker-entrypoint-initdb.d/init.sql
+      # Persistencia de datos
       - db_data:/var/lib/mysql
     networks:
       - sylo-network

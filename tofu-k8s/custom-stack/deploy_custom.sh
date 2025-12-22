@@ -1,22 +1,15 @@
 #!/bin/bash
 set -eE -o pipefail
 
-# --- CONFIGURACIÓN DE LOGS ---
+# --- CONFIGURACIÓN DE LOGS (Usuario actual) ---
 LOG_FILE="/tmp/deploy_custom_debug.log"
 
-# --- TRAP DE ERRORES ---
-handle_error() {
-    local exit_code=$?
-    echo -e "\n\033[0;31m❌ ERROR CRÍTICO (Exit Code: $exit_code) en línea $LINENO.\033[0m"
-    echo -e "\033[0;33m--- ÚLTIMAS LÍNEAS DEL LOG DE ERROR ($LOG_FILE) ---\033[0m"
-    tail -n 20 "$LOG_FILE"
-    echo "{\"percent\": 100, \"message\": \"Fallo Crítico. Revisa la consola.\", \"status\": \"error\"}" > "$BUZON_STATUS"
-    exit $exit_code
-}
-trap 'handle_error' ERR
-
 # --- 1. RECEPCIÓN DE ARGUMENTOS ---
-cd "$(dirname "$0")"
+# Detectamos dónde estamos para ser portables
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")" # Subimos dos niveles (tofu-k8s -> worker -> raiz)
+# Alternativa si la estructura es proyecto/tofu-k8s/custom-stack/:
+# PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 
 ORDER_ID=$1
 CPU_REQ=$2
@@ -41,14 +34,31 @@ else
 fi
 [ -z "$SSH_USER" ] && SSH_USER="cliente"
 
-# NOMBRE DEL CLUSTER
+# NOMBRE DEL CLUSTER Y RUTAS DINÁMICAS
 CLUSTER_NAME="sylo-cliente-$ORDER_ID"
-BUZON_STATUS="$HOME/proyecto/buzon-pedidos/status_$ORDER_ID.json"
+BUZON_STATUS="$PROJECT_ROOT/buzon-pedidos/status_$ORDER_ID.json"
 SSH_PASS=$(openssl rand -base64 12)
+
+# --- TRAP DE ERRORES ---
+handle_error() {
+    local exit_code=$?
+    echo -e "\n\033[0;31m❌ ERROR CRÍTICO (Exit Code: $exit_code) en línea $LINENO.\033[0m"
+    echo -e "\033[0;33m--- ÚLTIMAS LÍNEAS DEL LOG DE ERROR ($LOG_FILE) ---\033[0m"
+    tail -n 20 "$LOG_FILE"
+    # Intentamos escribir en el buzón si existe la ruta
+    if [ -d "$(dirname "$BUZON_STATUS")" ]; then
+        echo "{\"percent\": 100, \"message\": \"Fallo Crítico. Revisa la consola.\", \"status\": \"error\"}" > "$BUZON_STATUS"
+    fi
+    exit $exit_code
+}
+trap 'handle_error' ERR
 
 # --- FUNCIONES ---
 update_status() {
-    echo "{\"percent\": $1, \"message\": \"$2\", \"status\": \"running\"}" > "$BUZON_STATUS"
+    # Solo escribimos si el directorio existe
+    if [ -d "$(dirname "$BUZON_STATUS")" ]; then
+        echo "{\"percent\": $1, \"message\": \"$2\", \"status\": \"running\"}" > "$BUZON_STATUS"
+    fi
     echo -e "📊 \033[1;33m[Progreso $1%]\033[0m $2"
 }
 
@@ -56,18 +66,17 @@ update_status() {
 echo "--- INICIO DEL LOG CUSTOM ($ORDER_ID) ---" > "$LOG_FILE"
 
 # ==========================================
-# 🛑 BLOQUE ANTI-ZOMBIES (FIXED)
+# 🛑 BLOQUE ANTI-ZOMBIES
 # ==========================================
 update_status 5 "Escaneando procesos zombies..."
 echo "🧹 Buscando residuos del Cliente #$ORDER_ID..." >> "$LOG_FILE"
 
-# --- LA CORRECCIÓN ESTÁ AQUÍ (AÑADIDO || true) ---
 ZOMBIES=$(minikube profile list 2>/dev/null | grep "\-$ORDER_ID" | awk '{print $2}' || true)
 
 for ZOMBIE in $ZOMBIES; do
     if [ ! -z "$ZOMBIE" ]; then
         echo "💀 Detectado zombie: $ZOMBIE. Eliminando..." >> "$LOG_FILE"
-        sudo minikube delete -p "$ZOMBIE" >> "$LOG_FILE" 2>&1 || true
+        minikube delete -p "$ZOMBIE" >> "$LOG_FILE" 2>&1 || true
     fi
 done
 
@@ -79,21 +88,19 @@ update_status 10 "Calculando recursos..."
 VM_CPU=$((CPU_REQ + 1))
 VM_RAM_MB=$((RAM_REQ * 1024 + 1024)) 
 
-echo "🔧 Configuración solicitada: CPU=$CPU_REQ, RAM=${RAM_REQ}GB, User=$SSH_USER" >> "$LOG_FILE"
-echo "🔧 Configuración VM Host: CPU=$VM_CPU, RAM=${VM_RAM_MB}MB" >> "$LOG_FILE"
+echo "🔧 Configuración: CPU=$CPU_REQ, RAM=${RAM_REQ}GB, User=$SSH_USER" >> "$LOG_FILE"
 
-# 3. LIMPIEZA DE SISTEMA
+# 3. LIMPIEZA DE SISTEMA (Solo temporales de usuario)
 echo "🧹 Limpiando sistema archivos..." >> "$LOG_FILE"
-sudo rm -f /tmp/juju-* 2>/dev/null || true
-sudo rm -rf /tmp/minikube.* 2>/dev/null || true
-if [ -f /proc/sys/fs/protected_regular ]; then
-    sudo sysctl fs.protected_regular=0 >> "$LOG_FILE" 2>&1
-fi
+rm -f /tmp/juju-* 2>/dev/null || true
+rm -rf /tmp/minikube.* 2>/dev/null || true
 
 # 4. LEVANTAR MINIKUBE
 update_status 20 "Levantando Cluster Limpio ($CLUSTER_NAME)..."
 
-sudo minikube start -p "$CLUSTER_NAME" \
+# Usamos minikube sin sudo si es posible (recomendado), o con sudo si el usuario lo requiere por Docker
+# Asumimos que el usuario tiene permisos en el grupo docker
+minikube start -p "$CLUSTER_NAME" \
     --driver=docker \
     --cpus="$VM_CPU" \
     --memory="${VM_RAM_MB}m" \
@@ -103,19 +110,13 @@ sudo minikube start -p "$CLUSTER_NAME" \
     --no-vtx-check >> "$LOG_FILE" 2>&1
 
 update_status 40 "Configurando kubectl..."
-{
-    sudo rm -rf "$HOME/.minikube"
-    sudo cp -r /root/.minikube "$HOME/"
-    sudo chown -R "$USER":"$USER" "$HOME/.minikube"
-    mkdir -p "$HOME/.kube"
-    sudo cp /root/.kube/config "$HOME/.kube/config"
-    sudo chown "$USER":"$USER" "$HOME/.kube/config"
-    sed -i "s|/root/.minikube|$HOME/.minikube|g" "$HOME/.kube/config"
-    kubectl config use-context "$CLUSTER_NAME"
-} >> "$LOG_FILE" 2>&1
+# Minikube configura automáticamente ~/.kube/config del usuario actual al iniciar.
+# No hace falta copiar de /root/ si no usamos sudo.
+kubectl config use-context "$CLUSTER_NAME" >> "$LOG_FILE" 2>&1
 
 # 5. DESPLIEGUE TOFU
 update_status 50 "Aplicando infraestructura..."
+cd "$SCRIPT_DIR" # Aseguramos estar en la carpeta del .tf
 rm -f terraform.tfstate*
 tofu init -upgrade >> "$LOG_FILE" 2>&1
 
@@ -144,7 +145,7 @@ fi
 
 # 7. FINALIZACIÓN
 update_status 90 "Generando credenciales..."
-HOST_IP=$(sudo minikube ip -p "$CLUSTER_NAME")
+HOST_IP=$(minikube ip -p "$CLUSTER_NAME")
 WEB_PORT=$(tofu output -raw web_port)
 SSH_PORT=$(tofu output -raw ssh_port)
 

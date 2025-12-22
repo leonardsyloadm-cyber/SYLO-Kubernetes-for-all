@@ -1,0 +1,54 @@
+===================================================
+🚀 GUÍA DE INSTALACIÓN RÁPIDA - PROYECTO SYLO
+===================================================
+
+¡Hola Leo! Sigue estos pasos exactos para arrancar el sistema en tu máquina.
+No necesitas configurar rutas, el código ya es portable.
+
+REQUISITOS PREVIOS:
+- Tener Docker instalado y corriendo.
+- Tener Python 3 instalado.
+- Tener Minikube instalado.
+
+---------------------------------------------------
+PASO 1: PREPARAR EL ENTORNO DE PYTHON (SOLO LA PRIMERA VEZ)
+---------------------------------------------------
+1. Abre una terminal en la carpeta raíz del proyecto.
+2. Crea tu propio entorno virtual (para no ensuciar tu PC):
+   $ python3 -m venv venv
+
+3. Activa el entorno (haz esto siempre que abras una nueva terminal):
+   $ source venv/bin/activate
+
+4. Instala las librerías necesarias automágicamente:
+   $ pip install -r requirements.txt
+
+---------------------------------------------------
+PASO 2: ARRANCAR EL CEREBRO (BASE DE DATOS Y WEB)
+---------------------------------------------------
+1. Asegúrate de que Docker está abierto.
+2. En la raíz del proyecto, levanta los contenedores:
+   $ docker-compose up -d --build
+
+   (Espera un minuto a que la base de datos arranque bien).
+
+---------------------------------------------------
+PASO 3: ARRANCAR OKTOPUS (PANEL DE CONTROL)
+---------------------------------------------------
+1. Asegúrate de tener el entorno activado (deberías ver (venv) en la terminal).
+   Si no, ejecuta: source venv/bin/activate
+
+2. Lanza el programa principal:
+   $ python3 Cerebro/Oktopus.py
+
+---------------------------------------------------
+PASO 4: OPERAR
+---------------------------------------------------
+1. En la ventana de Oktopus que se abrirá:
+   - Dale al ▶ en "OPERATOR" (se pondrá verde).
+   - Dale al ▶ en "ORCHESTRATOR" (se pondrá verde).
+
+2. Abre tu navegador y ve a:
+   http://localhost:8000
+
+¡Listo! Ya puedes crear pedidos y ver cómo se despliegan solos.

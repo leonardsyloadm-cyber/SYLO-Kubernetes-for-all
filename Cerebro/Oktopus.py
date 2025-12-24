@@ -160,13 +160,13 @@ class DatabaseManager(ctk.CTkToplevel):
         except Exception as e: messagebox.showerror("Error", str(e))
 
 
-# ================= CLASE PRINCIPAL OKTOPUS v8.1 =================
+# ================= CLASE PRINCIPAL OKTOPUS v8.2 =================
 class OktopusApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         
         # INICIO: VENTANA OCULTA Y TRANSPARENTE
-        self.title("Sylo Enterprise Control Center v8.1")
+        self.title("Sylo Enterprise Control Center v8.2")
         self.geometry("1600x950")
         self.running = True
         self.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -276,16 +276,15 @@ class OktopusApp(ctk.CTk):
         else:
             self.attributes("-alpha", 1.0)
 
-    # ================= CONSTRUCCIÓN UI PRINCIPAL (LIMPIA) =================
+    # ================= CONSTRUCCIÓN UI PRINCIPAL =================
     def build_main_ui(self):
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
 
-        # SIDEBAR (MODIFICADO: ELIMINADO EL MINI LOGO)
+        # SIDEBAR
         self.sidebar = ctk.CTkFrame(self, width=280, fg_color=COLOR_PANEL, corner_radius=0)
         self.sidebar.grid(row=0, column=0, sticky="nsew")
         
-        # Espacio en blanco en lugar del logo
         ctk.CTkFrame(self.sidebar, fg_color="transparent", height=60).pack() 
 
         ctk.CTkLabel(self.sidebar, text="🐙 OKTOPUS", font=("Arial", 30, "bold"), text_color=COLOR_ACCENT).pack(pady=(10, 5))
@@ -319,7 +318,7 @@ class OktopusApp(ctk.CTk):
         self.calculate_finance()
         self.log_to_console("SYSTEM", "Oktopus Kernel Online.", COLOR_SUCCESS)
 
-    # --- (Resto de métodos lógicos idénticos a la versión estable anterior) ---
+    # --- (Resto de métodos lógicos) ---
     def on_close(self):
         self.running = False
         try:
@@ -344,7 +343,8 @@ class OktopusApp(ctk.CTk):
 
         ctk.CTkLabel(f, text="Servicios", font=("Arial", 20, "bold")).pack(anchor="w", pady=(30, 10))
         st = ctk.CTkFrame(f, fg_color=COLOR_CARD, corner_radius=15); st.pack(fill="x", ipady=20, padx=5)
-        for s in ["WEB (PHP)", "DATABASE (MySQL)", "OPERATOR (Python)", "ORCHESTRATOR"]:
+        # Añadido SYLO BRAIN AI a la lista de servicios
+        for s in ["WEB (PHP)", "DATABASE (MySQL)", "OPERATOR (Python)", "ORCHESTRATOR", "SYLO BRAIN AI"]:
             sf = ctk.CTkFrame(st, fg_color="transparent"); sf.pack(side="left", expand=True)
             lbl = ctk.CTkLabel(sf, text="●", font=("Arial", 40), text_color="gray"); lbl.pack()
             ctk.CTkLabel(sf, text=s, font=("Arial", 12, "bold")).pack()
@@ -352,8 +352,11 @@ class OktopusApp(ctk.CTk):
 
         ctk.CTkLabel(f, text="Workers", font=("Arial", 20, "bold")).pack(anchor="w", pady=(30, 10))
         wf = ctk.CTkFrame(f, fg_color=COLOR_CARD); wf.pack(fill="x", ipady=10)
+        
+        # Añadido control para el Brain
         self.create_worker_ctrl(wf, "operator_sylo.py", "OPERATOR")
         self.create_worker_ctrl(wf, "orchestrator_sylo.py", "ORCHESTRATOR")
+        self.create_worker_ctrl(wf, "sylo_brain.py", "SYLO BRAIN AI")
 
     def create_kpi(self, p, t, v, c):
         fr = ctk.CTkFrame(p, fg_color=COLOR_CARD, corner_radius=15)
@@ -394,7 +397,6 @@ class OktopusApp(ctk.CTk):
     def create_console_tab(self):
         f = ctk.CTkFrame(self.main_container, fg_color="transparent")
         self.frames["LOGS & CONSOLA"] = f
-        # Consola readonly por defecto para el usuario
         self.master_console = ctk.CTkTextbox(f, font=("Consolas", 12), fg_color="black", text_color="#00ff00")
         self.master_console.pack(fill="both", expand=True, padx=10, pady=10)
         self.master_console.configure(state="disabled") 
@@ -451,8 +453,15 @@ class OktopusApp(ctk.CTk):
             c = COLOR_SUCCESS if pid else COLOR_DANGER
             w["dot"].configure(text_color=c)
             w["status"].configure(text="ONLINE" if pid else "OFFLINE", text_color=c)
-            k = "OPERATOR (Python)" if "operator" in s else "ORCHESTRATOR"
-            self.status_indicators[k].configure(text_color=c)
+            
+            # Mapeo de script a indicador
+            key = None
+            if "operator" in s: key = "OPERATOR (Python)"
+            elif "orchestrator" in s: key = "ORCHESTRATOR"
+            elif "brain" in s: key = "SYLO BRAIN AI"
+            
+            if key and key in self.status_indicators:
+                self.status_indicators[key].configure(text_color=c)
         
         self.after(3000, self.check_system_health)
 

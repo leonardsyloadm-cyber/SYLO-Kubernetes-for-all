@@ -35,7 +35,29 @@ $stmt = $conn->prepare("SELECT * FROM users WHERE id = ?");
 $stmt->execute([$user_id]);
 $user_info = $stmt->fetch(PDO::FETCH_ASSOC);
 
-// --- 3. HELPERS ---
+// --- 3. HELPERS VISUALES ---
+function getPlanStyle($planName) {
+    return match($planName) {
+        'Bronce' => 'background: #CD7F32; color: #fff; box-shadow: 0 0 10px rgba(205, 127, 50, 0.4);',
+        'Plata'  => 'background: #94a3b8; color: #fff; box-shadow: 0 0 10px rgba(148, 163, 184, 0.4);',
+        'Oro'    => 'background: #FFD700; color: #000; font-weight:bold; box-shadow: 0 0 15px rgba(255, 215, 0, 0.6);',
+        'Personalizado' => 'background: linear-gradient(45deg, #CD7F32, #94a3b8, #FFD700); color: #fff; font-weight:bold; border:1px solid rgba(255,255,255,0.3);',
+        default  => 'background: #334155; color: #fff;'
+    };
+}
+
+function getSidebarStyle($planName) {
+    $color = match($planName) {
+        'Bronce' => '#CD7F32',
+        'Plata'  => '#94a3b8',
+        'Oro'    => '#FFD700',
+        'Personalizado' => '#a855f7', 
+        default  => '#3b82f6'
+    };
+    return "border-left: 3px solid $color; background: linear-gradient(90deg, " . $color . "11, transparent);";
+}
+
+// --- 4. HELPERS LÓGICOS ---
 function calculateWeeklyPrice($row) {
     $price = match($row['plan_name']) { 'Bronce'=>5, 'Plata'=>15, 'Oro'=>30, default=>0 };
     if($row['plan_name'] == 'Personalizado') {
@@ -67,7 +89,7 @@ function cleanPass($raw) {
     return $raw;
 }
 
-// --- 4. API AJAX ---
+// --- 5. API AJAX ---
 if (isset($_GET['ajax_data']) && isset($_GET['id'])) {
     header('Content-Type: application/json');
     $oid = $_GET['id'];
@@ -91,6 +113,17 @@ if (isset($_GET['ajax_data']) && isset($_GET['id'])) {
     $prog_file = "$buzon_path/backup_status_$oid.json";
     if(file_exists($prog_file)) $backup_status = json_decode(file_get_contents($prog_file), true);
 
+    // [IA] LEER RESPUESTA
+    $chat_reply = null;
+    $chat_file = "$buzon_path/chat_response_$oid.json";
+    if(file_exists($chat_file)) {
+        $chat_data = json_decode(file_get_contents($chat_file), true);
+        if($chat_data && isset($chat_data['reply'])) {
+            $chat_reply = $chat_data['reply'];
+            @unlink($chat_file);
+        }
+    }
+
     $data = json_decode($json, true) ?? [];
     $clean_pass = isset($data['ssh_pass']) ? cleanPass($data['ssh_pass']) : '...';
 
@@ -101,12 +134,13 @@ if (isset($_GET['ajax_data']) && isset($_GET['id'])) {
         'web_url' => $data['web_url'] ?? null,
         'backups_list' => $backups_list,
         'backup_progress' => $backup_status,
-        'web_progress' => json_decode($web_status, true)
+        'web_progress' => json_decode($web_status, true),
+        'chat_reply' => $chat_reply
     ]);
     exit;
 }
 
-// --- 5. PROCESAR ACCIONES ---
+// --- 6. PROCESAR ACCIONES ---
 $is_ajax = isset($_GET['ajax_action']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] != 'update_profile') {
@@ -114,6 +148,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $act = $_POST['action'];
     $data = ["id" => (int)$oid, "action" => strtoupper($act), "user" => $_SESSION['username']];
     
+    // [IA] ENVIAR CHAT CON CONTEXTO
+    if($act == 'send_chat') {
+        $msg = $_POST['message'];
+        $chat_req_file = "$buzon_path/chat_request_{$oid}.json";
+        
+        $sql_plan = "SELECT p.name as plan_name, os.db_enabled, os.web_enabled, os.db_type, os.web_type FROM orders o JOIN plans p ON o.plan_id=p.id LEFT JOIN order_specs os ON o.id = os.order_id WHERE o.id = ?";
+        $stmt_chat = $conn->prepare($sql_plan);
+        $stmt_chat->execute([$oid]);
+        $plan_info = $stmt_chat->fetch(PDO::FETCH_ASSOC);
+        
+        $payload = [
+            "msg" => $msg, "timestamp" => time(),
+            "context_plan" => [
+                "name" => $plan_info['plan_name'] ?? 'Estándar',
+                "has_db" => ($plan_info['plan_name'] == 'Oro' || $plan_info['plan_name'] == 'Plata' || !empty($plan_info['db_enabled'])),
+                "has_web" => ($plan_info['plan_name'] == 'Oro' || !empty($plan_info['web_enabled'])),
+                "db_type" => $plan_info['db_type'] ?? 'MySQL',
+                "web_type" => $plan_info['web_type'] ?? 'Apache'
+            ]
+        ];
+        file_put_contents($chat_req_file, json_encode($payload));
+        @chmod($chat_req_file, 0666);
+        if($is_ajax) { echo json_encode(['status'=>'ok']); exit; }
+    }
+
     if($act == 'backup') {
         $data['backup_type'] = $_POST['backup_type'] ?? 'full';
         $data['backup_name'] = $_POST['backup_name'] ?? 'Manual';
@@ -137,12 +196,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         }
     }
     
-    $fname = match($act) { 'terminate'=>'terminate', 'backup'=>'backup', 'update_web'=>'update_web', 'delete_backup'=>'delete_backup', 'refresh_status'=>'refresh', default=>$act };
-    $timestamp = microtime(true);
-    file_put_contents("$buzon_path/accion_{$oid}_{$fname}_{$timestamp}.json", json_encode($data));
-    @chmod("$buzon_path/accion_{$oid}_{$fname}_{$timestamp}.json", 0666);
-    
-    if($act == 'update_web') @unlink("$buzon_path/web_status_{$oid}.json");
+    if ($act != 'send_chat') {
+        $fname = match($act) { 'terminate'=>'terminate', 'backup'=>'backup', 'update_web'=>'update_web', 'delete_backup'=>'delete_backup', 'refresh_status'=>'refresh', default=>$act };
+        $timestamp = microtime(true);
+        file_put_contents("$buzon_path/accion_{$oid}_{$fname}_{$timestamp}.json", json_encode($data));
+        @chmod("$buzon_path/accion_{$oid}_{$fname}_{$timestamp}.json", 0666);
+        
+        if($act == 'update_web') @unlink("$buzon_path/web_status_{$oid}.json");
+    }
     
     if($is_ajax) { 
         header('Content-Type: application/json'); 
@@ -153,7 +214,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     header("Location: dashboard_cliente.php?id=$oid"); exit;
 }
 
-// --- 6. CARGA INICIAL ---
+// --- 7. CARGA INICIAL ---
 $sql = "SELECT o.*, p.name as plan_name, p.cpu_cores as p_cpu, p.ram_gb as p_ram, os.cpu_cores as custom_cpu, os.ram_gb as custom_ram, os.db_enabled, os.web_enabled FROM orders o JOIN plans p ON o.plan_id=p.id LEFT JOIN order_specs os ON o.id = os.order_id WHERE user_id=? AND status!='cancelled' ORDER BY o.id DESC";
 $stmt = $conn->prepare($sql);
 $stmt->execute([$_SESSION['user_id']]);
@@ -199,9 +260,9 @@ if($clusters) {
         
         .sidebar { height: 100vh; background: var(--sidebar); border-right: 1px solid var(--border); padding-top: 25px; position: fixed; width: 260px; z-index: 1000; display: flex; flex-direction: column; }
         .sidebar .brand { font-size: 1.5rem; color: #fff; padding-left: 1.5rem; margin-bottom: 2rem; display: flex; align-items: center; letter-spacing: 1px; text-shadow: 0 0 10px var(--accent-glow); }
-        .sidebar .nav-link { color: var(--text-muted); padding: 12px 24px; margin: 4px 16px; border-radius: 12px; transition: all 0.2s; font-weight: 500; display: flex; align-items: center; text-decoration: none; border: 1px solid transparent; }
+        .sidebar .nav-link { color: var(--text-muted); padding: 12px 24px; margin: 4px 16px; border-radius: 8px; transition: all 0.2s; font-weight: 500; display: flex; align-items: center; text-decoration: none; border: 1px solid transparent; }
         .sidebar .nav-link:hover { color: #fff; background: rgba(255,255,255,0.05); transform: translateX(5px); }
-        .sidebar .nav-link.active { background: linear-gradient(90deg, rgba(37,99,235,0.2), transparent); border-left: 3px solid var(--accent); color: #fff; border-radius: 4px; }
+        .sidebar .nav-link.active { border-radius: 8px; color: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
         
         .main-content { margin-left: 260px; padding: 30px 40px; }
         .card-clean { background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 1.5rem; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); position: relative; overflow: hidden; }
@@ -264,8 +325,13 @@ if($clusters) {
         <a href="index.php" class="nav-link"><i class="bi bi-plus-lg me-3"></i> Nuevo Servicio</a>
         <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#billingModal"><i class="bi bi-credit-card me-3"></i> Facturación</a>
         <div class="mt-4 px-4 mb-2 text-light-muted fw-bold" style="font-size: 0.7rem; letter-spacing: 1px; opacity: 0.6;">MIS CLÚSTERES</div>
-        <?php foreach($clusters as $c): $cls = ($current && $c['id']==$current['id'])?'active':''; ?>
-            <a href="?id=<?=$c['id']?>" class="nav-link <?=$cls?>"><i class="bi bi-hdd-rack me-3"></i> <span>ID: <?=$c['id']?></span></a>
+        <?php foreach($clusters as $c): 
+            $cls = ($current && $c['id']==$current['id'])?'active':'';
+            $pstyle = getSidebarStyle($c['plan_name']); 
+        ?>
+            <a href="?id=<?=$c['id']?>" class="nav-link <?=$cls?>" style="<?=$cls ? $pstyle : ''?>">
+                <i class="bi bi-hdd-rack me-3"></i> <span>ID: <?=$c['id']?> (<?=$c['plan_name']?>)</span>
+            </a>
         <?php endforeach; ?>
     </div>
     <div style="margin-top:auto; padding:20px; border-top:1px solid #1e293b;">
@@ -292,9 +358,10 @@ if($clusters) {
     
     <div class="row g-4">
         <div class="col-lg-8">
-            <div class="d-flex align-items-center mb-4">
+            <div class="d-flex align-items-center mb-4 gap-3">
                 <h4 class="fw-bold mb-0 text-white">Servidor #<?=$current['id']?></h4>
-                <div class="ms-3"><span class="badge bg-success bg-opacity-10 text-success border border-success px-3 py-2 rounded-pill">ONLINE</span></div>
+                <div><span class="badge bg-success bg-opacity-10 text-success border border-success px-3 py-2 rounded-pill">ONLINE</span></div>
+                <div><span class="badge px-3 py-2 rounded-pill" style="<?=getPlanStyle($current['plan_name'])?>">PLAN <?=strtoupper($current['plan_name'])?></span></div>
             </div>
             
             <div class="row g-4 mb-4">
@@ -402,7 +469,16 @@ if($clusters) {
         <i class="bi bi-x-lg cursor-pointer" onclick="toggleChat()"></i>
     </div>
     <div class="chat-body" id="chatBody">
-        <div class="chat-msg support">Hola <?=htmlspecialchars($_SESSION['username'])?>, ¿en qué podemos ayudarte hoy?</div>
+        <div class="chat-msg support">
+            Hola <?=htmlspecialchars($_SESSION['username'])?>, si tienes preguntas, estas son las más frecuentes:
+            <br><br>
+            1️⃣ ¿Cómo entro a mi servidor? (SSH)<br>
+            2️⃣ ¿Cuál es mi página web?<br>
+            3️⃣ Datos de Base de Datos<br>
+            4️⃣ ¿Cuántas copias puedo hacer?<br>
+            5️⃣ Estado de Salud (CPU/RAM)<br><br>
+            Escribe el número para ver la respuesta.
+        </div>
     </div>
     <div class="chat-input-area">
         <input type="text" id="chatInput" class="form-control bg-dark border-secondary text-white" placeholder="Escribe..." onkeypress="handleChat(event)">
@@ -411,14 +487,8 @@ if($clusters) {
 </div>
 
 <div class="modal fade" id="backupTypeModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0"><div class="modal-header border-0 pb-0"><h5 class="modal-title fw-bold"><i class="bi bi-hdd-fill me-2"></i>Nueva Snapshot</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body px-4 pt-4"><div class="mb-3"><label class="form-label small fw-bold text-light-muted">Nombre de la copia</label><input type="text" id="backup_name_input" class="form-control" placeholder="Ej: Antes de cambios..." maxlength="20"></div><div class="d-flex flex-column gap-2"><label class="backup-option d-flex align-items-center gap-3"><input type="radio" name="backup_type" value="full" checked class="form-check-input mt-0"><div><div class="fw-bold text-white">Completa (Full)</div><div class="small text-muted" style="font-size:0.75rem">Copia total del disco.</div></div></label><label class="backup-option d-flex align-items-center gap-3"><input type="radio" name="backup_type" value="diff" class="form-check-input mt-0"><div><div class="fw-bold text-white">Diferencial</div><div class="small text-muted" style="font-size:0.75rem">Cambios desde última Full.</div></div></label><label class="backup-option d-flex align-items-center gap-3"><input type="radio" name="backup_type" value="incr" class="form-check-input mt-0"><div><div class="fw-bold text-white">Incremental</div><div class="small text-muted" style="font-size:0.75rem">Solo lo nuevo hoy.</div></div></label></div><div id="limit-alert" class="alert alert-danger small mt-3 mb-0" style="display:none"><i class="bi bi-exclamation-octagon-fill me-1"></i> <strong>Límite alcanzado.</strong><br>Elimina una copia para continuar.</div><div id="normal-alert" class="alert alert-warning small mt-3 mb-0"><i class="bi bi-info-circle me-1"></i> Límite: <strong><?=$backup_limit?> copias</strong>.</div></div><div class="modal-footer border-0 px-4 pb-4"><button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Cancelar</button><button type="button" id="btn-start-backup" onclick="doBackup()" class="btn btn-primary rounded-pill px-4 fw-bold">Iniciar Copia</button></div></div></div></div>
-
 <div class="modal fade" id="editorModal" tabindex="-1" data-bs-backdrop="static"><div class="modal-dialog modal-xl modal-dialog-centered"><div class="modal-content border-0"><div class="modal-header bg-dark text-white border-bottom border-secondary"><h5 class="modal-title">Editor HTML</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body p-0"><div id="editor"></div></div><div class="modal-footer bg-dark border-top border-secondary"><button class="btn btn-secondary rounded-pill" data-bs-dismiss="modal">Cerrar</button><button class="btn btn-primary rounded-pill fw-bold" onclick="saveWeb()"><i class="bi bi-save me-2"></i>Publicar</button></div></div></div></div>
-<div class="modal fade" id="uploadModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0"><div class="modal-header border-0"><h5 class="modal-title">Subir Web</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body">
-    <form id="uploadForm" enctype="multipart/form-data">
-        <input type="file" id="htmlFile" name="html_file" class="form-control mb-3" required>
-        <button type="submit" class="btn btn-success w-100 rounded-pill">Subir</button>
-    </form>
-</div></div></div></div>
+<div class="modal fade" id="uploadModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0"><div class="modal-header border-0"><h5 class="modal-title">Subir Web</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="uploadForm" enctype="multipart/form-data"><input type="file" id="htmlFile" name="html_file" class="form-control mb-3" required><button type="submit" class="btn btn-success w-100 rounded-pill">Subir</button></form></div></div></div></div>
 <div class="modal fade" id="profileModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0"><div class="modal-header border-0 pb-0"><h5 class="modal-title fw-bold"><i class="bi bi-person-lines-fill me-2"></i>Perfil</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><form method="POST"><input type="hidden" name="action" value="update_profile"><div class="modal-body px-4 pt-4"><div class="mb-3"><label class="small text-light-muted">Nombre</label><input type="text" name="full_name" class="form-control" value="<?=htmlspecialchars($user_info['full_name']??'')?>"></div><div class="mb-3"><label class="small text-light-muted">Email</label><input type="email" name="email" class="form-control" value="<?=htmlspecialchars($user_info['email']??'')?>" required></div><button type="submit" class="btn btn-primary w-100 rounded-pill">Guardar</button></div></form></div></div></div>
 <div class="modal fade" id="billingModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0"><div class="modal-header border-0"><h5 class="modal-title">Facturación</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body"><?php foreach($clusters as $c): ?><div class="d-flex justify-content-between mb-2"><span>#<?=$c['id']?> <?=$c['plan_name']?></span><span class="text-success"><?=number_format(calculateWeeklyPrice($c),2)?>€</span></div><?php endforeach; ?><hr><div class="d-flex justify-content-between fs-5 text-white"><strong>Total</strong><strong class="text-primary"><?=number_format($total_weekly,2)?>€</strong></div></div></div></div></div>
 
@@ -428,7 +498,6 @@ if($clusters) {
     const planCpus = <?=$plan_cpus?>; 
     const backupLimit = <?=$backup_limit?>;
     
-    // --- UI HELPERS ---
     function showToast(msg, type='info') {
         const icon = type==='success'?'check-circle':(type==='error'?'exclamation-triangle':'info-circle');
         const color = type==='success'?'#10b981':(type==='error'?'#ef4444':'#3b82f6');
@@ -448,7 +517,6 @@ if($clusters) {
         tbody.innerHTML = row + tbody.innerHTML;
     }
 
-    // --- CHAT LOGIC ---
     function toggleChat() { 
         const win = document.getElementById('chatWindow'); 
         win.style.display = win.style.display==='flex'?'none':'flex'; 
@@ -462,14 +530,16 @@ if($clusters) {
         body.innerHTML += `<div class="chat-msg me">${txt}</div>`;
         inp.value = '';
         body.scrollTop = body.scrollHeight;
-        setTimeout(() => {
-            body.innerHTML += `<div class="chat-msg support">Un técnico revisará tu consulta en breve.</div>`;
-            body.scrollTop = body.scrollHeight;
-            showToast("Mensaje enviado a soporte", "success");
-        }, 1000);
+        
+        const formData = new FormData();
+        formData.append('action', 'send_chat');
+        formData.append('order_id', oid);
+        formData.append('message', txt);
+        
+        fetch('dashboard_cliente.php?ajax_action=1', { method: 'POST', body: formData });
     }
 
-    // --- LOGICA ORIGINAL RECUPERADA (IDENTICA A TU DASHBOARD ANTIGUO) ---
+    // --- LOGICA ORIGINAL ---
     const editorModal = new bootstrap.Modal(document.getElementById('editorModal')); 
     const uploadModal = new bootstrap.Modal(document.getElementById('uploadModal')); 
     const backupModal = new bootstrap.Modal(document.getElementById('backupTypeModal'));
@@ -485,10 +555,7 @@ if($clusters) {
         aceEditor.setValue(initialCode, -1); 
     });
     
-    // FIX: Resize on modal open
-    document.getElementById('editorModal').addEventListener('shown.bs.modal', function () {
-        aceEditor.resize();
-    });
+    document.getElementById('editorModal').addEventListener('shown.bs.modal', function () { aceEditor.resize(); });
 
     function showEditor() { editorModal.show(); }
     function copyAllCreds() { navigator.clipboard.writeText(document.getElementById('all-creds-box').innerText); showToast("Copiado!", "success"); }
@@ -525,20 +592,18 @@ if($clusters) {
         const typeEl = document.querySelector('input[name="backup_type"]:checked');
         const type = typeEl ? typeEl.value : 'full';
         const name = document.getElementById('backup_name_input').value || "Backup";
-        
-        // Logs detallados solicitados
-        let prettyType = "Completa";
-        if(type === 'diff') prettyType = "Diferencial";
-        if(type === 'incr') prettyType = "Incremental";
+        let prettyType = (type === 'diff') ? "Diferencial" : ((type === 'incr') ? "Incremental" : "Completa");
         
         backupModal.hide();
         document.getElementById('backup_name_input').value = ""; 
         
         const ui = document.getElementById('backup-ui');
-        if(ui) ui.style.display='block';
         const bar = document.getElementById('backup-bar');
-        const pct = document.getElementById('backup-pct');
-        if(bar) bar.style.width='0%';
+        const listDiv = document.getElementById('backups-list-container');
+        
+        if(ui) ui.style.display='block';
+        if(listDiv) listDiv.style.display='none';
+        if(bar) bar.style.width='5%';
         
         fetch('dashboard_cliente.php?ajax_action=1', {method:'POST', body:new URLSearchParams({action:'backup', order_id:oid, backup_type:type, backup_name:name})}); 
         showToast(`Iniciando Backup ${prettyType}: "${name}"`, "info");
@@ -546,22 +611,16 @@ if($clusters) {
     
     function deleteBackup(file, type, name) { 
         if(confirm(`¿Borrar copia de seguridad: ${name}?`)) { 
-            // Logs detallados solicitados
-            let prettyType = "Completa";
-            if(type === 'diff') prettyType = "Diferencial";
-            if(type === 'incr') prettyType = "Incremental";
-
-            // LOGICA VISUAL INMEDIATA
             const dui = document.getElementById('delete-ui');
             const dbar = document.getElementById('delete-bar');
             const list = document.getElementById('backups-list-container');
             
             if(list) list.style.display = 'none';
             if(dui) dui.style.display = 'block';
-            if(dbar) dbar.style.width = '100%'; // Barra llena inmediatamente para que se vea
+            if(dbar) dbar.style.width = '100%';
             
             fetch('dashboard_cliente.php?ajax_action=1', {method:'POST', body:new URLSearchParams({action:'delete_backup', order_id:oid, filename:file})});
-            showToast(`Eliminando Backup ${prettyType}: "${name}"`, "warning");
+            showToast(`Eliminando Backup: "${name}"`, "warning");
         } 
     }
     
@@ -580,10 +639,8 @@ if($clusters) {
         showToast("Publicando web...", "info");
     }
 
-    // EVENT LISTENER RESTAURADO CON PREVENT DEFAULT
     document.getElementById('uploadForm').addEventListener('submit', function(e) { 
         e.preventDefault(); 
-        
         const fileInput = this.querySelector('input[type="file"]');
         const file = fileInput.files[0];
         if (file) {
@@ -593,16 +650,10 @@ if($clusters) {
         }
         uploadModal.hide(); 
         const wbtn = document.getElementById('btn-ver-web'); 
-        if(wbtn) { 
-            wbtn.classList.add('disabled'); 
-            document.getElementById('web-loader-fill').style.width = '5%'; 
-            document.getElementById('web-btn-text').innerHTML = '<i class="bi bi-arrow-repeat spin me-2"></i>Iniciando...'; 
-        }
-        
+        if(wbtn) { wbtn.classList.add('disabled'); document.getElementById('web-loader-fill').style.width = '5%'; document.getElementById('web-btn-text').innerHTML = '<i class="bi bi-arrow-repeat spin me-2"></i>Iniciando...'; }
         const formData = new FormData(this); 
         formData.append('order_id', oid); 
         formData.append('action', 'upload_web');
-        
         fetch('dashboard_cliente.php?ajax_action=1', { method: 'POST', body: formData });
         showToast("Archivo subido", "success");
     });
@@ -614,7 +665,6 @@ if($clusters) {
         .then(d => {
             const rBtn = document.getElementById('btn-refresh');
             if(rBtn) rBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i>';
-            
             if(d.terminated) { window.location.href = 'dashboard_cliente.php'; return; }
             if(!d) return;
             
@@ -625,7 +675,6 @@ if($clusters) {
                 if(visualCpu > 100) visualCpu = 100;
                 const cVal = document.getElementById('cpu-val'); if(cVal) cVal.innerText = visualCpu.toFixed(1);
                 const cBar = document.getElementById('cpu-bar'); if(cBar) cBar.style.width = visualCpu+'%';
-                
                 const rVal = document.getElementById('ram-val'); if(rVal) rVal.innerText = parseFloat(d.metrics.ram).toFixed(1);
                 const rBar = document.getElementById('ram-bar'); if(rBar) rBar.style.width = parseFloat(d.metrics.ram)+'%'; 
             }
@@ -641,7 +690,7 @@ if($clusters) {
                 if(wurl) wurl.innerText = "Esperando IP...";
             }
             
-            // PROGRESO BACKUP Y BORRADO
+            // BACKUPS & PROGRESS
             const bUi = document.getElementById('backup-ui');
             const bBar = document.getElementById('backup-bar');
             const dUi = document.getElementById('delete-ui');
@@ -650,80 +699,49 @@ if($clusters) {
 
             if(d.backup_progress) {
                 if(d.backup_progress.status === 'creating') {
-                    if(bUi) bUi.style.display='block';
-                    if(dUi) dUi.style.display='none'; 
-                    if(list) list.style.display='none'; 
+                    if(bUi) bUi.style.display='block'; if(dUi) dUi.style.display='none'; if(list) list.style.display='none'; 
                     if(bBar) bBar.style.width=d.backup_progress.progress+'%'; 
                 } else if(d.backup_progress.status === 'deleting') {
-                    if(bUi) bUi.style.display='none'; 
-                    if(dUi) dUi.style.display='block';
-                    if(list) list.style.display='none';
+                    if(bUi) bUi.style.display='none'; if(dUi) dUi.style.display='block'; if(list) list.style.display='none';
                     if(dBar) dBar.style.width=d.backup_progress.progress+'%'; 
                 }
             } else {
-                if(bUi) bUi.style.display='none';
-                if(dUi) dUi.style.display='none';
-                if(list) list.style.display='block';
+                if(bUi) bUi.style.display='none'; if(dUi) dUi.style.display='none'; if(list) list.style.display='block';
+                document.getElementById('backup-count').innerText = `${d.backups_list.length}/${backupLimit}`;
+                let html = '';
+                [...d.backups_list].reverse().forEach(b => {
+                    let typeClass = b.type == 'full' ? 'bg-primary' : (b.type == 'diff' ? 'bg-warning text-dark' : 'bg-info text-dark');
+                    let typeName = b.type == 'full' ? 'FULL' : (b.type == 'diff' ? 'DIFF' : 'INCR');
+                    html += `<div class="backup-item"><div class="text-white"><span class="fw-bold">${b.name}</span> <span class="badge ${typeClass} ms-2">${typeName}</span><div class="small text-light-muted">${b.date}</div></div><button onclick="deleteBackup('${b.file}', '${b.type}', '${b.name}')" class="btn btn-sm text-danger opacity-50 hover-opacity-100"><i class="bi bi-trash"></i></button></div>`;
+                });
+                list.innerHTML = html || '<small class="text-light-muted d-block text-center py-2">Sin copias disponibles.</small>';
             }
             
-            // LIMITES
-            const currentCount = d.backups_list ? d.backups_list.length : 0;
-            const startBtn = document.getElementById('btn-start-backup');
-            
-            if(startBtn) {
-                if(currentCount >= backupLimit) {
-                    startBtn.disabled = true; startBtn.innerText = "Límite Alcanzado";
-                } else {
-                    startBtn.disabled = false; startBtn.innerText = "Iniciar Copia";
-                }
-            }
-
-            // LISTA (PASAMOS PARAMETROS EXTRA PARA LOGS DETALLADOS)
-            const listContainer = document.getElementById('backups-list-container');
-            const countLabel = document.getElementById('backup-count');
-            if(countLabel) countLabel.innerText = `${currentCount}/${backupLimit}`;
-            
-            if(listContainer && (!d.backup_progress)) {
-                if(d.backups_list && d.backups_list.length > 0) {
-                    const reversedList = [...d.backups_list].reverse();
-                    let html = '';
-                    reversedList.forEach(b => {
-                        let typeClass = b.type == 'full' ? 'bg-primary' : (b.type == 'diff' ? 'bg-warning text-dark' : 'bg-info text-dark');
-                        let typeName = b.type == 'full' ? 'FULL' : (b.type == 'diff' ? 'DIFF' : 'INCR');
-                        // Pasamos nombre y tipo a deleteBackup para el log
-                        html += `<div class="backup-item"><div class="text-white"><span class="fw-bold">${b.name}</span> <span class="badge ${typeClass} ms-2 text-white">${typeName}</span><div class="small text-light-muted">${b.date}</div></div><button onclick="deleteBackup('${b.file}', '${b.type}', '${b.name}')" class="btn btn-sm text-danger opacity-50 hover-opacity-100"><i class="bi bi-trash"></i></button></div>`;
-                    });
-                    listContainer.innerHTML = html;
-                } else { 
-                    listContainer.innerHTML = '<small class="text-light-muted d-block text-center py-2">Sin copias disponibles.</small>'; 
-                }
+            // CHAT IA RESPONSE
+            if(d.chat_reply) {
+                const body = document.getElementById('chatBody');
+                body.innerHTML += `<div class="chat-msg support">${d.chat_reply}</div>`;
+                body.scrollTop = body.scrollHeight;
+                showToast("Mensaje de soporte recibido", "info");
             }
             
             // WEB PROGRESS
-            if(btnw) {
+            if(btnw && d.web_progress) {
                 const loader = document.getElementById('web-loader-fill');
                 const txt = document.getElementById('web-btn-text');
-
-                if(d.web_progress) {
-                    if(d.web_progress.progress < 100) { 
-                        btnw.classList.add('disabled'); 
-                        if(loader) loader.style.width = d.web_progress.progress + '%'; 
-                        if(txt) txt.innerHTML = `<i class="bi bi-arrow-repeat spin me-2"></i>${d.web_progress.msg}`; 
-                    } else {
-                        btnw.classList.remove('disabled'); 
-                        if(loader) loader.style.width = '0%'; 
-                        if(txt) txt.innerHTML = '<i class="bi bi-box-arrow-up-right me-2"></i>Ver Sitio Web';
-                    }
+                if(d.web_progress.progress < 100) { 
+                    btnw.classList.add('disabled'); 
+                    if(loader) loader.style.width = d.web_progress.progress + '%'; 
+                    if(txt) txt.innerHTML = `<i class="bi bi-arrow-repeat spin me-2"></i>${d.web_progress.msg}`; 
                 } else {
                     btnw.classList.remove('disabled'); 
                     if(loader) loader.style.width = '0%'; 
-                    if(txt) txt.innerHTML = '<i class="bi bi-box-arrow-up-right me-2"></i>Ver Sitio Web'; 
+                    if(txt) txt.innerHTML = '<i class="bi bi-box-arrow-up-right me-2"></i>Ver Sitio Web';
                 }
             }
         }).catch(err => { console.log("Esperando datos...", err); });
     }
 
-    let currentCountBeforeDelete = 0; 
     setInterval(loadData, 1500);
 </script>
 </body>

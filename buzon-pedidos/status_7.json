@@ -1,0 +1,9 @@
+{
+    "metrics": {
+        "cpu": 0.0,
+        "ram": 0.0
+    },
+    "ssh_cmd": "Servidor Detenido",
+    "web_url": "",
+    "ssh_pass": "[ACCESO WEB]\nhttp://192.168.49.2:30129\n\n[ACCESO SSH]\nUser: leoadmin\nPass: KbzuhKQUClEqmDo3\n\n[DB CONECTADA]\nCluster HA: Operativo"
+}

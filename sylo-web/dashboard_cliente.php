@@ -124,6 +124,16 @@ if (isset($_GET['ajax_data']) && isset($_GET['id'])) {
         }
     }
 
+    // [NUEVO] LEER ESTADO REAL DE LA IA
+    $chat_status = null;
+    $status_file = "$buzon_path/chat_status_$oid.json";
+    if(file_exists($status_file)) {
+        $status_data = json_decode(file_get_contents($status_file), true);
+        if ($status_data && isset($status_data['status'])) {
+            $chat_status = $status_data['status'];
+        }
+    }
+
     $data = json_decode($json, true) ?? [];
     $clean_pass = isset($data['ssh_pass']) ? cleanPass($data['ssh_pass']) : '...';
 
@@ -135,7 +145,8 @@ if (isset($_GET['ajax_data']) && isset($_GET['id'])) {
         'backups_list' => $backups_list,
         'backup_progress' => $backup_status,
         'web_progress' => json_decode($web_status, true),
-        'chat_reply' => $chat_reply
+        'chat_reply' => $chat_reply,
+        'chat_status' => $chat_status // ENVIAMOS EL ESTADO REAL
     ]);
     exit;
 }
@@ -291,6 +302,10 @@ if($clusters) {
         .chat-msg { background: #334155; padding: 8px 12px; border-radius: 10px; margin-bottom: 8px; max-width: 80%; }
         .chat-msg.support { background: #1e293b; color: var(--accent); align-self: flex-start; }
         .chat-msg.me { background: var(--accent); color: white; align-self: flex-end; margin-left: auto; }
+
+        /* NUEVO: ESTILOS PARA EL GLOBO DE "PENSANDO" */
+        @keyframes pulse-text { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
+        .thinking-bubble { font-style: italic; color: #94a3b8; background: rgba(30, 41, 59, 0.5) !important; border: 1px dashed #334155 !important; animation: pulse-text 1.5s infinite; display: flex; align-items: center; gap: 10px; }
 
         .modal-content { background-color: #1e293b; border: 1px solid #334155; color: white; }
         .modal-header, .modal-footer { border-color: #334155; }
@@ -498,6 +513,7 @@ if($clusters) {
     const planCpus = <?=$plan_cpus?>; 
     const backupLimit = <?=$backup_limit?>;
     
+    // --- UI HELPERS ---
     function showToast(msg, type='info') {
         const icon = type==='success'?'check-circle':(type==='error'?'exclamation-triangle':'info-circle');
         const color = type==='success'?'#10b981':(type==='error'?'#ef4444':'#3b82f6');
@@ -517,20 +533,33 @@ if($clusters) {
         tbody.innerHTML = row + tbody.innerHTML;
     }
 
+    // --- CHAT LOGIC MODIFICADA ---
     function toggleChat() { 
         const win = document.getElementById('chatWindow'); 
         win.style.display = win.style.display==='flex'?'none':'flex'; 
     }
+    
     function handleChat(e) { if(e.key==='Enter') sendChat(); }
+    
     function sendChat() {
         const inp = document.getElementById('chatInput');
         const txt = inp.value.trim();
         if(!txt) return;
+        
         const body = document.getElementById('chatBody');
         body.innerHTML += `<div class="chat-msg me">${txt}</div>`;
         inp.value = '';
         body.scrollTop = body.scrollHeight;
         
+        // MOSTRAR GLOBO DE PENSANDO INICIAL
+        const thinkingHTML = `
+            <div id="sylo-thinking" class="chat-msg support thinking-bubble">
+                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                <span id="thinking-text">Enviando...</span>
+            </div>`;
+        body.innerHTML += thinkingHTML;
+        body.scrollTop = body.scrollHeight;
+
         const formData = new FormData();
         formData.append('action', 'send_chat');
         formData.append('order_id', oid);
@@ -539,7 +568,7 @@ if($clusters) {
         fetch('dashboard_cliente.php?ajax_action=1', { method: 'POST', body: formData });
     }
 
-    // --- LOGICA ORIGINAL ---
+    // --- LOGICA ORIGINAL RECUPERADA (IDENTICA A TU DASHBOARD ANTIGUO) ---
     const editorModal = new bootstrap.Modal(document.getElementById('editorModal')); 
     const uploadModal = new bootstrap.Modal(document.getElementById('uploadModal')); 
     const backupModal = new bootstrap.Modal(document.getElementById('backupTypeModal'));
@@ -717,8 +746,19 @@ if($clusters) {
                 list.innerHTML = html || '<small class="text-light-muted d-block text-center py-2">Sin copias disponibles.</small>';
             }
             
-            // CHAT IA RESPONSE
+            // [MODIFICADO] CHAT IA RESPONSE & STATUS REAL
+            const chatBubble = document.getElementById('sylo-thinking');
+            const chatText = document.getElementById('thinking-text');
+
+            // 1. ACTUALIZAR ESTADO DE PENSAMIENTO (SI EXISTE)
+            if (chatBubble && d.chat_status) {
+                chatText.innerText = d.chat_status;
+            }
+
+            // 2. MOSTRAR RESPUESTA FINAL
             if(d.chat_reply) {
+                if(chatBubble) chatBubble.remove(); // Borrar globo de pensar
+
                 const body = document.getElementById('chatBody');
                 body.innerHTML += `<div class="chat-msg support">${d.chat_reply}</div>`;
                 body.scrollTop = body.scrollHeight;

@@ -124,7 +124,7 @@ if (isset($_GET['ajax_data']) && isset($_GET['id'])) {
         }
     }
 
-    // [NUEVO] LEER ESTADO REAL DE LA IA
+    // [IA] LEER ESTADO REAL
     $chat_status = null;
     $status_file = "$buzon_path/chat_status_$oid.json";
     if(file_exists($status_file)) {
@@ -146,7 +146,7 @@ if (isset($_GET['ajax_data']) && isset($_GET['id'])) {
         'backup_progress' => $backup_status,
         'web_progress' => json_decode($web_status, true),
         'chat_reply' => $chat_reply,
-        'chat_status' => $chat_status // ENVIAMOS EL ESTADO REAL
+        'chat_status' => $chat_status 
     ]);
     exit;
 }
@@ -189,6 +189,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $data['backup_name'] = $_POST['backup_name'] ?? 'Manual';
     }
     
+    if($act == 'restore_backup') {
+        $data['filename_to_restore'] = $_POST['filename'];
+    }
+    
     if($act == 'delete_backup') {
         $data['filename_to_delete'] = $_POST['filename'];
     }
@@ -208,7 +212,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     }
     
     if ($act != 'send_chat') {
-        $fname = match($act) { 'terminate'=>'terminate', 'backup'=>'backup', 'update_web'=>'update_web', 'delete_backup'=>'delete_backup', 'refresh_status'=>'refresh', default=>$act };
+        $fname = match($act) { 'terminate'=>'terminate', 'backup'=>'backup', 'restore_backup'=>'restore', 'update_web'=>'update_web', 'delete_backup'=>'delete_backup', 'refresh_status'=>'refresh', default=>$act };
         $timestamp = microtime(true);
         file_put_contents("$buzon_path/accion_{$oid}_{$fname}_{$timestamp}.json", json_encode($data));
         @chmod("$buzon_path/accion_{$oid}_{$fname}_{$timestamp}.json", 0666);
@@ -433,9 +437,9 @@ if($clusters) {
                 
                 <?php if($has_web): ?>
                     <label class="small text-light-muted mb-2 d-block">Despliegue Web</label>
-                    <a href="#" target="_blank" id="btn-ver-web" class="btn btn-primary w-100 mb-2 fw-bold position-relative overflow-hidden <?=$web_url?'':'d-none'?>">
+                    <a href="#" target="_blank" id="btn-ver-web" class="btn btn-primary w-100 mb-2 fw-bold position-relative overflow-hidden <?=$web_url?'':'disabled'?>">
                         <div id="web-loader-fill" style="position:absolute;top:0;left:0;height:100%;width:0%;background:rgba(255,255,255,0.2);transition:width 0.5s;"></div>
-                        <span id="web-btn-text"><i class="bi bi-box-arrow-up-right me-2"></i>Ver Sitio Web</span>
+                        <span id="web-btn-text"><i class="bi bi-box-arrow-up-right me-2"></i><?=$web_url?'Ver Sitio Web':'Esperando Web...'?></span>
                     </a>
                     <div class="d-flex gap-2 mb-4">
                         <button class="btn btn-dark border border-secondary flex-fill text-light-muted" onclick="showEditor()"><i class="bi bi-code-slash"></i> Editar</button>
@@ -464,6 +468,13 @@ if($clusters) {
                     <div id="backup-ui" style="display:none" class="mt-3"><div class="progress" style="height:4px"><div id="backup-bar" class="progress-bar bg-info" style="width:0%"></div></div><small class="text-info d-block mt-1">Creando backup...</small></div>
                     
                     <div id="delete-ui" style="display:none" class="mt-3"><div class="progress" style="height:4px"><div id="delete-bar" class="progress-bar bg-danger" style="width:0%"></div></div><small class="text-danger d-block mt-1">Eliminando...</small></div>
+
+                    <div id="restore-ui" style="display:none" class="mt-3">
+                        <div class="progress" style="height:4px">
+                            <div id="restore-bar" class="progress-bar bg-primary" style="width:0%"></div>
+                        </div>
+                        <small id="restore-text" class="text-primary d-block mt-1">Restaurando...</small>
+                    </div>
 
                     <div id="backups-list-container" class="mt-3"></div>
                 </div>
@@ -541,6 +552,8 @@ if($clusters) {
     
     function handleChat(e) { if(e.key==='Enter') sendChat(); }
     
+    let thinkingInterval; 
+
     function sendChat() {
         const inp = document.getElementById('chatInput');
         const txt = inp.value.trim();
@@ -568,7 +581,7 @@ if($clusters) {
         fetch('dashboard_cliente.php?ajax_action=1', { method: 'POST', body: formData });
     }
 
-    // --- LOGICA ORIGINAL RECUPERADA (IDENTICA A TU DASHBOARD ANTIGUO) ---
+    // --- LOGICA ORIGINAL ---
     const editorModal = new bootstrap.Modal(document.getElementById('editorModal')); 
     const uploadModal = new bootstrap.Modal(document.getElementById('uploadModal')); 
     const backupModal = new bootstrap.Modal(document.getElementById('backupTypeModal'));
@@ -638,6 +651,32 @@ if($clusters) {
         showToast(`Iniciando Backup ${prettyType}: "${name}"`, "info");
     }
     
+    // [NUEVO] LÓGICA RESTAURAR BACKUP (Botón Pánico)
+    function restoreBackup(file, name) {
+        // Confirmación de seguridad
+        const check = prompt(`⚠️ MODO PÁNICO ⚠️\n\nVas a restaurar el estado "${name}".\nSe BORRARÁN todos los datos actuales y volverán a este punto.\n\nPara confirmar, escribe: RESTAURAR`);
+        
+        if(check === "RESTAURAR") {
+            const rUi = document.getElementById('restore-ui');
+            const rBar = document.getElementById('restore-bar');
+            const list = document.getElementById('backups-list-container');
+            
+            if(list) list.style.display = 'none';
+            if(rUi) rUi.style.display = 'block';
+            if(rBar) rBar.style.width = '10%'; // Inicio visual
+            
+            // Enviar petición al backend
+            fetch('dashboard_cliente.php?ajax_action=1', {
+                method:'POST', 
+                body:new URLSearchParams({action:'restore_backup', order_id:oid, filename:file})
+            });
+            
+            showToast(`🚨 Restaurando sistema a: "${name}"...`, "warning");
+        } else {
+            alert("Operación cancelada. Debes escribir RESTAURAR en mayúsculas.");
+        }
+    }
+
     function deleteBackup(file, type, name) { 
         if(confirm(`¿Borrar copia de seguridad: ${name}?`)) { 
             const dui = document.getElementById('delete-ui');
@@ -698,87 +737,121 @@ if($clusters) {
             if(!d) return;
             
             // METRICAS
-            if(d.metrics) { 
-                let rawCpu = parseFloat(d.metrics.cpu); 
-                let visualCpu = (rawCpu / planCpus); 
-                if(visualCpu > 100) visualCpu = 100;
-                const cVal = document.getElementById('cpu-val'); if(cVal) cVal.innerText = visualCpu.toFixed(1);
-                const cBar = document.getElementById('cpu-bar'); if(cBar) cBar.style.width = visualCpu+'%';
-                const rVal = document.getElementById('ram-val'); if(rVal) rVal.innerText = parseFloat(d.metrics.ram).toFixed(1);
-                const rBar = document.getElementById('ram-bar'); if(rBar) rBar.style.width = parseFloat(d.metrics.ram)+'%'; 
-            }
+            try {
+                if(d.metrics) { 
+                    let rawCpu = parseFloat(d.metrics.cpu); 
+                    let visualCpu = (rawCpu / planCpus); 
+                    if(visualCpu > 100) visualCpu = 100;
+                    const cVal = document.getElementById('cpu-val'); if(cVal) cVal.innerText = visualCpu.toFixed(1);
+                    const cBar = document.getElementById('cpu-bar'); if(cBar) cBar.style.width = visualCpu+'%';
+                    const rVal = document.getElementById('ram-val'); if(rVal) rVal.innerText = parseFloat(d.metrics.ram).toFixed(1);
+                    const rBar = document.getElementById('ram-bar'); if(rBar) rBar.style.width = parseFloat(d.metrics.ram)+'%'; 
+                }
+            } catch(e) { console.log(e); }
             
             const cmd = document.getElementById('disp-ssh-cmd'); if(cmd) cmd.innerText = d.ssh_cmd || '...';
             const pass = document.getElementById('disp-ssh-pass'); if(pass) pass.innerText = d.ssh_pass || '...';
             const wurl = document.getElementById('disp-web-url'); 
             const btnw = document.getElementById('btn-ver-web');
-            if(d.web_url) { 
-                if(wurl) { wurl.innerText = d.web_url; wurl.href = d.web_url; }
-                if(btnw) { btnw.href = d.web_url; btnw.classList.remove('d-none'); }
-            } else {
-                if(wurl) wurl.innerText = "Esperando IP...";
-            }
+            
+            // WEB UPDATE LOGIC - WRAPPED IN TRY/CATCH
+            try {
+                if(d.web_url) { 
+                    if(wurl) { wurl.innerText = d.web_url; wurl.href = d.web_url; }
+                    if(btnw) { 
+                        btnw.href = d.web_url; 
+                        btnw.classList.remove('disabled'); 
+                        if(btnw.querySelector('span')) btnw.querySelector('span').innerHTML = '<i class="bi bi-box-arrow-up-right me-2"></i>Ver Sitio Web';
+                    }
+                } else {
+                    if(wurl) wurl.innerText = "Esperando IP...";
+                }
+            } catch(e) { console.log(e); }
             
             // BACKUPS & PROGRESS
             const bUi = document.getElementById('backup-ui');
             const bBar = document.getElementById('backup-bar');
             const dUi = document.getElementById('delete-ui');
             const dBar = document.getElementById('delete-bar');
+            const rUi = document.getElementById('restore-ui'); // Nuevo
+            const rBar = document.getElementById('restore-bar'); // Nuevo
             const list = document.getElementById('backups-list-container');
 
-            if(d.backup_progress) {
-                if(d.backup_progress.status === 'creating') {
-                    if(bUi) bUi.style.display='block'; if(dUi) dUi.style.display='none'; if(list) list.style.display='none'; 
-                    if(bBar) bBar.style.width=d.backup_progress.progress+'%'; 
-                } else if(d.backup_progress.status === 'deleting') {
-                    if(bUi) bUi.style.display='none'; if(dUi) dUi.style.display='block'; if(list) list.style.display='none';
-                    if(dBar) dBar.style.width=d.backup_progress.progress+'%'; 
+            try {
+                if(d.backup_progress) {
+                    if(d.backup_progress.status === 'creating') {
+                        if(bUi) bUi.style.display='block'; if(dUi) dUi.style.display='none'; if(rUi) rUi.style.display='none'; if(list) list.style.display='none'; 
+                        if(bBar) bBar.style.width=d.backup_progress.progress+'%'; 
+                    } else if(d.backup_progress.status === 'deleting') {
+                        if(bUi) bUi.style.display='none'; if(dUi) dUi.style.display='block'; if(rUi) rUi.style.display='none'; if(list) list.style.display='none';
+                        if(dBar) dBar.style.width=d.backup_progress.progress+'%'; 
+                    } else if(d.backup_progress.status === 'restoring') { // NUEVO ESTADO
+                        if(bUi) bUi.style.display='none'; if(dUi) dUi.style.display='none'; if(rUi) rUi.style.display='block'; if(list) list.style.display='none';
+                        if(rBar) rBar.style.width=d.backup_progress.progress+'%';
+                        // UPDATE TEXT MSG
+                        const rText = document.getElementById('restore-text');
+                        if(rText && d.backup_progress.msg) rText.innerText = d.backup_progress.msg;
+                    }
+                } else {
+                    if(bUi) bUi.style.display='none'; if(dUi) dUi.style.display='none'; if(rUi) rUi.style.display='none'; if(list) list.style.display='block';
+                    document.getElementById('backup-count').innerText = `${d.backups_list.length}/${backupLimit}`;
+                    let html = '';
+                    [...d.backups_list].reverse().forEach(b => {
+                        let typeClass = b.type == 'full' ? 'bg-primary' : (b.type == 'diff' ? 'bg-warning text-dark' : 'bg-info text-dark');
+                        let typeName = b.type == 'full' ? 'FULL' : (b.type == 'diff' ? 'DIFF' : 'INCR');
+                        html += `
+                        <div class="backup-item d-flex justify-content-between align-items-center mb-2 p-2 rounded" style="background:rgba(255,255,255,0.05)">
+                            <div class="text-white">
+                                <span class="fw-bold">${b.name.replace(/'/g, "")}</span> 
+                                <span class="badge ${typeClass} ms-2">${typeName}</span>
+                                <div class="small text-light-muted">${b.date}</div>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button onclick="restoreBackup('${b.file}', '${b.name.replace(/'/g, "")}')" class="btn btn-sm btn-outline-success" title="Restaurar a este punto"><i class="bi bi-arrow-counterclockwise"></i></button>
+                                <button onclick="deleteBackup('${b.file}', '${b.type}', '${b.name.replace(/'/g, "")}')" class="btn btn-sm btn-outline-danger" title="Eliminar"><i class="bi bi-trash"></i></button>
+                            </div>
+                        </div>`;
+                    });
+                    list.innerHTML = html || '<small class="text-light-muted d-block text-center py-2">Sin copias disponibles.</small>';
                 }
-            } else {
-                if(bUi) bUi.style.display='none'; if(dUi) dUi.style.display='none'; if(list) list.style.display='block';
-                document.getElementById('backup-count').innerText = `${d.backups_list.length}/${backupLimit}`;
-                let html = '';
-                [...d.backups_list].reverse().forEach(b => {
-                    let typeClass = b.type == 'full' ? 'bg-primary' : (b.type == 'diff' ? 'bg-warning text-dark' : 'bg-info text-dark');
-                    let typeName = b.type == 'full' ? 'FULL' : (b.type == 'diff' ? 'DIFF' : 'INCR');
-                    html += `<div class="backup-item"><div class="text-white"><span class="fw-bold">${b.name}</span> <span class="badge ${typeClass} ms-2">${typeName}</span><div class="small text-light-muted">${b.date}</div></div><button onclick="deleteBackup('${b.file}', '${b.type}', '${b.name}')" class="btn btn-sm text-danger opacity-50 hover-opacity-100"><i class="bi bi-trash"></i></button></div>`;
-                });
-                list.innerHTML = html || '<small class="text-light-muted d-block text-center py-2">Sin copias disponibles.</small>';
-            }
+            } catch(e) { console.log("Backup UI Error", e); }
             
-            // [MODIFICADO] CHAT IA RESPONSE & STATUS REAL
-            const chatBubble = document.getElementById('sylo-thinking');
-            const chatText = document.getElementById('thinking-text');
+            // CHAT IA RESPONSE & STATUS REAL
+            try {
+                const chatBubble = document.getElementById('sylo-thinking');
+                const chatText = document.getElementById('thinking-text');
 
-            // 1. ACTUALIZAR ESTADO DE PENSAMIENTO (SI EXISTE)
-            if (chatBubble && d.chat_status) {
-                chatText.innerText = d.chat_status;
-            }
+                if (chatBubble && d.chat_status) {
+                    chatText.innerText = d.chat_status;
+                }
 
-            // 2. MOSTRAR RESPUESTA FINAL
-            if(d.chat_reply) {
-                if(chatBubble) chatBubble.remove(); // Borrar globo de pensar
+                if(d.chat_reply) {
+                    if(chatBubble) chatBubble.remove(); 
 
-                const body = document.getElementById('chatBody');
-                body.innerHTML += `<div class="chat-msg support">${d.chat_reply}</div>`;
-                body.scrollTop = body.scrollHeight;
-                showToast("Mensaje de soporte recibido", "info");
-            }
+                    const body = document.getElementById('chatBody');
+                    body.innerHTML += `<div class="chat-msg support">${d.chat_reply}</div>`;
+                    body.scrollTop = body.scrollHeight;
+                    showToast("Mensaje de soporte recibido", "info");
+                }
+            } catch(e) { console.log(e); }
             
             // WEB PROGRESS
-            if(btnw && d.web_progress) {
-                const loader = document.getElementById('web-loader-fill');
-                const txt = document.getElementById('web-btn-text');
-                if(d.web_progress.progress < 100) { 
-                    btnw.classList.add('disabled'); 
-                    if(loader) loader.style.width = d.web_progress.progress + '%'; 
-                    if(txt) txt.innerHTML = `<i class="bi bi-arrow-repeat spin me-2"></i>${d.web_progress.msg}`; 
-                } else {
-                    btnw.classList.remove('disabled'); 
-                    if(loader) loader.style.width = '0%'; 
-                    if(txt) txt.innerHTML = '<i class="bi bi-box-arrow-up-right me-2"></i>Ver Sitio Web';
+            try {
+                if(btnw && d.web_progress) {
+                    const loader = document.getElementById('web-loader-fill');
+                    const txt = document.getElementById('web-btn-text');
+                    if(d.web_progress.progress < 100) { 
+                        btnw.classList.add('disabled'); 
+                        if(loader) loader.style.width = d.web_progress.progress + '%'; 
+                        if(txt) txt.innerHTML = `<i class="bi bi-arrow-repeat spin me-2"></i>${d.web_progress.msg}`; 
+                    } else {
+                        btnw.classList.remove('disabled'); 
+                        if(loader) loader.style.width = '0%'; 
+                        if(txt) txt.innerHTML = '<i class="bi bi-box-arrow-up-right me-2"></i>Ver Sitio Web';
+                    }
                 }
-            }
+            } catch(e) { console.log(e); }
+
         }).catch(err => { console.log("Esperando datos...", err); });
     }
 

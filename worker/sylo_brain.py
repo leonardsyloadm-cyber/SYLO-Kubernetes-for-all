@@ -16,7 +16,7 @@ BUZON = os.path.join(BASE_DIR, "buzon-pedidos")
 OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL_NAME = "qwen2.5:1.5b" 
 
-print(f"[BRAIN] 🧠 Sylo Brain v12 (Precision UI) Iniciado.")
+print(f"[BRAIN] 🧠 Sylo Brain v13 (Memory Core) Iniciado.")
 
 # ================= HERRAMIENTAS DE ESTADO =================
 
@@ -32,6 +32,45 @@ def clear_chat_status(oid):
     if os.path.exists(status_file):
         try: os.remove(status_file)
         except: pass
+
+# ================= HERRAMIENTAS DE MEMORIA (NUEVO) =================
+
+def get_memory_file(oid):
+    return os.path.join(BUZON, f"chat_memory_{oid}.json")
+
+def load_conversation_history(oid):
+    """Carga las últimas 5 interacciones para dar contexto"""
+    mem_file = get_memory_file(oid)
+    if os.path.exists(mem_file):
+        try:
+            with open(mem_file, 'r') as f:
+                return json.load(f)
+        except: return []
+    return []
+
+def save_conversation_history(oid, user_msg, ai_reply):
+    """Guarda la interacción en disco"""
+    mem_file = get_memory_file(oid)
+    history = load_conversation_history(oid)
+    
+    # Añadimos la nueva interacción
+    history.append({"u": user_msg, "a": ai_reply})
+    
+    # Mantenemos solo las últimas 6 interacciones para no saturar la CPU
+    if len(history) > 6:
+        history = history[-6:]
+        
+    try:
+        with open(mem_file, 'w') as f:
+            json.dump(history, f)
+    except: pass
+
+def format_history_for_prompt(history):
+    if not history: return "Sin historial previo."
+    txt = ""
+    for h in history:
+        txt += f"Usuario: {h['u']}\nSyloBot: {h['a']}\n"
+    return txt
 
 # ================= HERRAMIENTAS TÉCNICAS =================
 
@@ -49,11 +88,16 @@ def get_time_greeting():
 
 def ask_ollama(user_msg, tech_data, plan_data, limit_backups, oid):
     try:
-        update_chat_status(oid, "🔍 Localizando elementos en pantalla...")
-        time.sleep(0.5)
+        update_chat_status(oid, "🧠 Recuperando memoria...")
+        
+        # 1. CARGAR MEMORIA
+        history = load_conversation_history(oid)
+        history_text = format_history_for_prompt(history)
+        
+        update_chat_status(oid, "🔍 Analizando contexto visual...")
 
         # ---------------------------------------------------------
-        # MAPA DE PRECISIÓN (ESTO ES LO QUE ARREGLA TU PROBLEMA)
+        # MAPA DE PRECISIÓN (MANTENIDO)
         # ---------------------------------------------------------
         ui_map = """
         [MAPA EXACTO DEL DASHBOARD - ÚSALO PARA GUIAR AL USUARIO]
@@ -91,41 +135,49 @@ def ask_ollama(user_msg, tech_data, plan_data, limit_backups, oid):
         - Backups: {tech_data.get('backups_count')}/{limit_backups}
         """
 
+        # AÑADIMOS EL HISTORIAL AL PROMPT
         system_prompt = f"""
-        Eres SyloBot, el navegador de este Dashboard.
+        Eres SyloBot, el navegador de este Dashboard con MEMORIA.
         
         {ui_map}
         {knowledge_base}
         {real_time_status}
 
+        [HISTORIAL DE CONVERSACIÓN RECIENTE (Contexto)]
+        {history_text}
+
         REGLAS DE RESPUESTA:
-        1. Sé MUY CONCRETO con la ubicación. Ejemplo: "Usa el botón 'Editar' en la zona derecha, sección Despliegue Web".
-        2. Si preguntan por contraseñas o IP: "Mira la tarjeta 'Accesos de Sistema' a tu izquierda".
-        3. Si preguntan por Backups: "Botón 'Crear Snapshot' abajo a la derecha".
-        4. Máximo 25 palabras.
+        1. Usa el HISTORIAL para entender el contexto (ej: si dicen "y cómo lo hago", refiérete a lo anterior).
+        2. Sé MUY CONCRETO con la ubicación de botones.
+        3. Si preguntan por contraseñas o IP: "Mira la tarjeta 'Accesos de Sistema' a tu izquierda".
+        4. Máximo 30 palabras.
         """
 
         payload = {
             "model": MODEL_NAME,
-            "prompt": f"{system_prompt}\n\nPREGUNTA USUARIO: {user_msg}\n\nGUÍA VISUAL:",
+            "prompt": f"{system_prompt}\n\nPREGUNTA ACTUAL: {user_msg}\n\nRESPUESTA:",
             "stream": False,
             "keep_alive": "60m",
-            "options": {"temperature": 0.1, "num_ctx": 4096, "num_predict": 50}
+            "options": {"temperature": 0.1, "num_ctx": 4096, "num_predict": 60}
         }
         
-        update_chat_status(oid, "✍️ Redactando instrucciones...")
-        print(f"[AI] Procesando para #{oid}: '{user_msg}'...")
+        update_chat_status(oid, "✍️ Redactando respuesta...")
+        print(f"[AI] Procesando para #{oid} (Con memoria)...")
         
         r = requests.post(OLLAMA_URL, json=payload, timeout=90)
         
         clear_chat_status(oid)
         
         if r.status_code == 200:
-            # Limpiamos comillas extra si la IA las pone
-            return r.json()['response'].strip().replace('"', '')
+            reply = r.json()['response'].strip().replace('"', '')
+            # 2. GUARDAR MEMORIA PARA LA PRÓXIMA
+            save_conversation_history(oid, user_msg, reply)
+            return reply
+            
         return "⚠️ Cerebro saturado."
         
     except Exception as e:
+        print(f"Error AI: {e}")
         clear_chat_status(oid)
         return "⚠️ Error IA."
 
@@ -170,7 +222,7 @@ def analyze_intent(text, technical_status, user_plan_context, oid):
 
     if 'contraseña' in text_clean: return f"`{ssh_pass}`"
     
-    # --- CARRIL IA (LENTO) ---
+    # --- CARRIL IA (LENTO CON MEMORIA) ---
     return ask_ollama(text, technical_status, user_plan_context, limit_backups, oid)
 
 

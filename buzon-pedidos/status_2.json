@@ -1,9 +1,0 @@
-{
-    "metrics": {
-        "cpu": 90.98,
-        "ram": 48.64
-    },
-    "ssh_cmd": "ssh cliente@192.168.58.2 -p 30492",
-    "web_url": "http://192.168.58.2:30827",
-    "ssh_pass": "[ACCESO WEB]\nhttp://192.168.58.2:30827\n\n[ACCESO SSH]\nUser: leoadmin\nPass: c3jEdHeYiwysqJoD\n\n[DB CONECTADA]\nCluster HA: Operativo"
-}

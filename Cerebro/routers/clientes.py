@@ -1,0 +1,168 @@
+from fastapi import APIRouter
+from pydantic import BaseModel
+import json
+import os
+import time
+import glob
+from typing import Optional, List
+
+router = APIRouter()
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) 
+BUZON_PEDIDOS = os.path.join(os.path.dirname(BASE_DIR), "buzon-pedidos")
+if not os.path.exists(BUZON_PEDIDOS): os.makedirs(BUZON_PEDIDOS, exist_ok=True)
+
+class OrdenCreacion(BaseModel):
+    id_cliente: int
+    plan: str
+    cliente_nombre: str = "cliente_api"
+    specs: dict = {}
+
+class OrdenAccion(BaseModel):
+    id_cliente: int
+    accion: str
+    backup_type: Optional[str] = "full"
+    backup_name: Optional[str] = "Backup API"
+    filename_to_restore: Optional[str] = ""
+    html_content: Optional[str] = "" 
+    filename_to_delete: Optional[str] = ""
+
+class ReporteMetrica(BaseModel):
+    id_cliente: int
+    metrics: dict
+    ssh_cmd: str = ""
+    web_url: str = ""
+
+class ReporteProgreso(BaseModel):
+    id_cliente: int
+    tipo: str
+    status_text: str
+    percent: int
+    msg: str
+
+class ReporteContenidoWeb(BaseModel):
+    id_cliente: int
+    html_content: str
+
+class ReporteListaBackups(BaseModel):
+    id_cliente: int
+    backups: List[dict]
+
+class OrdenIA(BaseModel):
+    id_cliente: int
+    mensaje: str
+    contexto_plan: dict = {}
+
+# --- HELPER GUARDADO SEGURO ---
+def guardar_json(nombre, data):
+    try:
+        ruta = os.path.join(BUZON_PEDIDOS, nombre)
+        with open(ruta, 'w') as f: json.dump(data, f)
+        os.chmod(ruta, 0o666)
+    except Exception as e: print(f"❌ Error escritura JSON: {e}", flush=True)
+
+def guardar_html(nombre, contenido):
+    try:
+        ruta = os.path.join(BUZON_PEDIDOS, nombre)
+        with open(ruta, 'w', encoding='utf-8') as f: f.write(contenido)
+        os.chmod(ruta, 0o666)
+    except Exception as e: print(f"❌ Error escritura HTML: {e}", flush=True)
+
+# --- ENDPOINTS ---
+
+@router.post("/crear")
+async def solicitar_creacion(datos: OrdenCreacion):
+    payload = {"id": datos.id_cliente, "plan": datos.plan, "cliente": datos.cliente_nombre, "specs": datos.specs, "timestamp": time.time()}
+    guardar_json(f"orden_{datos.id_cliente}.json", payload)
+    return {"status": "OK"}
+
+@router.post("/accion")
+async def solicitar_accion(datos: OrdenAccion):
+    # SOLUCIÓN: Si recibimos contenido web, lo guardamos YA para que el editor no se resetee al recargar
+    if datos.accion.upper() == "UPDATE_WEB" and datos.html_content:
+        guardar_html(f"web_source_{datos.id_cliente}.html", datos.html_content)
+        print(f"💾 [API] HTML persistido para cliente {datos.id_cliente}")
+        
+    payload = datos.dict()
+    payload["action"] = datos.accion.upper()
+    guardar_json(f"accion_{datos.id_cliente}_{int(time.time()*1000)}.json", payload)
+    return {"status": "OK"}
+
+@router.post("/reportar/metricas")
+async def recibir_metricas(datos: ReporteMetrica):
+    payload = {"metrics": datos.metrics, "ssh_cmd": datos.ssh_cmd, "web_url": datos.web_url, "last_update": time.time()}
+    guardar_json(f"status_{datos.id_cliente}.json", payload)
+    return {"status": "recibido"}
+
+@router.post("/reportar/progreso")
+async def recibir_progreso(datos: ReporteProgreso):
+    nombre_archivo = f"web_status_{datos.id_cliente}.json" if datos.tipo == "web" else f"backup_status_{datos.id_cliente}.json"
+    estado = datos.status_text
+    if datos.percent >= 100: estado = "completed"
+    
+    payload = {"status": estado, "progress": datos.percent, "msg": datos.msg}
+    guardar_json(nombre_archivo, payload)
+    return {"status": "procesado"}
+
+@router.post("/reportar/contenido_web")
+async def recibir_contenido_web(datos: ReporteContenidoWeb):
+    # El Operator informa del contenido (útil tras un RESTORE)
+    guardar_html(f"web_source_{datos.id_cliente}.html", datos.html_content)
+    return {"status": "guardado"}
+
+@router.post("/reportar/lista_backups")
+async def recibir_lista_backups(datos: ReporteListaBackups):
+    guardar_json(f"backups_list_{datos.id_cliente}.json", datos.backups)
+    return {"status": "guardado"}
+
+@router.get("/estado/{id_cliente}")
+async def leer_estado(id_cliente: int):
+    data = {
+        "metrics": {"cpu":0, "ram":0}, 
+        "ssh_cmd": "Cargando...", 
+        "web_url": "", 
+        "backups_list": [], 
+        "backup_progress": None, 
+        "web_progress": None,
+        "html_source": "" 
+    }
+    
+    try:
+        with open(os.path.join(BUZON_PEDIDOS, f"status_{id_cliente}.json"), 'r') as f: data.update(json.load(f))
+    except: pass
+    try:
+        with open(os.path.join(BUZON_PEDIDOS, f"backups_list_{id_cliente}.json"), 'r') as f: data["backups_list"] = json.load(f)
+    except: pass
+    try:
+        with open(os.path.join(BUZON_PEDIDOS, f"backup_status_{id_cliente}.json"), 'r') as f: data["backup_progress"] = json.load(f)
+    except: pass
+    try:
+        with open(os.path.join(BUZON_PEDIDOS, f"web_status_{id_cliente}.json"), 'r') as f: data["web_progress"] = json.load(f)
+    except: pass
+    
+    # LEER FUENTE HTML PARA EL EDITOR
+    try:
+        ruta_html = os.path.join(BUZON_PEDIDOS, f"web_source_{id_cliente}.html")
+        if os.path.exists(ruta_html):
+            with open(ruta_html, 'r', encoding='utf-8') as f: data["html_source"] = f.read()
+    except: pass
+
+    return data
+
+@router.post("/chat")
+async def solicitar_ia(datos: OrdenIA):
+    req_id = f"req_{datos.id_cliente}_{int(time.time())}"
+    guardar_json(f"chat_request_{req_id}.json", {"msg": datos.mensaje, "context_plan": datos.contexto_plan, "timestamp": time.time()})
+    return {"status": "OK", "req_id": req_id}
+
+@router.get("/chat/leer/{id_cliente}")
+async def leer_respuesta_ia(id_cliente: int):
+    patron = os.path.join(BUZON_PEDIDOS, f"chat_response_*{id_cliente}*.json")
+    archivos = glob.glob(patron)
+    if archivos:
+        try:
+            with open(archivos[0], 'r') as f: data = json.load(f)
+            os.remove(archivos[0])
+            return data
+        except: pass
+    return {"reply": None}

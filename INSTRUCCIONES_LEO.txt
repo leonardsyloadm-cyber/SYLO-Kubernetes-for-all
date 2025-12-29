@@ -3,69 +3,94 @@
 ===================================================
 
 ¡Hola Leo! Sigue estos pasos exactos para arrancar el sistema en tu máquina.
-No necesitas configurar rutas, el código ya es portable.
+El sistema es AUTO-GESTIONADO, pero necesita una pequeña configuración de red inicial.
 
 REQUISITOS PREVIOS:
-- Tener Docker instalado y corriendo.
+- Tener Docker Desktop instalado y corriendo.
 - Tener Python 3 instalado.
-- Tener Minikube instalado.
-- Conexión a internet (para descargar la IA).
+- Tener Minikube instalado (y corriendo: minikube start).
+- Conexión a internet (para descargar la IA la primera vez).
 
 ---------------------------------------------------
-PASO 1: PREPARAR EL ENTORNO DE PYTHON (SOLO LA PRIMERA VEZ)
+PASO 0: CONFIGURACIÓN DE RED (¡MUY IMPORTANTE!)
+---------------------------------------------------
+Como el sistema conecta Docker, Python y Minikube, necesitamos tu IP local.
+
+1. Abre una terminal y escribe:
+   $ hostname -I
+   (Copia la primera IP que salga, ej: 192.168.1.XX).
+
+2. Abre estos 4 archivos con un editor de texto y cambia la IP "192.168.1.135" por LA TUYA:
+   - Cerebro/oktopus.py
+   - worker/operator_sylo.py
+   - worker/orchestrator_sylo.py  (Si existe)
+   - sylo-web/dashboard_cliente.php
+
+   ¡Guarda los cambios y listo! Ya conectará todo.
+
+---------------------------------------------------
+PASO 1: PREPARAR LAS LIBRERÍAS (FUNDAMENTAL)
 ---------------------------------------------------
 1. Abre una terminal en la carpeta raíz del proyecto.
-2. Crea tu propio entorno virtual (para no ensuciar tu PC):
+
+2. Crea tu entorno virtual (si no existe):
    $ python3 -m venv venv
 
-3. Activa el entorno (haz esto siempre que abras una nueva terminal):
+3. Activa el entorno (¡IMPORTANTE! Verás (venv) en la terminal):
    $ source venv/bin/activate
 
-4. Instala las librerías necesarias automágicamente:
+4. Asegúrate de que tu archivo 'requirements.txt' tenga esto dentro:
+   customtkinter==5.2.2
+   darkdetect==0.8.0
+   packaging==25.0
+   psutil==7.1.3
+   PyMySQL==1.1.3
+   requests
+   Pillow
+
+5. Instala todo de golpe:
    $ pip install -r requirements.txt
 
 ---------------------------------------------------
-PASO 2: PREPARAR LA INTELIGENCIA ARTIFICIAL (NUEVO)
+PASO 2: PREPARAR LA INTELIGENCIA ARTIFICIAL
 ---------------------------------------------------
-1. Instala el motor de IA (Ollama) en tu sistema:
+1. Instala el motor de IA (Ollama) si no lo tienes:
    $ curl -fsSL https://ollama.com/install.sh | sh
 
-2. Descarga el modelo "Qwen" (El cerebro rápido y eficiente):
+2. Descarga el modelo "Qwen" (El cerebro del sistema):
    $ ollama pull qwen2.5:1.5b
-
-3. Instala la librería para que Python hable con la IA:
-   $ pip install requests
 
 ---------------------------------------------------
 PASO 3: ARRANCAR LA BASE DE DATOS Y WEB
 ---------------------------------------------------
-1. Asegúrate de que Docker está abierto.
-2. En la raíz del proyecto, levanta los contenedores:
+1. En la raíz del proyecto (con Docker abierto):
    $ docker-compose up -d --build
 
-   (Espera un minuto a que la base de datos arranque bien).
+   (Espera 30 segundos a que la base de datos "kylo-main-db" arranque).
 
 ---------------------------------------------------
 PASO 4: ARRANCAR OKTOPUS (PANEL DE CONTROL)
 ---------------------------------------------------
-1. Asegúrate de tener el entorno activado (deberías ver (venv) en la terminal).
-   Si no, ejecuta: source venv/bin/activate
+1. Con el entorno activado ((venv)), lanza el panel:
+   $ python3 Cerebro/oktopus.py
 
-2. Lanza el programa principal:
-   $ python3 Cerebro/Oktopus.py
+   *NOTA: Si es la primera vez, Oktopus puede reiniciarse solo para autoconfigurarse. Es normal.*
 
 ---------------------------------------------------
-PASO 5: OPERAR EL SISTEMA COMPLETO
+PASO 5: OPERAR LA NAVE (TODO DESDE EL PANEL)
 ---------------------------------------------------
-1. En la ventana de Oktopus:
-   - Dale al ▶ en "OPERATOR" (se pondrá verde).
-   - Dale al ▶ en "ORCHESTRATOR" (se pondrá verde).
+Ya no necesitas terminales extra. Todo se hace desde Oktopus:
 
-2. Abre una NUEVA TERMINAL (para la IA), activa el entorno y lanza el cerebro:
-   $ source venv/bin/activate
-   $ python3 worker/sylo_brain.py
+1. Ve a la pestaña "DASHBOARD".
+2. En la sección "Workers & Brain", dale al botón ▶ (PLAY) en:
+   - [▶] API GATEWAY MAIN (Fundamental)
+   - [▶] OPERATOR UNIT
+   - [▶] ORCHESTRATOR UNIT
+   - [▶] BRAIN UNIT (Esto arranca la IA sola)
 
-3. Abre tu navegador y ve a:
+3. Cuando todo esté en VERDE (ONLINE), ve a tu navegador:
    http://localhost:8000
 
-¡Listo! Ya puedes crear pedidos, ver el despliegue automático y chatear con la IA en tiempo real.
+¡Listo! 
+- Usa el botón "🛰️ DATA STUDIO" para ver la base de datos en tiempo real.
+- Usa "📜 LOGS GLOBALES" para ver qué está pensando la máquina.

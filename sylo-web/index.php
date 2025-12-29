@@ -5,6 +5,10 @@ error_reporting(E_ALL);
 
 session_start();
 
+// --- CONFIGURACIÓN API (IP REAL) ---
+// Asegúrate de que esta IP es la correcta de tu máquina (hostname -I)
+define('API_URL', 'http://192.168.1.135:8001/api/clientes');
+
 // --- 1. CONEXIÓN DB ---
 $servername = getenv('DB_HOST') ?: "kylo-main-db";
 $username_db = getenv('DB_USER') ?: "sylo_app";
@@ -18,37 +22,52 @@ try {
     if($_SERVER['REQUEST_METHOD'] == 'POST') die(json_encode(["status"=>"error", "mensaje"=>"Error Conexión DB"]));
 }
 
-// --- CHECK: ¿TIENE CLÚSTERES ACTIVOS? ---
+// --- CHECK: CLÚSTERES ACTIVOS ---
 $has_clusters = false;
 if (isset($_SESSION['user_id'])) {
     $stmt = $conn->prepare("SELECT COUNT(*) FROM orders WHERE user_id = ? AND status IN ('active', 'suspended', 'creating')");
     $stmt->execute([$_SESSION['user_id']]);
-    if ($stmt->fetchColumn() > 0) {
-        $has_clusters = true;
-    }
+    if ($stmt->fetchColumn() > 0) $has_clusters = true;
 }
 
-// --- 2. API CHECK STATUS (ANTI-CACHÉ) ---
+// =========================================================
+// 2. CHECK STATUS (AHORA SÍ: VIA API 100%)
+// =========================================================
 if (isset($_GET['check_status'])) {
     header('Content-Type: application/json');
     header("Cache-Control: no-cache, no-store, must-revalidate");
-    header("Pragma: no-cache");
-    header("Expires: 0");
 
     if (!isset($_SESSION['user_id'])) { echo json_encode(["status"=>"error"]); exit; }
     
     $id = filter_var($_GET['check_status'], FILTER_VALIDATE_INT);
-    $jsonFile = "/buzon/status_" . $id . ".json";
+    
+    // CAMBIO RADICAL: En vez de buscar el archivo en el disco (que falla en Docker),
+    // le preguntamos a la API directamente.
+    
+    $url_estado = API_URL . "/estado/" . $id; // Ej: http://192.168.1.252:8001/api/clientes/estado/8
 
-    if (file_exists($jsonFile)) {
-        echo file_get_contents($jsonFile);
+    $ch = curl_init($url_estado);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 2); // Esperar máx 2 segundos
+    $response = curl_exec($ch);
+    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($http_code === 200 && $response) {
+        // La API nos ha dado el JSON del estado
+        echo $response;
     } else {
-        echo json_encode(["percent" => 0, "message" => "Conectando...", "status" => "pending"]);
+        // Si la API falla o aún no tiene datos
+        echo json_encode([
+            "percent" => 0, 
+            "message" => "Sincronizando con Sylo Brain...", 
+            "status" => "pending"
+        ]);
     }
     exit;
 }
 
-// --- 3. API PROCESAR ACCIONES ---
+// --- 3. PROCESAR ACCIONES (POST) ---
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $input = json_decode(file_get_contents('php://input'), true);
     $action = $input['action'] ?? '';
@@ -60,21 +79,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $pass = $input['password'];
         $email = filter_var($input['email'], FILTER_VALIDATE_EMAIL);
         $name = htmlspecialchars($input['full_name']);
-        
         $tipo_usu = $input['tipo_usuario']; 
         $company = htmlspecialchars($input['company_name']); 
         $dni = htmlspecialchars($input['dni'] ?? '');
         $calle = htmlspecialchars($input['calle'] ?? '');
         $tipo_emp = htmlspecialchars($input['tipo_empresa'] ?? '');
-        
         $prefijo = $input['prefijo'] ?? '';
         $telefono_raw = $input['telefono'] ?? '';
         
-        if (!preg_match('/^[0-9]{9}$/', $telefono_raw)) {
-            echo json_encode(["status"=>"error","mensaje"=>"El teléfono debe tener 9 dígitos exactos."]); 
-            exit; 
-        }
-        
+        if (!preg_match('/^[0-9]{9}$/', $telefono_raw)) { echo json_encode(["status"=>"error","mensaje"=>"Teléfono incorrecto."]); exit; }
         $telefono_final = $prefijo ? ($prefijo . " " . $telefono_raw) : $telefono_raw;
 
         if (!$email) { echo json_encode(["status"=>"error","mensaje"=>"Email inválido."]); exit; }
@@ -85,16 +98,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             if ($check->fetch()) { echo json_encode(["status"=>"error","mensaje"=>"Usuario ya existe."]); exit; }
 
             $hash = password_hash($pass, PASSWORD_BCRYPT);
-            
-            $sql = "INSERT INTO users (username, full_name, email, password_hash, role, tipo_usuario, company_name, dni, telefono, calle, tipo_empresa) 
-                    VALUES (:u, :n, :e, :h, 'client', :tu, :c, :d, :t, :ca, :te)";
-            
+            $sql = "INSERT INTO users (username, full_name, email, password_hash, role, tipo_usuario, company_name, dni, telefono, calle, tipo_empresa) VALUES (:u, :n, :e, :h, 'client', :tu, :c, :d, :t, :ca, :te)";
             $stmt = $conn->prepare($sql);
-            $stmt->execute([
-                'u'=>$user, 'n'=>$name, 'e'=>$email, 'h'=>$hash,
-                'tu'=>$tipo_usu, 'c'=>$company, 'd'=>$dni, 
-                't'=>$telefono_final, 'ca'=>$calle, 'te'=>$tipo_emp
-            ]);
+            $stmt->execute(['u'=>$user, 'n'=>$name, 'e'=>$email, 'h'=>$hash, 'tu'=>$tipo_usu, 'c'=>$company, 'd'=>$dni, 't'=>$telefono_final, 'ca'=>$calle, 'te'=>$tipo_emp]);
             
             $_SESSION['user_id'] = $conn->lastInsertId();
             $_SESSION['username'] = $user; $_SESSION['company'] = $company;
@@ -119,52 +125,55 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // LOGOUT
     if ($action === 'logout') { session_destroy(); echo json_encode(["status"=>"success"]); exit; }
 
-    // COMPRAR
+    // =========================================================
+    // 🚀 ACCIÓN COMPRAR (API)
+    // =========================================================
     if ($action === 'comprar') {
         if (!isset($_SESSION['user_id'])) { echo json_encode(["status"=>"auth_required","mensaje"=>"Inicia sesión."]); exit; }
         $plan_name = htmlspecialchars($input['plan']);
         $detalles = $input['details'] ?? null;
 
         try {
-            // 1. Obtener ID Plan
+            // 1. DB LOCAL
             $stmt = $conn->prepare("SELECT id FROM plans WHERE name = :name");
             $stmt->execute(['name' => $plan_name]);
             $pid = $stmt->fetchColumn() ?: 1; 
 
-            // 2. Insertar Orden
             $stmt = $conn->prepare("INSERT INTO orders (user_id, plan_id, status, purchase_date) VALUES (:uid, :pid, 'pending', NOW())");
             $stmt->execute(['uid' => $_SESSION['user_id'], 'pid' => $pid]);
             $order_id = $conn->lastInsertId();
 
-            $orden_data = ["id"=>$order_id, "plan"=>$plan_name, "cliente"=>$_SESSION['username'], "fecha"=>date("c")];
-            
-            // Si es personalizado, guardamos specs
             if ($plan_name === 'Personalizado' && $detalles) {
-                $stmtSpecs = $conn->prepare("
-                    INSERT INTO order_specs (order_id, cpu_cores, ram_gb, storage_gb, db_enabled, db_type, web_enabled, web_type)
-                    VALUES (:oid, :cpu, :ram, :hdd, :db, :dbt, :web, :webt)
-                ");
-                $stmtSpecs->execute([
-                    'oid' => $order_id,
-                    'cpu' => $detalles['cpu'],
-                    'ram' => $detalles['ram'],
-                    'hdd' => $detalles['storage'],
-                    'db'  => $detalles['db_enabled'] ? 1 : 0,
-                    'dbt' => $detalles['db_type'],
-                    'web' => $detalles['web_enabled'] ? 1 : 0,
-                    'webt'=> $detalles['web_type']
-                ]);
-                $orden_data['specs'] = $detalles;
+                $stmtSpecs = $conn->prepare("INSERT INTO order_specs (order_id, cpu_cores, ram_gb, storage_gb, db_enabled, db_type, web_enabled, web_type) VALUES (:oid, :cpu, :ram, :hdd, :db, :dbt, :web, :webt)");
+                $stmtSpecs->execute(['oid' => $order_id, 'cpu' => $detalles['cpu'], 'ram' => $detalles['ram'], 'hdd' => $detalles['storage'], 'db'  => $detalles['db_enabled'] ? 1 : 0, 'dbt' => $detalles['db_type'], 'web' => $detalles['web_enabled'] ? 1 : 0, 'webt'=> $detalles['web_type']]);
             }
             
-            $f_ord = "/buzon/orden_" . $order_id . ".json";
-            $f_sta = "/buzon/status_" . $order_id . ".json";
-            
-            file_put_contents($f_ord, json_encode($orden_data, JSON_PRETTY_PRINT));
-            file_put_contents($f_sta, json_encode(["percent"=>0,"message"=>"Encolado..."]));
-            chmod($f_ord, 0777); chmod($f_sta, 0777);
+            // 2. ORDEN A LA API
+            $api_payload = [
+                "id_cliente" => (int)$order_id,
+                "plan" => $plan_name,
+                "cliente_nombre" => $_SESSION['username'],
+                "specs" => $detalles ? $detalles : new stdClass()
+            ];
 
-            echo json_encode(["status"=>"success","order_id"=>$order_id]);
+            $ch = curl_init(API_URL . "/crear");
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($api_payload));
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 5); 
+            
+            $api_response = curl_exec($ch);
+            $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($http_code === 200) {
+                echo json_encode(["status"=>"success","order_id"=>$order_id]);
+            } else {
+                $conn->exec("DELETE FROM orders WHERE id=$order_id");
+                echo json_encode(["status"=>"error", "mensaje"=>"Error Sylo API: $http_code"]);
+            }
+
         } catch (Exception $e) { echo json_encode(["status"=>"error","mensaje"=>"Error interno: " . $e->getMessage()]); }
         exit;
     }

@@ -1,264 +1,151 @@
 <?php
 session_start();
+define('API_URL_BASE', 'http://192.168.1.135:8001/api/clientes');
 
-// --- 0. LOGOUT ---
-if (isset($_GET['action']) && $_GET['action'] == 'logout') {
-    session_destroy();
-    header("Location: index.php");
-    exit;
-}
-
-// --- 1. SEGURIDAD ---
+if (isset($_GET['action']) && $_GET['action'] == 'logout') { session_destroy(); header("Location: index.php"); exit; }
 if (!isset($_SESSION['user_id'])) { header("Location: index.php"); exit; }
 
 $servername = getenv('DB_HOST') ?: "kylo-main-db";
 $username_db = getenv('DB_USER') ?: "sylo_app";
 $password_db = getenv('DB_PASS') ?: "sylo_app_pass";
 $dbname = getenv('DB_NAME') ?: "kylo_main_db";
+try { $conn = new PDO("mysql:host=$servername;dbname=$dbname", $username_db, $password_db); } catch(PDOException $e) { die("Error DB"); }
 
-try {
-    $conn = new PDO("mysql:host=$servername;dbname=$dbname", $username_db, $password_db);
-    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-} catch(PDOException $e) { die("Error DB"); }
-
-$buzon_path = "/buzon"; 
-if (!is_dir($buzon_path) && is_dir("../buzon-pedidos")) { $buzon_path = "../buzon-pedidos"; }
-
-// --- 2. GESTIÓN PERFIL ---
+$buzon_path = "../buzon-pedidos"; 
 $user_id = $_SESSION['user_id'];
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] == 'update_profile') {
     $sql = "UPDATE users SET full_name=?, email=?, dni=?, telefono=?, company_name=?, calle=? WHERE id=?";
     $conn->prepare($sql)->execute([$_POST['full_name'], $_POST['email'], $_POST['dni'], $_POST['telefono'], $_POST['company_name'], $_POST['calle'], $user_id]);
     header("Location: dashboard_cliente.php"); exit;
 }
-$stmt = $conn->prepare("SELECT * FROM users WHERE id = ?");
-$stmt->execute([$user_id]);
-$user_info = $stmt->fetch(PDO::FETCH_ASSOC);
+$stmt = $conn->prepare("SELECT * FROM users WHERE id = ?"); $stmt->execute([$user_id]); $user_info = $stmt->fetch(PDO::FETCH_ASSOC);
 
-// --- 3. HELPERS VISUALES ---
-function getPlanStyle($planName) {
-    return match($planName) {
-        'Bronce' => 'background: #CD7F32; color: #fff; box-shadow: 0 0 10px rgba(205, 127, 50, 0.4);',
-        'Plata'  => 'background: #94a3b8; color: #fff; box-shadow: 0 0 10px rgba(148, 163, 184, 0.4);',
-        'Oro'    => 'background: #FFD700; color: #000; font-weight:bold; box-shadow: 0 0 15px rgba(255, 215, 0, 0.6);',
-        'Personalizado' => 'background: linear-gradient(45deg, #CD7F32, #94a3b8, #FFD700); color: #fff; font-weight:bold; border:1px solid rgba(255,255,255,0.3);',
-        default  => 'background: #334155; color: #fff;'
-    };
-}
+function calculateWeeklyPrice($r) { $p=match($r['plan_name']){'Bronce'=>5,'Plata'=>15,'Oro'=>30,default=>0}; if($r['plan_name']=='Personalizado'){$p=(intval($r['custom_cpu'])*5)+(intval($r['custom_ram'])*5); if(!empty($r['db_enabled']))$p+=10; if(!empty($r['web_enabled']))$p+=10;} return $p/4; }
+function getBackupLimit($r) { $m=match($r['plan_name']){'Bronce'=>5,'Plata'=>15,'Oro'=>30,default=>0}; if($r['plan_name']=='Personalizado'){$m=(intval($r['custom_cpu'])*5)+(intval($r['custom_ram'])*5); if(!empty($r['db_enabled']))$m+=10; if(!empty($r['web_enabled']))$m+=10;} return ($r['plan_name']=='Oro'||$m>=30)?5:(($r['plan_name']=='Plata'||$m>=15)?3:2); }
+function getPlanStyle($n) { return match($n) { 'Bronce'=>'background:#CD7F32;color:#fff;box-shadow:0 0 10px rgba(205,127,50,0.4);', 'Plata'=>'background:#94a3b8;color:#fff;box-shadow:0 0 10px rgba(148,163,184,0.4);', 'Oro'=>'background:#FFD700;color:#000;font-weight:bold;box-shadow:0 0 15px rgba(255,215,0,0.6);', 'Personalizado'=>'background:linear-gradient(45deg,#CD7F32,#94a3b8,#FFD700);color:#fff;font-weight:bold;border:1px solid rgba(255,255,255,0.3);', default=>'background:#334155;color:#fff;' }; }
+function getSidebarStyle($n) { $c=match($n){'Bronce'=>'#CD7F32','Plata'=>'#94a3b8','Oro'=>'#FFD700','Personalizado'=>'#a855f7',default=>'#3b82f6'}; return "border-left:3px solid $c;background:linear-gradient(90deg,{$c}11,transparent);"; }
 
-function getSidebarStyle($planName) {
-    $color = match($planName) {
-        'Bronce' => '#CD7F32',
-        'Plata'  => '#94a3b8',
-        'Oro'    => '#FFD700',
-        'Personalizado' => '#a855f7', 
-        default  => '#3b82f6'
-    };
-    return "border-left: 3px solid $color; background: linear-gradient(90deg, " . $color . "11, transparent);";
-}
-
-// --- 4. HELPERS LÓGICOS ---
-function calculateWeeklyPrice($row) {
-    $price = match($row['plan_name']) { 'Bronce'=>5, 'Plata'=>15, 'Oro'=>30, default=>0 };
-    if($row['plan_name'] == 'Personalizado') {
-        $cpu = isset($row['custom_cpu']) ? intval($row['custom_cpu']) : 0;
-        $ram = isset($row['custom_ram']) ? intval($row['custom_ram']) : 0;
-        $price = ($cpu * 5) + ($ram * 5);
-        if(!empty($row['db_enabled'])) $price += 10;
-        if(!empty($row['web_enabled'])) $price += 10;
-    }
-    return $price / 4;
-}
-
-function getBackupLimit($row) {
-    $monthly = match($row['plan_name']) { 'Bronce'=>5, 'Plata'=>15, 'Oro'=>30, default=>0 };
-    if($row['plan_name'] == 'Personalizado') {
-        $monthly = (intval($row['custom_cpu']) * 5) + (intval($row['custom_ram']) * 5);
-        if(!empty($row['db_enabled'])) $monthly += 10;
-        if(!empty($row['web_enabled'])) $monthly += 10;
-    }
-    if ($row['plan_name'] == 'Oro' || $monthly >= 30) return 5;
-    if ($row['plan_name'] == 'Plata' || $monthly >= 15) return 3;
-    return 2; 
-}
-
-function cleanPass($raw) {
-    if (strpos($raw, 'Pass:') !== false) {
-        if(preg_match('/Pass:\s*([^\s\[\]]+)/', $raw, $matches)) return $matches[1];
-    }
-    return $raw;
-}
-
-// --- 5. API AJAX ---
+// --- AJAX API ---
 if (isset($_GET['ajax_data']) && isset($_GET['id'])) {
     header('Content-Type: application/json');
     $oid = $_GET['id'];
-    
-    $stmt = $conn->prepare("SELECT status FROM orders WHERE id=?");
-    $stmt->execute([$oid]);
-    $st = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stmt = $conn->prepare("SELECT status FROM orders WHERE id=?"); $stmt->execute([$oid]); $st = $stmt->fetch(PDO::FETCH_ASSOC);
     if(!$st || $st['status'] == 'cancelled') { echo json_encode(['terminated' => true]); exit; }
     
-    $json = @file_get_contents("$buzon_path/status_$oid.json");
-    $web_status = @file_get_contents("$buzon_path/web_status_$oid.json");
+    $api_url = API_URL_BASE . "/estado/$oid";
+    $ctx = stream_context_create(['http'=> ['timeout' => 2]]);
+    $api_json = @file_get_contents($api_url, false, $ctx);
     
-    $backups_list = [];
-    $list_file = "$buzon_path/backups_list_$oid.json";
-    if(file_exists($list_file)) {
-        $decoded = json_decode(file_get_contents($list_file), true);
-        if(is_array($decoded)) $backups_list = $decoded;
+    $res = [
+        'metrics' => ['cpu' => 0, 'ram' => 0],
+        'ssh_cmd' => 'Conectando...',
+        'ssh_pass' => '...',
+        'web_url' => null,
+        'backups_list' => [],
+        'backup_progress' => null,
+        'web_progress' => null,
+        'chat_reply' => null
+    ];
+
+    if ($api_json) {
+        $d = json_decode($api_json, true);
+        if ($d) {
+            $res['metrics'] = $d['metrics'] ?? $res['metrics'];
+            $res['ssh_cmd'] = $d['ssh_cmd'] ?? $res['ssh_cmd'];
+            $res['web_url'] = $d['web_url'] ?? $res['web_url'];
+            $res['backups_list'] = $d['backups_list'] ?? [];
+            $res['backup_progress'] = $d['backup_progress'] ?? null;
+            $res['web_progress'] = $d['web_progress'] ?? null;
+        }
     }
     
-    $backup_status = null;
-    $prog_file = "$buzon_path/backup_status_$oid.json";
-    if(file_exists($prog_file)) $backup_status = json_decode(file_get_contents($prog_file), true);
-
-    // [IA] LEER RESPUESTA
-    $chat_reply = null;
     $chat_file = "$buzon_path/chat_response_$oid.json";
     if(file_exists($chat_file)) {
-        $chat_data = json_decode(file_get_contents($chat_file), true);
-        if($chat_data && isset($chat_data['reply'])) {
-            $chat_reply = $chat_data['reply'];
-            @unlink($chat_file);
-        }
+        $cd = json_decode(file_get_contents($chat_file), true);
+        if($cd && isset($cd['reply'])) { $res['chat_reply'] = $cd['reply']; @unlink($chat_file); }
     }
-
-    // [IA] LEER ESTADO REAL
-    $chat_status = null;
-    $status_file = "$buzon_path/chat_status_$oid.json";
-    if(file_exists($status_file)) {
-        $status_data = json_decode(file_get_contents($status_file), true);
-        if ($status_data && isset($status_data['status'])) {
-            $chat_status = $status_data['status'];
-        }
-    }
-
-    $data = json_decode($json, true) ?? [];
-    $clean_pass = isset($data['ssh_pass']) ? cleanPass($data['ssh_pass']) : '...';
-
-    echo json_encode([
-        'metrics' => $data['metrics'] ?? ['cpu' => 0, 'ram' => 0],
-        'ssh_cmd' => $data['ssh_cmd'] ?? 'Conectando...',
-        'ssh_pass' => $clean_pass,
-        'web_url' => $data['web_url'] ?? null,
-        'backups_list' => $backups_list,
-        'backup_progress' => $backup_status,
-        'web_progress' => json_decode($web_status, true),
-        'chat_reply' => $chat_reply,
-        'chat_status' => $chat_status 
-    ]);
-    exit;
+    echo json_encode($res); exit;
 }
 
-// --- 6. PROCESAR ACCIONES ---
+// --- ACTIONS ---
 $is_ajax = isset($_GET['ajax_action']);
-
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] != 'update_profile') {
-    $oid = $_POST['order_id'];
-    $act = $_POST['action'];
+    $oid = $_POST['order_id']; $act = $_POST['action'];
     $data = ["id" => (int)$oid, "action" => strtoupper($act), "user" => $_SESSION['username']];
     
-    // [IA] ENVIAR CHAT CON CONTEXTO
+    // PAYLOAD GENÉRICO
+    $payload_api = [
+        "id_cliente" => (int)$oid,
+        "accion" => $act,
+        "backup_type" => "full",
+        "backup_name" => "Backup",
+        "filename_to_restore" => "",
+        "filename_to_delete" => "",
+        "html_content" => ""
+    ];
+
     if($act == 'send_chat') {
         $msg = $_POST['message'];
-        $chat_req_file = "$buzon_path/chat_request_{$oid}.json";
-        
-        $sql_plan = "SELECT p.name as plan_name, os.db_enabled, os.web_enabled, os.db_type, os.web_type FROM orders o JOIN plans p ON o.plan_id=p.id LEFT JOIN order_specs os ON o.id = os.order_id WHERE o.id = ?";
-        $stmt_chat = $conn->prepare($sql_plan);
-        $stmt_chat->execute([$oid]);
-        $plan_info = $stmt_chat->fetch(PDO::FETCH_ASSOC);
-        
-        $payload = [
-            "msg" => $msg, "timestamp" => time(),
-            "context_plan" => [
-                "name" => $plan_info['plan_name'] ?? 'Estándar',
-                "has_db" => ($plan_info['plan_name'] == 'Oro' || $plan_info['plan_name'] == 'Plata' || !empty($plan_info['db_enabled'])),
-                "has_web" => ($plan_info['plan_name'] == 'Oro' || !empty($plan_info['web_enabled'])),
-                "db_type" => $plan_info['db_type'] ?? 'MySQL',
-                "web_type" => $plan_info['web_type'] ?? 'Apache'
-            ]
-        ];
-        file_put_contents($chat_req_file, json_encode($payload));
-        @chmod($chat_req_file, 0666);
+        $sql = "SELECT p.name as plan_name, os.db_enabled, os.web_enabled, os.db_type, os.web_type FROM orders o JOIN plans p ON o.plan_id=p.id LEFT JOIN order_specs os ON o.id = os.order_id WHERE o.id = ?";
+        $stmt = $conn->prepare($sql); $stmt->execute([$oid]); $pi = $stmt->fetch(PDO::FETCH_ASSOC);
+        $chat_payload = ["id_cliente" => (int)$oid, "mensaje" => $msg, "contexto_plan" => ["name"=>$pi['plan_name']??'Estándar']];
+        $opts = ['http' => ['header' => "Content-type: application/json\r\n", 'method' => 'POST', 'content' => json_encode($chat_payload)]];
+        @file_get_contents(API_URL_BASE . "/chat", false, stream_context_create($opts));
         if($is_ajax) { echo json_encode(['status'=>'ok']); exit; }
+        exit; 
     }
 
     if($act == 'backup') {
-        $data['backup_type'] = $_POST['backup_type'] ?? 'full';
-        $data['backup_name'] = $_POST['backup_name'] ?? 'Manual';
+        $payload_api['backup_type'] = $_POST['backup_type'] ?? 'full';
+        $payload_api['backup_name'] = $_POST['backup_name'] ?? 'Manual';
     }
-    
-    if($act == 'restore_backup') {
-        $data['filename_to_restore'] = $_POST['filename'];
-    }
-    
-    if($act == 'delete_backup') {
-        $data['filename_to_delete'] = $_POST['filename'];
-    }
+    if($act == 'restore_backup') $payload_api['filename_to_restore'] = $_POST['filename'];
+    if($act == 'delete_backup') $payload_api['filename_to_delete'] = $_POST['filename'];
 
     if($act == 'update_web' || ($act == 'upload_web' && isset($_FILES['html_file']))) {
-        $html_content = ($act == 'upload_web') ? file_get_contents($_FILES['html_file']['tmp_name']) : $_POST['html_content'];
-        $source_file = "$buzon_path/web_source_{$oid}.html";
-        file_put_contents($source_file, $html_content);
-        @chmod($source_file, 0666);
-        if($act == 'upload_web') { 
-            $data['action'] = "UPDATE_WEB"; 
-            $data['html_content'] = $html_content; 
-            $act = "update_web"; 
-        } else { 
-            $data['html_content'] = $html_content; 
-        }
+        $html = ($act == 'upload_web') ? file_get_contents($_FILES['html_file']['tmp_name']) : $_POST['html_content'];
+        $payload_api['html_content'] = $html;
+        if($act=='upload_web') { $payload_api['accion'] = "update_web"; }
     }
     
     if ($act != 'send_chat') {
-        $fname = match($act) { 'terminate'=>'terminate', 'backup'=>'backup', 'restore_backup'=>'restore', 'update_web'=>'update_web', 'delete_backup'=>'delete_backup', 'refresh_status'=>'refresh', default=>$act };
-        $timestamp = microtime(true);
-        file_put_contents("$buzon_path/accion_{$oid}_{$fname}_{$timestamp}.json", json_encode($data));
-        @chmod("$buzon_path/accion_{$oid}_{$fname}_{$timestamp}.json", 0666);
-        
-        if($act == 'update_web') @unlink("$buzon_path/web_status_{$oid}.json");
+        $url = API_URL_BASE . "/accion";
+        $options = ['http' => ['header' => "Content-type: application/json\r\n", 'method' => 'POST', 'content' => json_encode($payload_api)]];
+        @file_get_contents($url, false, stream_context_create($options));
     }
     
-    if($is_ajax) { 
-        header('Content-Type: application/json'); 
-        echo json_encode(['status'=>'ok']); 
-        exit; 
-    }
-    
+    if($is_ajax) { header('Content-Type: application/json'); echo json_encode(['status'=>'ok']); exit; }
     header("Location: dashboard_cliente.php?id=$oid"); exit;
 }
 
-// --- 7. CARGA INICIAL ---
+// --- INIT (CARGA HTML DESDE API) ---
 $sql = "SELECT o.*, p.name as plan_name, p.cpu_cores as p_cpu, p.ram_gb as p_ram, os.cpu_cores as custom_cpu, os.ram_gb as custom_ram, os.db_enabled, os.web_enabled FROM orders o JOIN plans p ON o.plan_id=p.id LEFT JOIN order_specs os ON o.id = os.order_id WHERE user_id=? AND status!='cancelled' ORDER BY o.id DESC";
-$stmt = $conn->prepare($sql);
-$stmt->execute([$_SESSION['user_id']]);
-$clusters = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-$current = null; $creds = ['ssh_cmd'=>'Esperando...', 'ssh_pass'=>'...'];
-$web_url = null; $has_web = false; $has_db = false; $total_weekly = 0; $plan_cpus = 1; $backup_limit = 2;
-
+$stmt = $conn->prepare($sql); $stmt->execute([$_SESSION['user_id']]); $clusters = $stmt->fetchAll(PDO::FETCH_ASSOC);
+$current = null; $creds = ['ssh_cmd'=>'Esperando...', 'ssh_pass'=>'...']; $web_url = null; $has_web = false; $has_db = false; $total_weekly = 0; $plan_cpus = 1; $backup_limit = 2;
 foreach($clusters as $c) $total_weekly += calculateWeeklyPrice($c);
+
+$html_code = "<!DOCTYPE html>\n<html>\n<body>\n<h1>Bienvenido a Sylo</h1>\n</body>\n</html>";
 
 if($clusters) {
     $current = (isset($_GET['id'])) ? array_values(array_filter($clusters, fn($c)=>$c['id']==$_GET['id']))[0] ?? $clusters[0] : $clusters[0];
-    if ($current['plan_name'] == 'Personalizado') $plan_cpus = intval($current['custom_cpu'] ?? 1); else $plan_cpus = intval($current['p_cpu'] ?? 1);
-    if ($plan_cpus < 1) $plan_cpus = 1;
+    if ($current['plan_name'] == 'Personalizado') $plan_cpus = intval($current['custom_cpu'] ?? 1); else $plan_cpus = intval($current['p_cpu'] ?? 1); if ($plan_cpus < 1) $plan_cpus = 1;
     $backup_limit = getBackupLimit($current);
-    if ($current['plan_name'] === 'Oro' || (!empty($current['web_enabled']) && $current['web_enabled'] == 1)) { $has_web = true; }
-    if ($current['plan_name'] === 'Oro' || (!empty($current['db_enabled']) && $current['db_enabled'] == 1)) { $has_db = true; }
+    $has_web = ($current['plan_name'] === 'Oro' || (!empty($current['web_enabled']) && $current['web_enabled'] == 1));
+    $has_db = ($current['plan_name'] === 'Oro' || (!empty($current['db_enabled']) && $current['db_enabled'] == 1));
     
-    $file_path = "$buzon_path/status_{$current['id']}.json";
-    if (file_exists($file_path)) {
-        $status_data = json_decode(file_get_contents($file_path), true);
-        if(is_array($status_data)) {
-            $creds = array_merge($creds, $status_data);
-            if(isset($creds['ssh_pass'])) $creds['ssh_pass'] = cleanPass($creds['ssh_pass']);
-            if(isset($status_data['web_url'])) $web_url = $status_data['web_url'];
-        }
+    $ctx = stream_context_create(['http'=> ['timeout' => 1]]);
+    $api_init = @file_get_contents(API_URL_BASE . "/estado/{$current['id']}", false, $ctx);
+    if($api_init) { 
+        $d = json_decode($api_init, true); 
+        if($d) { 
+            $creds['ssh_cmd'] = $d['ssh_cmd']??'...'; 
+            $web_url = $d['web_url']??null;
+            // SI LA API TIENE HTML GUARDADO, LO USAMOS
+            if(isset($d['html_source']) && !empty($d['html_source'])) {
+                $html_code = $d['html_source'];
+            }
+        } 
     }
-    $src_file = "$buzon_path/web_source_{$current['id']}.html";
-    $html_code = file_exists($src_file) ? file_get_contents($src_file) : "<!DOCTYPE html>\n<html>\n<body>\n<h1>Bienvenido a Sylo</h1>\n</body>\n</html>";
 }
 ?>
 <!DOCTYPE html>
@@ -272,31 +159,25 @@ if($clusters) {
     <style>
         :root { --bg-dark: #020617; --bg-card: #0f172a; --text-main: #f8fafc; --text-light: #e2e8f0; --text-muted: #cbd5e1; --accent: #3b82f6; --accent-glow: rgba(59, 130, 246, 0.5); --border: #1e293b; --sidebar: #0f172a; }
         body { font-family: 'Outfit', sans-serif; background-color: var(--bg-dark); color: var(--text-main); overflow-x: hidden; }
-        
         .sidebar { height: 100vh; background: var(--sidebar); border-right: 1px solid var(--border); padding-top: 25px; position: fixed; width: 260px; z-index: 1000; display: flex; flex-direction: column; }
         .sidebar .brand { font-size: 1.5rem; color: #fff; padding-left: 1.5rem; margin-bottom: 2rem; display: flex; align-items: center; letter-spacing: 1px; text-shadow: 0 0 10px var(--accent-glow); }
         .sidebar .nav-link { color: var(--text-muted); padding: 12px 24px; margin: 4px 16px; border-radius: 8px; transition: all 0.2s; font-weight: 500; display: flex; align-items: center; text-decoration: none; border: 1px solid transparent; }
         .sidebar .nav-link:hover { color: #fff; background: rgba(255,255,255,0.05); transform: translateX(5px); }
         .sidebar .nav-link.active { border-radius: 8px; color: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
-        
         .main-content { margin-left: 260px; padding: 30px 40px; }
         .card-clean { background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 1.5rem; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); position: relative; overflow: hidden; }
-        
         .metric-card { background: #1e293b; border-radius: 16px; padding: 20px; border: 1px solid var(--border); position: relative; overflow: hidden; transition: transform 0.2s; }
         .metric-card:hover { transform: translateY(-2px); border-color: var(--accent); }
         .metric-value { font-size: 2.5rem; font-weight: 700; line-height: 1; letter-spacing: -1px; }
         .progress-thin { height: 6px; border-radius: 10px; background: #334155; margin-top: 15px; overflow: hidden; }
         .progress-bar { border-radius: 10px; transition: width 0.6s ease; height: 100%; box-shadow: 0 0 10px currentColor; }
-        
         .terminal-container { background: #000; border: 1px solid #334155; border-radius: 8px; padding: 15px; font-family: 'Fira Code', monospace; font-size: 0.85rem; color: #4ade80; }
         .term-label { color: #94a3b8; font-weight: bold; margin-right: 10px; }
         .term-val { color: #e2e8f0; }
-        
         .btn-action { width: 100%; text-align: left; margin-bottom: 10px; padding: 12px 16px; font-size: 0.9rem; border-radius: 8px; display: flex; align-items: center; border: 1px solid var(--border); background: #1e293b; color: #cbd5e1; transition: all 0.2s; }
         .btn-action:hover { background: #334155; color: #fff; border-color: var(--accent); }
         .btn-primary { background-color: var(--accent); border: none; box-shadow: 0 0 15px var(--accent-glow); }
         .btn-primary:hover { background-color: #2563eb; }
-        
         .chat-widget { position: fixed; bottom: 30px; right: 30px; width: 60px; height: 60px; background: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; box-shadow: 0 0 20px var(--accent-glow); cursor: pointer; transition: transform 0.3s; z-index: 9999; }
         .chat-widget:hover { transform: scale(1.1); }
         .chat-window { position: fixed; bottom: 100px; right: 30px; width: 320px; height: 400px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; display: none; flex-direction: column; z-index: 9999; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
@@ -306,11 +187,8 @@ if($clusters) {
         .chat-msg { background: #334155; padding: 8px 12px; border-radius: 10px; margin-bottom: 8px; max-width: 80%; }
         .chat-msg.support { background: #1e293b; color: var(--accent); align-self: flex-start; }
         .chat-msg.me { background: var(--accent); color: white; align-self: flex-end; margin-left: auto; }
-
-        /* NUEVO: ESTILOS PARA EL GLOBO DE "PENSANDO" */
         @keyframes pulse-text { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
         .thinking-bubble { font-style: italic; color: #94a3b8; background: rgba(30, 41, 59, 0.5) !important; border: 1px dashed #334155 !important; animation: pulse-text 1.5s infinite; display: flex; align-items: center; gap: 10px; }
-
         .modal-content { background-color: #1e293b; border: 1px solid #334155; color: white; }
         .modal-header, .modal-footer { border-color: #334155; }
         .btn-close { filter: invert(1); }
@@ -320,24 +198,19 @@ if($clusters) {
         .backup-option { border: 1px solid #334155; padding: 15px; border-radius: 8px; cursor: pointer; transition: all 0.2s; background: #1e293b; color: #cbd5e1; }
         .backup-option:hover { border-color: var(--accent); background: #24304a; }
         .backup-option input[type="radio"]:checked + div { color: var(--accent); font-weight: bold; }
-        
         #editor { width: 100%; height: 500px; font-size: 14px; border-radius: 0 0 8px 8px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .spin { animation: spin 1s linear infinite; display: inline-block; vertical-align: middle; }
-        
         .toast-container { position: fixed; top: 20px; right: 20px; z-index: 10000; }
         .custom-toast { background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(10px); border-left: 4px solid var(--accent); color: white; padding: 15px 20px; margin-bottom: 10px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); animation: slideIn 0.3s ease-out; min-width: 300px; display: flex; align-items: center; gap: 12px; }
         @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-        
         .log-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
         .log-table td { padding: 10px; border-bottom: 1px solid #334155; color: #e2e8f0; }
         .log-table tr:hover td { color: white; background: rgba(255,255,255,0.05); }
     </style>
 </head>
 <body>
-
 <div class="toast-container" id="toastContainer"></div>
-
 <div class="sidebar">
     <div class="brand"><i class="bi bi-cpu-fill text-primary me-2"></i><strong>SYLO</strong>_OS</div>
     <div class="d-flex flex-column gap-1 p-2">
@@ -524,7 +397,6 @@ if($clusters) {
     const planCpus = <?=$plan_cpus?>; 
     const backupLimit = <?=$backup_limit?>;
     
-    // --- UI HELPERS ---
     function showToast(msg, type='info') {
         const icon = type==='success'?'check-circle':(type==='error'?'exclamation-triangle':'info-circle');
         const color = type==='success'?'#10b981':(type==='error'?'#ef4444':'#3b82f6');
@@ -544,151 +416,86 @@ if($clusters) {
         tbody.innerHTML = row + tbody.innerHTML;
     }
 
-    // --- CHAT LOGIC MODIFICADA ---
-    function toggleChat() { 
-        const win = document.getElementById('chatWindow'); 
-        win.style.display = win.style.display==='flex'?'none':'flex'; 
-    }
-    
+    function toggleChat() { const win = document.getElementById('chatWindow'); win.style.display = win.style.display==='flex'?'none':'flex'; }
     function handleChat(e) { if(e.key==='Enter') sendChat(); }
     
-    let thinkingInterval; 
-
     function sendChat() {
         const inp = document.getElementById('chatInput');
         const txt = inp.value.trim();
         if(!txt) return;
-        
         const body = document.getElementById('chatBody');
         body.innerHTML += `<div class="chat-msg me">${txt}</div>`;
         inp.value = '';
         body.scrollTop = body.scrollHeight;
-        
-        // MOSTRAR GLOBO DE PENSANDO INICIAL
-        const thinkingHTML = `
-            <div id="sylo-thinking" class="chat-msg support thinking-bubble">
-                <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
-                <span id="thinking-text">Enviando...</span>
-            </div>`;
+        const thinkingHTML = `<div id="sylo-thinking" class="chat-msg support thinking-bubble"><div class="spinner-border spinner-border-sm text-primary" role="status"></div><span id="thinking-text">Enviando...</span></div>`;
         body.innerHTML += thinkingHTML;
         body.scrollTop = body.scrollHeight;
-
         const formData = new FormData();
         formData.append('action', 'send_chat');
         formData.append('order_id', oid);
         formData.append('message', txt);
-        
         fetch('dashboard_cliente.php?ajax_action=1', { method: 'POST', body: formData });
     }
 
-    // --- LOGICA ORIGINAL ---
     const editorModal = new bootstrap.Modal(document.getElementById('editorModal')); 
     const uploadModal = new bootstrap.Modal(document.getElementById('uploadModal')); 
     const backupModal = new bootstrap.Modal(document.getElementById('backupTypeModal'));
-    
     let aceEditor = null;
     const initialCode = <?php echo json_encode($html_code); ?>;
     
     document.addEventListener("DOMContentLoaded", function() { 
-        aceEditor = ace.edit("editor"); 
-        aceEditor.setTheme("ace/theme/twilight"); 
-        aceEditor.session.setMode("ace/mode/html"); 
-        aceEditor.setOptions({fontSize: "14pt"});
-        aceEditor.setValue(initialCode, -1); 
+        aceEditor = ace.edit("editor"); aceEditor.setTheme("ace/theme/twilight"); aceEditor.session.setMode("ace/mode/html"); aceEditor.setOptions({fontSize: "14pt"}); aceEditor.setValue(initialCode, -1); 
     });
     
     document.getElementById('editorModal').addEventListener('shown.bs.modal', function () { aceEditor.resize(); });
-
     function showEditor() { editorModal.show(); }
     function copyAllCreds() { navigator.clipboard.writeText(document.getElementById('all-creds-box').innerText); showToast("Copiado!", "success"); }
     
     function confirmTerminate() {
-        const check = prompt("⚠️ ZONA DE PELIGRO ⚠️\n\nEsta acción borrará PERMANENTEMENTE tu servidor y todos sus datos.\nPara confirmar, escribe: eliminar");
-        if (check === "eliminar") {
+        if (prompt("⚠️ ZONA DE PELIGRO ⚠️\n\nEscribe: eliminar") === "eliminar") {
             const form = document.createElement('form');
             form.method = 'POST';
             form.innerHTML = `<input type="hidden" name="action" value="terminate"><input type="hidden" name="order_id" value="${oid}">`;
-            document.body.appendChild(form);
-            form.submit();
-        } else {
-            alert("Operación cancelada. El texto no coincide.");
-        }
+            document.body.appendChild(form); form.submit();
+        } else alert("Cancelado.");
     }
 
     function showBackupModal() {
-        const countText = document.getElementById('backup-count').innerText;
-        const [current, limit] = countText.split('/').map(Number);
-        if (current >= limit) {
-            document.getElementById('limit-alert').style.display = 'block';
-            document.getElementById('normal-alert').style.display = 'none';
-            document.getElementById('btn-start-backup').disabled = true;
-        } else {
-            document.getElementById('limit-alert').style.display = 'none';
-            document.getElementById('normal-alert').style.display = 'block';
-            document.getElementById('btn-start-backup').disabled = false;
-        }
+        const [current, limit] = document.getElementById('backup-count').innerText.split('/').map(Number);
+        document.getElementById('limit-alert').style.display = (current >= limit) ? 'block' : 'none';
+        document.getElementById('normal-alert').style.display = (current >= limit) ? 'none' : 'block';
+        document.getElementById('btn-start-backup').disabled = (current >= limit);
         backupModal.show();
     }
 
     function doBackup() {
-        const typeEl = document.querySelector('input[name="backup_type"]:checked');
-        const type = typeEl ? typeEl.value : 'full';
+        const type = document.querySelector('input[name="backup_type"]:checked').value;
         const name = document.getElementById('backup_name_input').value || "Backup";
-        let prettyType = (type === 'diff') ? "Diferencial" : ((type === 'incr') ? "Incremental" : "Completa");
-        
-        backupModal.hide();
-        document.getElementById('backup_name_input').value = ""; 
-        
-        const ui = document.getElementById('backup-ui');
-        const bar = document.getElementById('backup-bar');
-        const listDiv = document.getElementById('backups-list-container');
-        
-        if(ui) ui.style.display='block';
-        if(listDiv) listDiv.style.display='none';
-        if(bar) bar.style.width='5%';
-        
+        backupModal.hide(); document.getElementById('backup_name_input').value = ""; 
+        document.getElementById('backup-ui').style.display='block';
+        document.getElementById('backups-list-container').style.display='none';
+        document.getElementById('backup-bar').style.width='5%';
         fetch('dashboard_cliente.php?ajax_action=1', {method:'POST', body:new URLSearchParams({action:'backup', order_id:oid, backup_type:type, backup_name:name})}); 
-        showToast(`Iniciando Backup ${prettyType}: "${name}"`, "info");
+        showToast(`Iniciando Backup...`, "info");
     }
     
-    // [NUEVO] LÓGICA RESTAURAR BACKUP (Botón Pánico)
     function restoreBackup(file, name) {
-        // Confirmación de seguridad
-        const check = prompt(`⚠️ MODO PÁNICO ⚠️\n\nVas a restaurar el estado "${name}".\nSe BORRARÁN todos los datos actuales y volverán a este punto.\n\nPara confirmar, escribe: RESTAURAR`);
-        
-        if(check === "RESTAURAR") {
-            const rUi = document.getElementById('restore-ui');
-            const rBar = document.getElementById('restore-bar');
-            const list = document.getElementById('backups-list-container');
-            
-            if(list) list.style.display = 'none';
-            if(rUi) rUi.style.display = 'block';
-            if(rBar) rBar.style.width = '10%'; // Inicio visual
-            
-            // Enviar petición al backend
-            fetch('dashboard_cliente.php?ajax_action=1', {
-                method:'POST', 
-                body:new URLSearchParams({action:'restore_backup', order_id:oid, filename:file})
-            });
-            
-            showToast(`🚨 Restaurando sistema a: "${name}"...`, "warning");
-        } else {
-            alert("Operación cancelada. Debes escribir RESTAURAR en mayúsculas.");
-        }
+        if(prompt(`⚠️ RESTAURAR "${name}"?\nEscribe: RESTAURAR`) === "RESTAURAR") {
+            document.getElementById('backups-list-container').style.display = 'none';
+            document.getElementById('restore-ui').style.display = 'block';
+            document.getElementById('restore-bar').style.width = '10%';
+            fetch('dashboard_cliente.php?ajax_action=1', {method:'POST', body:new URLSearchParams({action:'restore_backup', order_id:oid, filename:file})});
+            showToast(`Restaurando...`, "warning");
+        } else alert("Cancelado.");
     }
 
     function deleteBackup(file, type, name) { 
-        if(confirm(`¿Borrar copia de seguridad: ${name}?`)) { 
-            const dui = document.getElementById('delete-ui');
-            const dbar = document.getElementById('delete-bar');
-            const list = document.getElementById('backups-list-container');
-            
-            if(list) list.style.display = 'none';
-            if(dui) dui.style.display = 'block';
-            if(dbar) dbar.style.width = '100%';
-            
+        if(confirm(`¿Borrar copia: ${name}?`)) { 
+            document.getElementById('backups-list-container').style.display = 'none';
+            document.getElementById('delete-ui').style.display = 'block';
+            document.getElementById('delete-bar').style.width = '100%';
             fetch('dashboard_cliente.php?ajax_action=1', {method:'POST', body:new URLSearchParams({action:'delete_backup', order_id:oid, filename:file})});
-            showToast(`Eliminando Backup: "${name}"`, "warning");
+            showToast(`Eliminando...`, "warning");
         } 
     }
     
@@ -709,19 +516,12 @@ if($clusters) {
 
     document.getElementById('uploadForm').addEventListener('submit', function(e) { 
         e.preventDefault(); 
-        const fileInput = this.querySelector('input[type="file"]');
-        const file = fileInput.files[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = function(e) { aceEditor.setValue(e.target.result); };
-            reader.readAsText(file);
-        }
+        const file = this.querySelector('input[type="file"]').files[0];
+        if (file) { const reader = new FileReader(); reader.onload = function(e) { aceEditor.setValue(e.target.result); }; reader.readAsText(file); }
         uploadModal.hide(); 
         const wbtn = document.getElementById('btn-ver-web'); 
         if(wbtn) { wbtn.classList.add('disabled'); document.getElementById('web-loader-fill').style.width = '5%'; document.getElementById('web-btn-text').innerHTML = '<i class="bi bi-arrow-repeat spin me-2"></i>Iniciando...'; }
-        const formData = new FormData(this); 
-        formData.append('order_id', oid); 
-        formData.append('action', 'upload_web');
+        const formData = new FormData(this); formData.append('order_id', oid); formData.append('action', 'upload_web');
         fetch('dashboard_cliente.php?ajax_action=1', { method: 'POST', body: formData });
         showToast("Archivo subido", "success");
     });
@@ -731,66 +531,40 @@ if($clusters) {
         fetch(`dashboard_cliente.php?ajax_data=1&id=${oid}&t=${new Date().getTime()}`)
         .then(r => r.ok ? r.json() : null)
         .then(d => {
-            const rBtn = document.getElementById('btn-refresh');
-            if(rBtn) rBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i>';
+            const rBtn = document.getElementById('btn-refresh'); if(rBtn) rBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i>';
             if(d.terminated) { window.location.href = 'dashboard_cliente.php'; return; }
             if(!d) return;
             
-            // METRICAS
-            try {
-                if(d.metrics) { 
-                    let rawCpu = parseFloat(d.metrics.cpu); 
-                    let visualCpu = (rawCpu / planCpus); 
-                    if(visualCpu > 100) visualCpu = 100;
-                    const cVal = document.getElementById('cpu-val'); if(cVal) cVal.innerText = visualCpu.toFixed(1);
-                    const cBar = document.getElementById('cpu-bar'); if(cBar) cBar.style.width = visualCpu+'%';
-                    const rVal = document.getElementById('ram-val'); if(rVal) rVal.innerText = parseFloat(d.metrics.ram).toFixed(1);
-                    const rBar = document.getElementById('ram-bar'); if(rBar) rBar.style.width = parseFloat(d.metrics.ram)+'%'; 
-                }
-            } catch(e) { console.log(e); }
+            try { if(d.metrics) { 
+                let rawCpu = parseFloat(d.metrics.cpu); let visualCpu = (rawCpu / planCpus); if(visualCpu > 100) visualCpu = 100;
+                const cVal = document.getElementById('cpu-val'); if(cVal) cVal.innerText = visualCpu.toFixed(1);
+                const cBar = document.getElementById('cpu-bar'); if(cBar) cBar.style.width = visualCpu+'%';
+                const rVal = document.getElementById('ram-val'); if(rVal) rVal.innerText = parseFloat(d.metrics.ram).toFixed(1);
+                const rBar = document.getElementById('ram-bar'); if(rBar) rBar.style.width = parseFloat(d.metrics.ram)+'%'; 
+            }} catch(e) {}
             
             const cmd = document.getElementById('disp-ssh-cmd'); if(cmd) cmd.innerText = d.ssh_cmd || '...';
             const pass = document.getElementById('disp-ssh-pass'); if(pass) pass.innerText = d.ssh_pass || '...';
-            const wurl = document.getElementById('disp-web-url'); 
-            const btnw = document.getElementById('btn-ver-web');
+            const wurl = document.getElementById('disp-web-url'); const btnw = document.getElementById('btn-ver-web');
+            try { if(d.web_url) { if(wurl) { wurl.innerText = d.web_url; wurl.href = d.web_url; } if(btnw) { btnw.href = d.web_url; btnw.classList.remove('disabled'); if(btnw.querySelector('span')) btnw.querySelector('span').innerHTML = '<i class="bi bi-box-arrow-up-right me-2"></i>Ver Sitio Web'; } } else { if(wurl) wurl.innerText = "Esperando IP..."; } } catch(e) {}
             
-            // WEB UPDATE LOGIC - WRAPPED IN TRY/CATCH
-            try {
-                if(d.web_url) { 
-                    if(wurl) { wurl.innerText = d.web_url; wurl.href = d.web_url; }
-                    if(btnw) { 
-                        btnw.href = d.web_url; 
-                        btnw.classList.remove('disabled'); 
-                        if(btnw.querySelector('span')) btnw.querySelector('span').innerHTML = '<i class="bi bi-box-arrow-up-right me-2"></i>Ver Sitio Web';
-                    }
-                } else {
-                    if(wurl) wurl.innerText = "Esperando IP...";
-                }
-            } catch(e) { console.log(e); }
-            
-            // BACKUPS & PROGRESS
-            const bUi = document.getElementById('backup-ui');
-            const bBar = document.getElementById('backup-bar');
-            const dUi = document.getElementById('delete-ui');
-            const dBar = document.getElementById('delete-bar');
-            const rUi = document.getElementById('restore-ui'); // Nuevo
-            const rBar = document.getElementById('restore-bar'); // Nuevo
+            const bUi = document.getElementById('backup-ui'); const bBar = document.getElementById('backup-bar');
+            const dUi = document.getElementById('delete-ui'); const dBar = document.getElementById('delete-bar');
+            const rUi = document.getElementById('restore-ui'); const rBar = document.getElementById('restore-bar');
             const list = document.getElementById('backups-list-container');
 
             try {
-                if(d.backup_progress) {
+                if(d.backup_progress && d.backup_progress.status !== 'completed') {
                     if(d.backup_progress.status === 'creating') {
                         if(bUi) bUi.style.display='block'; if(dUi) dUi.style.display='none'; if(rUi) rUi.style.display='none'; if(list) list.style.display='none'; 
                         if(bBar) bBar.style.width=d.backup_progress.progress+'%'; 
                     } else if(d.backup_progress.status === 'deleting') {
                         if(bUi) bUi.style.display='none'; if(dUi) dUi.style.display='block'; if(rUi) rUi.style.display='none'; if(list) list.style.display='none';
                         if(dBar) dBar.style.width=d.backup_progress.progress+'%'; 
-                    } else if(d.backup_progress.status === 'restoring') { // NUEVO ESTADO
+                    } else if(d.backup_progress.status === 'restoring') {
                         if(bUi) bUi.style.display='none'; if(dUi) dUi.style.display='none'; if(rUi) rUi.style.display='block'; if(list) list.style.display='none';
                         if(rBar) rBar.style.width=d.backup_progress.progress+'%';
-                        // UPDATE TEXT MSG
-                        const rText = document.getElementById('restore-text');
-                        if(rText && d.backup_progress.msg) rText.innerText = d.backup_progress.msg;
+                        const rText = document.getElementById('restore-text'); if(rText && d.backup_progress.msg) rText.innerText = d.backup_progress.msg;
                     }
                 } else {
                     if(bUi) bUi.style.display='none'; if(dUi) dUi.style.display='none'; if(rUi) rUi.style.display='none'; if(list) list.style.display='block';
@@ -798,63 +572,25 @@ if($clusters) {
                     let html = '';
                     [...d.backups_list].reverse().forEach(b => {
                         let typeClass = b.type == 'full' ? 'bg-primary' : (b.type == 'diff' ? 'bg-warning text-dark' : 'bg-info text-dark');
-                        let typeName = b.type == 'full' ? 'FULL' : (b.type == 'diff' ? 'DIFF' : 'INCR');
-                        html += `
-                        <div class="backup-item d-flex justify-content-between align-items-center mb-2 p-2 rounded" style="background:rgba(255,255,255,0.05)">
-                            <div class="text-white">
-                                <span class="fw-bold">${b.name.replace(/'/g, "")}</span> 
-                                <span class="badge ${typeClass} ms-2">${typeName}</span>
-                                <div class="small text-light-muted">${b.date}</div>
-                            </div>
-                            <div class="d-flex gap-2">
-                                <button onclick="restoreBackup('${b.file}', '${b.name.replace(/'/g, "")}')" class="btn btn-sm btn-outline-success" title="Restaurar a este punto"><i class="bi bi-arrow-counterclockwise"></i></button>
-                                <button onclick="deleteBackup('${b.file}', '${b.type}', '${b.name.replace(/'/g, "")}')" class="btn btn-sm btn-outline-danger" title="Eliminar"><i class="bi bi-trash"></i></button>
-                            </div>
-                        </div>`;
+                        html += `<div class="backup-item d-flex justify-content-between align-items-center mb-2 p-2 rounded" style="background:rgba(255,255,255,0.05)"><div class="text-white"><span class="fw-bold">${b.name.replace(/'/g, "")}</span> <span class="badge ${typeClass} ms-2">${b.type.toUpperCase()}</span><div class="small text-light-muted">${b.date}</div></div><div class="d-flex gap-2"><button onclick="restoreBackup('${b.file}', '${b.name.replace(/'/g, "")}')" class="btn btn-sm btn-outline-success"><i class="bi bi-arrow-counterclockwise"></i></button><button onclick="deleteBackup('${b.file}', '${b.type}', '${b.name.replace(/'/g, "")}')" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button></div></div>`;
                     });
                     list.innerHTML = html || '<small class="text-light-muted d-block text-center py-2">Sin copias disponibles.</small>';
                 }
-            } catch(e) { console.log("Backup UI Error", e); }
+            } catch(e) {}
             
-            // CHAT IA RESPONSE & STATUS REAL
             try {
-                const chatBubble = document.getElementById('sylo-thinking');
-                const chatText = document.getElementById('thinking-text');
-
-                if (chatBubble && d.chat_status) {
-                    chatText.innerText = d.chat_status;
-                }
-
-                if(d.chat_reply) {
-                    if(chatBubble) chatBubble.remove(); 
-
-                    const body = document.getElementById('chatBody');
-                    body.innerHTML += `<div class="chat-msg support">${d.chat_reply}</div>`;
-                    body.scrollTop = body.scrollHeight;
-                    showToast("Mensaje de soporte recibido", "info");
-                }
-            } catch(e) { console.log(e); }
+                const chatBubble = document.getElementById('sylo-thinking'); const chatText = document.getElementById('thinking-text');
+                if (chatBubble && d.chat_status) chatText.innerText = d.chat_status;
+                if(d.chat_reply) { if(chatBubble) chatBubble.remove(); const body = document.getElementById('chatBody'); body.innerHTML += `<div class="chat-msg support">${d.chat_reply}</div>`; body.scrollTop = body.scrollHeight; showToast("Mensaje de soporte recibido", "info"); }
+            } catch(e) {}
             
-            // WEB PROGRESS
-            try {
-                if(btnw && d.web_progress) {
-                    const loader = document.getElementById('web-loader-fill');
-                    const txt = document.getElementById('web-btn-text');
-                    if(d.web_progress.progress < 100) { 
-                        btnw.classList.add('disabled'); 
-                        if(loader) loader.style.width = d.web_progress.progress + '%'; 
-                        if(txt) txt.innerHTML = `<i class="bi bi-arrow-repeat spin me-2"></i>${d.web_progress.msg}`; 
-                    } else {
-                        btnw.classList.remove('disabled'); 
-                        if(loader) loader.style.width = '0%'; 
-                        if(txt) txt.innerHTML = '<i class="bi bi-box-arrow-up-right me-2"></i>Ver Sitio Web';
-                    }
-                }
-            } catch(e) { console.log(e); }
+            try { if(btnw && d.web_progress) {
+                const loader = document.getElementById('web-loader-fill'); const txt = document.getElementById('web-btn-text');
+                if(d.web_progress.progress < 100) { btnw.classList.add('disabled'); if(loader) loader.style.width = d.web_progress.progress + '%'; if(txt) txt.innerHTML = `<i class="bi bi-arrow-repeat spin me-2"></i>${d.web_progress.msg}`; } else { btnw.classList.remove('disabled'); if(loader) loader.style.width = '0%'; if(txt) txt.innerHTML = '<i class="bi bi-box-arrow-up-right me-2"></i>Ver Sitio Web'; }
+            }} catch(e) {}
 
         }).catch(err => { console.log("Esperando datos...", err); });
     }
-
     setInterval(loadData, 1500);
 </script>
 </body>

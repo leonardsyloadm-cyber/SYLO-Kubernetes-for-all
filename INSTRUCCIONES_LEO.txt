@@ -1,96 +1,83 @@
 ===================================================
-🚀 GUÍA DE INSTALACIÓN RÁPIDA - PROYECTO SYLO
+🚀 GUÍA DE INSTALACIÓN SYLO - V2.0 (UNIVERSAL & AUTOCURATIVA)
 ===================================================
 
-¡Hola Leo! Sigue estos pasos exactos para arrancar el sistema en tu máquina.
-El sistema es AUTO-GESTIONADO, pero necesita una pequeña configuración de red inicial.
+¡Hola Leo! Esta versión ya NO depende de tu WiFi. 
+Puedes cambiar de casa, de red o de router, y Sylo seguirá funcionando.
 
 REQUISITOS PREVIOS:
-- Tener Docker Desktop instalado y corriendo.
-- Tener Python 3 instalado.
-- Tener Minikube instalado (y corriendo: minikube start).
-- Conexión a internet (para descargar la IA la primera vez).
+- Docker Desktop instalado y corriendo.
+- Python 3 instalado.
+- Minikube instalado.
+- OpenTofu (tofu) instalado.
 
 ---------------------------------------------------
-PASO 0: CONFIGURACIÓN DE RED (¡MUY IMPORTANTE!)
+PASO 0: LIMPIEZA DE RED (¡NUEVO!)
 ---------------------------------------------------
-Como el sistema conecta Docker, Python y Minikube, necesitamos tu IP local.
+Ya NO necesitas poner tu IP local (192.168.x.x).
+Asegúrate de que tus archivos clave tengan estas direcciones "inmortales":
 
-1. Abre una terminal y escribe:
-   $ hostname -I
-   (Copia la primera IP que salga, ej: 192.168.1.XX).
-
-2. Abre estos 4 archivos con un editor de texto y cambia la IP "192.168.1.135" por LA TUYA:
-   - Cerebro/oktopus.py
-   - worker/operator_sylo.py
-   - worker/orchestrator_sylo.py  (Si existe)
-   - sylo-web/dashboard_cliente.php
-
-   ¡Guarda los cambios y listo! Ya conectará todo.
+1. worker/operator_sylo.py  -> API_URL = "http://127.0.0.1:8001/api/clientes"
+2. worker/orchestrator_sylo.py -> API_URL = "http://127.0.0.1:8001/api/clientes"
+3. Cerebro/api_sylo.py      -> host="0.0.0.0"
+4. sylo-web/index.php       -> define('API_URL', 'http://host.docker.internal:8001/api/clientes');
 
 ---------------------------------------------------
-PASO 1: PREPARAR LAS LIBRERÍAS (FUNDAMENTAL)
+PASO 1: PREPARAR LAS LIBRERÍAS
 ---------------------------------------------------
 1. Abre una terminal en la carpeta raíz del proyecto.
 
-2. Crea tu entorno virtual (si no existe):
-   $ python3 -m venv venv
-
-3. Activa el entorno (¡IMPORTANTE! Verás (venv) en la terminal):
+2. Activa el entorno (si no lo has hecho):
    $ source venv/bin/activate
 
-4. Asegúrate de que tu archivo 'requirements.txt' tenga esto dentro:
-   customtkinter==5.2.2
-   darkdetect==0.8.0
-   packaging==25.0
-   psutil==7.1.3
-   PyMySQL==1.1.3
-   requests
-   Pillow
-
-5. Instala todo de golpe:
-   $ pip install -r requirements.txt
+3. Asegúrate de tener estas librerías (añadidas FastAPI y Uvicorn):
+   $ pip install fastapi uvicorn requests psutil mysql-connector-python
 
 ---------------------------------------------------
-PASO 2: PREPARAR LA INTELIGENCIA ARTIFICIAL
+PASO 2: ARRANCAR BASE DE DATOS Y WEB
 ---------------------------------------------------
-1. Instala el motor de IA (Ollama) si no lo tienes:
-   $ curl -fsSL https://ollama.com/install.sh | sh
-
-2. Descarga el modelo "Qwen" (El cerebro del sistema):
-   $ ollama pull qwen2.5:1.5b
-
----------------------------------------------------
-PASO 3: ARRANCAR LA BASE DE DATOS Y WEB
----------------------------------------------------
-1. En la raíz del proyecto (con Docker abierto):
+1. En la raíz del proyecto:
    $ docker-compose up -d --build
 
-   (Espera 30 segundos a que la base de datos "kylo-main-db" arranque).
+2. Si has cambiado de red WiFi recientemente, reinicia el contenedor web para que pille la nueva ruta:
+   $ docker restart sylo-web
 
 ---------------------------------------------------
-PASO 4: ARRANCAR OKTOPUS (PANEL DE CONTROL)
+PASO 3: ARRANCAR EL CEREBRO (API)
 ---------------------------------------------------
-1. Con el entorno activado ((venv)), lanza el panel:
-   $ python3 Cerebro/oktopus.py
+Este es el corazón. Sin esto, nada funciona.
 
-   *NOTA: Si es la primera vez, Oktopus puede reiniciarse solo para autoconfigurarse. Es normal.*
+1. Abre una TERMINAL 1 (dedicada a la API):
+   $ source venv/bin/activate
+   $ python3 Cerebro/api_sylo.py
+
+   (Déjala abierta. Debes ver "API Restaurada y Lista").
 
 ---------------------------------------------------
-PASO 5: OPERAR LA NAVE (TODO DESDE EL PANEL)
+PASO 4: ARRANCAR EL OPERADOR (EL GUARDIÁN)
 ---------------------------------------------------
-Ya no necesitas terminales extra. Todo se hace desde Oktopus:
+Este es el script que arregla los fallos y reinicia los servidores si se caen.
 
-1. Ve a la pestaña "DASHBOARD".
-2. En la sección "Workers & Brain", dale al botón ▶ (PLAY) en:
-   - [▶] API GATEWAY MAIN (Fundamental)
-   - [▶] OPERATOR UNIT
-   - [▶] ORCHESTRATOR UNIT
-   - [▶] BRAIN UNIT (Esto arranca la IA sola)
+1. Abre una TERMINAL 2:
+   $ source venv/bin/activate
+   $ sudo python3 worker/operator_sylo.py
 
-3. Cuando todo esté en VERDE (ONLINE), ve a tu navegador:
-   http://localhost:8000
+   (Necesita 'sudo' para hablar con Minikube. Déjala abierta para ver los logs de "Inyección" y "Resurrección").
 
-¡Listo! 
-- Usa el botón "🛰️ DATA STUDIO" para ver la base de datos en tiempo real.
-- Usa "📜 LOGS GLOBALES" para ver qué está pensando la máquina.
+---------------------------------------------------
+PASO 5: LANZAR PEDIDOS (ORQUESTADOR)
+---------------------------------------------------
+Solo necesitas esto cuando vayas a crear un servidor nuevo.
+
+1. Abre una TERMINAL 3:
+   $ source venv/bin/activate
+   $ python3 worker/orchestrator_sylo.py
+
+---------------------------------------------------
+RESUMEN DE PANTALLAS
+---------------------------------------------------
+- 🌍 WEB CLIENTE: http://localhost:8000/index.php
+- 🎛️ DASHBOARD: http://localhost:8000/dashboard_cliente.php
+- 🧠 API DOCS: http://localhost:8001/docs
+
+¡Disfruta de tu Nube Privada Indestructible! ☁️🛡️

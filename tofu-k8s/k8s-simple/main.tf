@@ -1,38 +1,58 @@
-# ==========================================
-# 1. VARIABLES
-# ==========================================
-
-variable "nombre" {
-  description = "Nombre del contexto de Minikube"
-  type        = string
-}
-
-variable "ssh_password" {
-  description = "Contraseña generada para el acceso SSH"
-  type        = string
-  sensitive   = true
-}
-
-# --- NUEVO: Variable para el usuario ---
-variable "ssh_user" {
-  description = "Usuario SSH personalizado basado en el cliente"
-  type        = string
-  default     = "cliente"
+terraform {
+  required_providers {
+    kubernetes = {
+      source = "hashicorp/kubernetes"
+    }
+  }
 }
 
 provider "kubernetes" {
   config_path    = pathexpand("~/.kube/config")
-  config_context = var.nombre
+  config_context = var.cluster_name
 }
 
 # ==========================================
-# 2. EL POD SSH (VPS Simulado)
+# VARIABLES (FORMATO EXTENDIDO)
 # ==========================================
-resource "kubernetes_deployment" "ssh_box" {
+
+variable "cluster_name" {
+  description = "Nombre del cluster minikube"
+  type        = string
+}
+
+variable "ssh_password" {
+  description = "Contraseña para SSH"
+  type        = string
+  sensitive   = true
+}
+
+variable "ssh_user" {
+  description = "Usuario SSH"
+  type        = string
+  default     = "cliente"
+}
+
+variable "os_image" {
+  description = "Imagen del sistema operativo"
+  type        = string
+  default     = "alpine:latest"
+}
+
+variable "subdomain" {
+  description = "Subdominio asignado"
+  type        = string
+  default     = "demo"
+}
+
+# ==========================================
+# RECURSOS
+# ==========================================
+
+resource "kubernetes_deployment_v1" "ssh_box" {
   metadata {
     name = "ssh-server"
     labels = {
-      app = "ssh"
+      app = "bronce-ssh"
     }
   }
 
@@ -41,42 +61,59 @@ resource "kubernetes_deployment" "ssh_box" {
 
     selector {
       match_labels = {
-        app = "ssh"
+        app = "bronce-ssh"
       }
     }
 
     template {
       metadata {
         labels = {
-          app = "ssh"
+          app = "bronce-ssh"
         }
       }
 
       spec {
         container {
-          name  = "ubuntu-ssh"
+          name  = "terminal"
           image = "lscr.io/linuxserver/openssh-server:latest"
 
-          # Configuración del contenedor SSH
+          # --- VARIABLES DE ENTORNO ---
+          
           env {
             name  = "USER_NAME"
-            value = var.ssh_user  # <--- CAMBIO AQUÍ: Usamos la variable
+            value = var.ssh_user
           }
+
           env {
             name  = "USER_PASSWORD"
             value = var.ssh_password
           }
+
           env {
             name  = "PASSWORD_ACCESS"
             value = "true"
           }
+
           env {
             name  = "SUDO_ACCESS"
             value = "true"
           }
-           
+
+          # Variable informativa del OS
+          env {
+            name  = "OS_TYPE"
+            value = var.os_image
+          }
+
           port {
-            container_port = 2222 # Puerto interno de esta imagen
+            container_port = 2222
+          }
+
+          resources {
+            limits = {
+              cpu    = "500m"
+              memory = "512Mi"
+            }
           }
         }
       }
@@ -84,29 +121,29 @@ resource "kubernetes_deployment" "ssh_box" {
   }
 }
 
-# ==========================================
-# 3. EL SERVICIO DE ACCESO
-# ==========================================
-resource "kubernetes_service" "ssh_service" {
+resource "kubernetes_service_v1" "ssh_service" {
   metadata {
     name = "ssh-access"
   }
 
   spec {
     selector = {
-      app = "ssh"
+      app = "bronce-ssh"
     }
-    
+
     type = "NodePort"
 
     port {
-      port        = 22      # Puerto estándar SSH
-      target_port = 2222    # Puerto del contenedor
+      port        = 22
+      target_port = 2222
     }
   }
 }
 
-# 4. SALIDA
+# ==========================================
+# OUTPUTS
+# ==========================================
+
 output "ssh_port" {
-  value = kubernetes_service.ssh_service.spec[0].port[0].node_port
+  value = kubernetes_service_v1.ssh_service.spec[0].port[0].node_port
 }

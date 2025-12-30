@@ -12,11 +12,36 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BUZON_PEDIDOS = os.path.join(os.path.dirname(BASE_DIR), "buzon-pedidos")
 if not os.path.exists(BUZON_PEDIDOS): os.makedirs(BUZON_PEDIDOS, exist_ok=True)
 
+# --- MODELOS DE DATOS (ACTUALIZADOS) ---
+
+# 1. Modelo estricto para las especificaciones del cluster
+class EspecificacionesCluster(BaseModel):
+    # Recursos Hardware (Lo que ya tenías)
+    cpu: int = 1
+    ram: int = 1
+    storage: int = 10
+    db_enabled: bool = False
+    db_type: str = "mysql"
+    web_enabled: bool = False
+    web_type: str = "nginx"
+    
+    # Personalización del Cliente (NUEVO)
+    cluster_alias: str = "Mi Cluster Sylo"
+    cluster_description: Optional[str] = ""
+    subdomain: str  # Obligatorio (ej: 'pepe' -> pepe.sylocloud.com)
+    ssh_user: str = "admin_sylo"
+    os_image: str = "ubuntu" # Valores esperados: 'alpine', 'ubuntu', 'redhat'
+    
+    # Nombres Personalizados de Servicios (Solo planes altos)
+    db_custom_name: Optional[str] = None
+    web_custom_name: Optional[str] = None
+
+# 2. Orden de Creación actualizada
 class OrdenCreacion(BaseModel):
     id_cliente: int
     plan: str
     cliente_nombre: str = "cliente_api"
-    specs: dict = {}
+    specs: EspecificacionesCluster # <-- AHORA USAMOS EL MODELO ESTRICTO
 
 class OrdenAccion(BaseModel):
     id_cliente: int
@@ -72,9 +97,16 @@ def guardar_html(nombre, contenido):
 
 @router.post("/crear")
 async def solicitar_creacion(datos: OrdenCreacion):
-    payload = {"id": datos.id_cliente, "plan": datos.plan, "cliente": datos.cliente_nombre, "specs": datos.specs, "timestamp": time.time()}
+    # Convertimos el objeto Pydantic a diccionario para guardarlo
+    payload = {
+        "id": datos.id_cliente, 
+        "plan": datos.plan, 
+        "cliente": datos.cliente_nombre, 
+        "specs": datos.specs.dict(), # <-- IMPORTANTE: Serializar las specs nuevas
+        "timestamp": time.time()
+    }
     guardar_json(f"orden_{datos.id_cliente}.json", payload)
-    return {"status": "OK"}
+    return {"status": "OK", "msg": "Orden validada y encolada"}
 
 @router.post("/accion")
 async def solicitar_accion(datos: OrdenAccion):

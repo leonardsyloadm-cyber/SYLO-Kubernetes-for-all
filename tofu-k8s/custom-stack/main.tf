@@ -1,8 +1,6 @@
 terraform {
   required_providers {
-    kubernetes = {
-      source = "hashicorp/kubernetes"
-    }
+    kubernetes = { source = "hashicorp/kubernetes" }
   }
 }
 
@@ -12,82 +10,73 @@ provider "kubernetes" {
 }
 
 # ==========================================================
-# 1. ALMACENAMIENTO PERSISTENTE
+# 1. ALMACENAMIENTO (PVC)
 # ==========================================================
 resource "kubernetes_persistent_volume_claim" "custom_storage" {
-  metadata {
-    name = "custom-pvc"
+  metadata { 
+    name = "custom-pvc" 
   }
   spec {
     access_modes = ["ReadWriteOnce"]
-    # CORREGIDO: Bloque resources expandido
-    resources {
-      requests = {
-        storage = "${var.storage}Gi"
-      }
+    resources { 
+      requests = { 
+        storage = "${var.storage}Gi" 
+      } 
     }
   }
 }
 
 # ==========================================================
-# 2. CAPA DE DATOS (Selección Lógica)
+# 2. CAPA DE DATOS (DB)
 # ==========================================================
 
-# --- OPCIÓN A: MySQL ---
+# --- MySQL ---
 resource "kubernetes_deployment_v1" "db_mysql" {
   count = var.db_enabled && var.db_type == "mysql" ? 1 : 0
-  
-  metadata {
-    name = "custom-db"
+  metadata { 
+    name = "custom-db" 
   }
   spec {
     replicas = 1
-    selector {
-      match_labels = {
-        app = "custom-db"
-      }
+    selector { 
+      match_labels = { app = "custom-db" } 
     }
     template {
-      metadata {
-        labels = {
-          app = "custom-db"
-        }
+      metadata { 
+        labels = { app = "custom-db" } 
       }
       spec {
         container {
           name  = "mysql"
           image = "mysql:5.7"
-          
           resources {
             limits = {
               cpu    = var.web_enabled ? "${var.cpu / 2}" : "${var.cpu}"
               memory = var.web_enabled ? "${var.ram / 2}Gi" : "${var.ram}Gi"
             }
           }
-
-          port {
-            container_port = 3306
+          port { 
+            container_port = 3306 
           }
           
-          # CORREGIDO: Bloques env expandidos
-          env {
+          env { 
             name  = "MYSQL_ROOT_PASSWORD"
-            value = "root"
+            value = "root" 
           }
-          env {
+          env { 
             name  = "MYSQL_DATABASE"
-            value = "custom_db"
+            value = var.db_name 
           }
-
-          volume_mount {
+          
+          volume_mount { 
             name       = "storage-vol"
-            mount_path = "/var/lib/mysql"
+            mount_path = "/var/lib/mysql" 
           }
         }
         volume {
           name = "storage-vol"
-          persistent_volume_claim {
-            claim_name = "custom-pvc"
+          persistent_volume_claim { 
+            claim_name = "custom-pvc" 
           }
         }
       }
@@ -97,76 +86,55 @@ resource "kubernetes_deployment_v1" "db_mysql" {
 
 resource "kubernetes_service_v1" "svc_mysql" {
   count = var.db_enabled && var.db_type == "mysql" ? 1 : 0
-  metadata {
-    name = "custom-db-service"
-  }
+  metadata { name = "custom-db-service" }
   spec {
-    selector = {
-      app = "custom-db"
-    }
+    selector = { app = "custom-db" }
     type = "ClusterIP"
-    port {
+    port { 
       port        = 3306
-      target_port = 3306
+      target_port = 3306 
     }
   }
 }
 
-# --- OPCIÓN B: PostgreSQL ---
+# --- PostgreSQL ---
 resource "kubernetes_deployment_v1" "db_postgres" {
   count = var.db_enabled && var.db_type == "postgresql" ? 1 : 0
-  
-  metadata {
-    name = "custom-db"
-  }
+  metadata { name = "custom-db" }
   spec {
     replicas = 1
-    selector {
-      match_labels = {
-        app = "custom-db"
-      }
-    }
+    selector { match_labels = { app = "custom-db" } }
     template {
-      metadata {
-        labels = {
-          app = "custom-db"
-        }
-      }
+      metadata { labels = { app = "custom-db" } }
       spec {
         container {
           name  = "postgres"
           image = "postgres:14"
-          
           resources {
             limits = {
               cpu    = var.web_enabled ? "${var.cpu / 2}" : "${var.cpu}"
               memory = var.web_enabled ? "${var.ram / 2}Gi" : "${var.ram}Gi"
             }
           }
-
-          port {
-            container_port = 5432
-          }
-
-          env {
+          port { container_port = 5432 }
+          
+          env { 
             name  = "POSTGRES_PASSWORD"
-            value = "root"
+            value = "root" 
           }
-          env {
+          env { 
             name  = "POSTGRES_DB"
-            value = "custom_db"
+            value = var.db_name 
           }
-
-          volume_mount {
+          
+          volume_mount { 
             name       = "storage-vol"
-            mount_path = "/var/lib/postgresql/data"
+            mount_path = "/var/lib/postgresql/data" 
           }
         }
         volume {
           name = "storage-vol"
-          persistent_volume_claim {
-            claim_name = "custom-pvc"
-          }
+          persistent_volume_claim { claim_name = "custom-pvc" }
         }
       }
     }
@@ -175,76 +143,55 @@ resource "kubernetes_deployment_v1" "db_postgres" {
 
 resource "kubernetes_service_v1" "svc_postgres" {
   count = var.db_enabled && var.db_type == "postgresql" ? 1 : 0
-  metadata {
-    name = "custom-db-service"
-  }
+  metadata { name = "custom-db-service" }
   spec {
-    selector = {
-      app = "custom-db"
-    }
+    selector = { app = "custom-db" }
     type = "ClusterIP"
-    port {
+    port { 
       port        = 5432
-      target_port = 5432
+      target_port = 5432 
     }
   }
 }
 
-# --- OPCIÓN C: MongoDB ---
+# --- MongoDB ---
 resource "kubernetes_deployment_v1" "db_mongo" {
   count = var.db_enabled && var.db_type == "mongodb" ? 1 : 0
-  
-  metadata {
-    name = "custom-db"
-  }
+  metadata { name = "custom-db" }
   spec {
     replicas = 1
-    selector {
-      match_labels = {
-        app = "custom-db"
-      }
-    }
+    selector { match_labels = { app = "custom-db" } }
     template {
-      metadata {
-        labels = {
-          app = "custom-db"
-        }
-      }
+      metadata { labels = { app = "custom-db" } }
       spec {
         container {
           name  = "mongo"
           image = "mongo:latest"
-          
           resources {
             limits = {
               cpu    = var.web_enabled ? "${var.cpu / 2}" : "${var.cpu}"
               memory = var.web_enabled ? "${var.ram / 2}Gi" : "${var.ram}Gi"
             }
           }
-
-          port {
-            container_port = 27017
-          }
-
-          env {
+          port { container_port = 27017 }
+          
+          env { 
             name  = "MONGO_INITDB_ROOT_USERNAME"
-            value = "root"
+            value = "root" 
           }
-          env {
+          env { 
             name  = "MONGO_INITDB_ROOT_PASSWORD"
-            value = "root"
+            value = "root" 
           }
-
-          volume_mount {
+          
+          volume_mount { 
             name       = "storage-vol"
-            mount_path = "/data/db"
+            mount_path = "/data/db" 
           }
         }
         volume {
           name = "storage-vol"
-          persistent_volume_claim {
-            claim_name = "custom-pvc"
-          }
+          persistent_volume_claim { claim_name = "custom-pvc" }
         }
       }
     }
@@ -253,245 +200,211 @@ resource "kubernetes_deployment_v1" "db_mongo" {
 
 resource "kubernetes_service_v1" "svc_mongo" {
   count = var.db_enabled && var.db_type == "mongodb" ? 1 : 0
-  metadata {
-    name = "custom-db-service"
-  }
+  metadata { name = "custom-db-service" }
   spec {
-    selector = {
-      app = "custom-db"
-    }
+    selector = { app = "custom-db" }
     type = "ClusterIP"
-    port {
+    port { 
       port        = 27017
-      target_port = 27017
+      target_port = 27017 
     }
   }
 }
 
 # ==========================================================
-# 3. CAPA WEB (Selección Lógica)
+# 3. CAPA WEB (NGINX / APACHE)
 # ==========================================================
 
 resource "kubernetes_config_map_v1" "web_content" {
   count = var.web_enabled ? 1 : 0
-  metadata {
-    name = "custom-web-content"
-  }
+  metadata { name = "custom-web-content" }
   data = {
     "index.html" = <<-EOF
-      <h1>Plan Personalizado Activo</h1>
-      <p>CPU Asignada: ${var.cpu} Cores</p>
-      <p>RAM Asignada: ${var.ram} GB</p>
-      <p>Almacenamiento: ${var.storage} GB</p>
+      <h1>${var.web_custom_name}</h1>
+      <p>Subdominio: ${var.subdomain}.sylobi.org</p>
       <hr>
-      <p>Web Server: <strong>${var.web_type}</strong></p>
-      <p>Base de Datos: <strong>${var.db_enabled ? var.db_type : "Ninguna"}</strong></p>
+      <p>CPU: ${var.cpu} / RAM: ${var.ram} GB</p>
+      <p>DB: ${var.db_enabled ? "${var.db_type} (${var.db_name})" : "No"}</p>
     EOF
   }
 }
 
-# --- OPCIÓN A: Nginx ---
+# --- NGINX ---
 resource "kubernetes_deployment_v1" "web_nginx" {
   count = var.web_enabled && var.web_type == "nginx" ? 1 : 0
-  
-  metadata {
-    name = "custom-web"
-  }
+  metadata { name = "custom-web" }
   spec {
     replicas = 1
-    selector {
-      match_labels = {
-        app = "custom-web"
-      }
-    }
+    selector { match_labels = { app = "custom-web" } }
     template {
-      metadata {
-        labels = {
-          app = "custom-web"
-        }
-      }
+      metadata { labels = { app = "custom-web" } }
       spec {
+        # WEB CONTAINER
         container {
           name  = "web-server"
-          image = "nginx:alpine"
-          
+          image = var.image_web
           resources {
             limits = {
               cpu    = var.db_enabled ? "${var.cpu / 2}" : "${var.cpu}"
               memory = var.db_enabled ? "${var.ram / 2}Gi" : "${var.ram}Gi"
             }
           }
-
-          port {
-            container_port = 80
+          
+          # 🔥 PUERTO DINAMICO 🔥
+          port { 
+            container_port = var.web_port_internal 
           }
           
-          volume_mount {
+          # 🔥 RUTA DINAMICA 🔥
+          volume_mount { 
             name       = "html-vol"
-            mount_path = "/usr/share/nginx/html"
+            mount_path = var.web_mount_path 
           }
-
+          
           dynamic "env" {
             for_each = var.db_enabled ? [1] : []
-            content {
+            content { 
               name  = "DB_HOST"
-              value = "custom-db-service"
+              value = "custom-db-service" 
             }
           }
         }
-
-        # Contenedor SSH
+        
+        # SSH SIDECAR
         container {
           name  = "ssh"
           image = "lscr.io/linuxserver/openssh-server:latest"
-          port {
-            container_port = 2222
-          }
-          env {
+          port { container_port = 2222 }
+          
+          env { 
             name  = "PASSWORD_ACCESS"
-            value = "true"
+            value = "true" 
           }
-          env {
+          env { 
             name  = "USER_PASSWORD"
-            value = var.ssh_password
+            value = var.ssh_password 
           }
-          env {
+          env { 
             name  = "USER_NAME"
-            value = "var.ssh_user"
+            value = var.ssh_user 
           }
-          # Variable para SUDO
-          env {
+          env { 
             name  = "SUDO_ACCESS"
-            value = "true"
+            value = "true" 
           }
         }
 
         volume {
           name = "html-vol"
-          config_map {
-            name = "custom-web-content"
-          }
+          config_map { name = "custom-web-content" }
         }
       }
     }
   }
 }
 
-# --- OPCIÓN B: Apache (httpd) ---
+# --- APACHE ---
 resource "kubernetes_deployment_v1" "web_apache" {
   count = var.web_enabled && var.web_type == "apache" ? 1 : 0
-  
-  metadata {
-    name = "custom-web"
-  }
+  metadata { name = "custom-web" }
   spec {
     replicas = 1
-    selector {
-      match_labels = {
-        app = "custom-web"
-      }
-    }
+    selector { match_labels = { app = "custom-web" } }
     template {
-      metadata {
-        labels = {
-          app = "custom-web"
-        }
-      }
+      metadata { labels = { app = "custom-web" } }
       spec {
+        # WEB CONTAINER
         container {
           name  = "web-server"
-          image = "httpd:alpine"
-          
+          image = var.image_web
           resources {
             limits = {
               cpu    = var.db_enabled ? "${var.cpu / 2}" : "${var.cpu}"
               memory = var.db_enabled ? "${var.ram / 2}Gi" : "${var.ram}Gi"
             }
           }
-
-          port {
-            container_port = 80
-          }
           
-          volume_mount {
+          # 🔥 PUERTO DINAMICO 🔥
+          port { 
+            container_port = var.web_port_internal 
+          }
+
+          # 🔥 RUTA DINAMICA 🔥
+          volume_mount { 
             name       = "html-vol"
-            mount_path = "/usr/local/apache2/htdocs/"
+            mount_path = var.web_mount_path 
           }
 
           dynamic "env" {
             for_each = var.db_enabled ? [1] : []
-            content {
+            content { 
               name  = "DB_HOST"
-              value = "custom-db-service"
+              value = "custom-db-service" 
             }
           }
         }
-
-        # Contenedor SSH
+        
+        # SSH SIDECAR
         container {
           name  = "ssh"
           image = "lscr.io/linuxserver/openssh-server:latest"
-          port {
-            container_port = 2222
-          }
-          env {
+          port { container_port = 2222 }
+          
+          env { 
             name  = "PASSWORD_ACCESS"
-            value = "true"
+            value = "true" 
           }
-          env {
+          env { 
             name  = "USER_PASSWORD"
-            value = var.ssh_password
+            value = var.ssh_password 
           }
-          env {
+          env { 
             name  = "USER_NAME"
-            value = "cliente"
+            value = var.ssh_user 
           }
-          # Variable para SUDO
-          env {
+          env { 
             name  = "SUDO_ACCESS"
-            value = "true"
+            value = "true" 
           }
         }
-
+        
         volume {
           name = "html-vol"
-          config_map {
-            name = "custom-web-content"
-          }
+          config_map { name = "custom-web-content" }
         }
       }
     }
   }
 }
 
-# --- SERVICIO WEB UNIFICADO ---
+# ==========================================================
+# 4. SERVICIO WEB
+# ==========================================================
 resource "kubernetes_service_v1" "web_service" {
   count = var.web_enabled ? 1 : 0
-  metadata {
-    name = "custom-web-service"
+  metadata { 
+    name = "web-service" 
   }
   spec {
-    selector = {
-      app = "custom-web"
-    }
+    selector = { app = "custom-web" }
     type = "NodePort"
-    port {
+    port { 
       name        = "http"
       port        = 80
-      target_port = 80
+      # 🔥 TARGET PORT DINAMICO (80 o 8080) 🔥
+      target_port = var.web_port_internal 
     }
-    port {
+    port { 
       name        = "ssh"
       port        = 22
-      target_port = 2222
+      target_port = 2222 
     }
   }
 }
 
-# --- OUTPUTS ---
-output "web_port" {
-  value = var.web_enabled ? try(kubernetes_service_v1.web_service[0].spec.0.port.0.node_port, "N/A") : "N/A"
+output "web_port" { 
+  value = var.web_enabled ? try(kubernetes_service_v1.web_service[0].spec.0.port.0.node_port, "N/A") : "N/A" 
 }
-output "ssh_port" {
-  value = var.web_enabled ? try(kubernetes_service_v1.web_service[0].spec.0.port.1.node_port, "N/A") : "N/A"
+output "ssh_port" { 
+  value = var.web_enabled ? try(kubernetes_service_v1.web_service[0].spec.0.port.1.node_port, "N/A") : "N/A" 
 }

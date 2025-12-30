@@ -1,70 +1,98 @@
 # ==========================================
-# VARIABLES DE INFRAESTRUCTURA GENERAL
+# VARIABLES GENERALES
 # ==========================================
 
 variable "cluster_name" {
-  description = "Nombre único del cluster (ID del pedido)."
-  type        = string
+  type = string
 }
 
 variable "ssh_password" {
-  description = "Contraseña generada para el acceso SSH."
-  type        = string
-  sensitive   = true
+  type      = string
+  sensitive = true
+}
+
+variable "ssh_user" {
+  type    = string
+  default = "cliente"
 }
 
 # ==========================================
-# VARIABLES DE RECURSOS (SLIDERS)
+# VARIABLES PERSONALIZADAS
+# ==========================================
+
+variable "db_name" {
+  type    = string
+  default = "custom_db"
+}
+
+variable "web_custom_name" {
+  type    = string
+  default = "Mi Cluster"
+}
+
+variable "image_web" {
+  type    = string
+  default = "nginx:latest"
+}
+
+variable "subdomain" {
+  type    = string
+  default = "demo"
+}
+
+# 🔥 VARIABLE CRÍTICA PARA RUTAS (REDHAT/ALPINE) 🔥
+variable "web_mount_path" {
+  type        = string
+  description = "Ruta donde se monta el HTML segun el OS"
+  default     = "/usr/share/nginx/html"
+}
+
+# 🔥 NUEVA VARIABLE: PUERTO INTERNO (CRÍTICA PARA REDHAT 8080) 🔥
+variable "web_port_internal" {
+  type        = number
+  description = "Puerto del contenedor (80 para Alpine/Ubuntu, 8080 para RedHat)"
+  default     = 80
+}
+
+# ==========================================
+# RECURSOS (HARDWARE)
 # ==========================================
 
 variable "cpu" {
-  description = "Número de núcleos de CPU asignados."
-  type        = string
-  default     = "1"
+  type    = string
+  default = "1"
 }
 
 variable "ram" {
-  description = "Cantidad de memoria RAM en GB."
-  type        = string
-  default     = "2"
+  type    = string
+  default = "2"
 }
 
 variable "storage" {
-  description = "Capacidad del disco persistente en GB."
-  # AQUÍ ESTABA EL ERROR:
-  type        = string
-  default     = "5"
+  type    = string
+  default = "5"
 }
 
 # ==========================================
-# VARIABLES DE SELECCIÓN (TOGGLES)
+# TOGGLES (SOFTWARE)
 # ==========================================
 
 variable "db_enabled" {
-  description = "Interruptor para crear o no la Base de Datos."
-  type        = bool
-  default     = false
+  type    = bool
+  default = false
 }
 
 variable "db_type" {
-  description = "Tipo de motor de base de datos."
-  type        = string
-  default     = "mysql"
+  type    = string
+  default = "mysql"
 }
 
 variable "web_enabled" {
-  description = "Interruptor para crear o no el Servidor Web."
-  type        = bool
-  default     = true
+  type    = bool
+  default = true
 }
 
 variable "web_type" {
-  description = "Tipo de servidor web."
-  type        = string
-  default     = "nginx"
-}
-variable "ssh_user" {
-  description = "Usuario SSH basado en el nombre del cliente"
-  type        = string
-  default     = "cliente"
+  type    = string
+  default = "nginx"
 }

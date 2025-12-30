@@ -11,28 +11,61 @@ provider "kubernetes" {
   config_context = var.cluster_name
 }
 
-# --- VARIABLES ---
+# ==========================================
+# VARIABLES
+# ==========================================
+
 variable "cluster_name" {
-  description = "Nombre único del cluster Minikube."
+  description = "Nombre único del cluster Minikube"
   type        = string
 }
 
 variable "ssh_password" {
-  description = "Contraseña para el acceso SSH."
+  description = "Contraseña para el acceso SSH"
   type        = string
   sensitive   = true
 }
 
-# Variable de usuario SSH (Para integración con el cliente)
 variable "ssh_user" {
   description = "Usuario SSH personalizado"
   type        = string
   default     = "cliente"
 }
 
-# =================================================================
-# CAPA DE BASE DE DATOS
-# =================================================================
+variable "db_name" {
+  description = "Nombre de la base de datos"
+  type        = string
+  default     = "sylo_db"
+}
+
+variable "image_web" {
+  description = "Imagen Docker para el servidor web"
+  type        = string
+  default     = "nginx:latest"
+}
+
+variable "web_custom_name" {
+  description = "Nombre personalizado para el servicio web"
+  type        = string
+  default     = "Sylo Web Cluster"
+}
+
+variable "subdomain" {
+  description = "Subdominio del cliente"
+  type        = string
+  default     = "demo"
+}
+
+# --- LÓGICA DE PUERTOS Y DETECCIÓN REDHAT ---
+# Detecta si la imagen es RedHat, UBI o RHEL para ajustar puertos y rutas
+locals {
+  is_redhat = can(regex("(ubi|rhel|redhat)", var.image_web))
+  web_port  = local.is_redhat ? 8080 : 80
+}
+
+# ==========================================
+# 1. BASE DE DATOS (MYSQL HA)
+# ==========================================
 
 resource "kubernetes_service_v1" "mysql_master_service" {
   metadata {
@@ -91,13 +124,15 @@ resource "kubernetes_stateful_set_v1" "mysql_master" {
           image = "mysql:5.7"
           name  = "mysql"
           
+          image_pull_policy = "IfNotPresent"
+          
           env {
             name  = "MYSQL_ROOT_PASSWORD"
             value = "password_root"
           }
           env {
             name  = "MYSQL_DATABASE"
-            value = "pedido"
+            value = var.db_name
           }
           
           port {
@@ -107,7 +142,7 @@ resource "kubernetes_stateful_set_v1" "mysql_master" {
           args = [
             "--server-id=1", 
             "--log-bin=mysql-bin", 
-            "--binlog-do-db=pedido", 
+            "--binlog-do-db=${var.db_name}", 
             "--max_allowed_packet=32M", 
             "--gtid_mode=ON", 
             "--enforce-gtid-consistency=ON"
@@ -152,13 +187,15 @@ resource "kubernetes_stateful_set_v1" "mysql_slave" {
           image = "mysql:5.7"
           name  = "mysql"
           
+          image_pull_policy = "IfNotPresent"
+          
           env {
             name  = "MYSQL_ROOT_PASSWORD"
             value = "password_root"
           }
           env {
             name  = "MYSQL_DATABASE"
-            value = "pedido"
+            value = var.db_name
           }
           
           port {
@@ -177,9 +214,9 @@ resource "kubernetes_stateful_set_v1" "mysql_slave" {
   }
 }
 
-# =================================================================
-# CAPA WEB Y SSH
-# =================================================================
+# ==========================================
+# 2. WEB HA (NGINX / REDHAT)
+# ==========================================
 
 resource "kubernetes_config_map_v1" "web_content" {
   metadata {
@@ -189,14 +226,27 @@ resource "kubernetes_config_map_v1" "web_content" {
     "index.html" = <<-EOF
       <!DOCTYPE html>
       <html lang="es">
-      <head><title>Cliente SYLO HA</title></head>
-      <body><h1>Plan ORO Activo</h1></body>
+      <head><title>${var.subdomain} - Sylo Oro</title></head>
+      <body style="text-align:center; padding:50px; font-family: sans-serif;">
+        <h1>🥇 Plan ORO Activo</h1>
+        <h2>${var.web_custom_name}</h2>
+        <p>Dominio: <b>${var.subdomain}.sylobi.org</b></p>
+        <hr>
+        <p>Base de Datos: ${var.db_name}</p>
+        <p>Imagen Base: ${var.image_web}</p>
+        <p>Puerto Interno: ${local.web_port}</p>
+      </body>
       </html>
     EOF
   }
 }
 
 resource "kubernetes_deployment_v1" "web_ha" {
+  timeouts {
+    create = "15m"
+    update = "15m"
+  }
+
   metadata {
     name = "nginx-ha"
     labels = {
@@ -218,14 +268,46 @@ resource "kubernetes_deployment_v1" "web_ha" {
       }
       spec {
         container {
-          image = "nginx:alpine"
+          image = var.image_web
           name  = "nginx"
+          
+          image_pull_policy = "IfNotPresent"
+          
+          # ========================================================
+          # 🔥 CORRECCIÓN CRÍTICA PARA REDHAT 🔥
+          # Usamos el script S2I si es RedHat, si no, dejamos el default.
+          # ========================================================
+          command = local.is_redhat ? ["/usr/libexec/s2i/run"] : null
+          
           port {
-            container_port = 80
+            container_port = local.web_port
           }
+
+          liveness_probe {
+            http_get {
+              path = "/"
+              port = local.web_port 
+            }
+            initial_delay_seconds = 15
+            period_seconds        = 20
+          }
+
+          readiness_probe {
+            http_get {
+              path = "/"
+              port = local.web_port
+            }
+            initial_delay_seconds = 5
+            period_seconds        = 10
+          }
+
           volume_mount {
             name       = "html-volume"
-            mount_path = "/usr/share/nginx/html"
+            # ========================================================
+            # 🔥 CORRECCIÓN DE RUTA 🔥
+            # RedHat usa /opt/app-root/src en vez de /usr/share/nginx/html
+            # ========================================================
+            mount_path = local.is_redhat ? "/opt/app-root/src" : "/usr/share/nginx/html"
           }
         }
         volume {
@@ -239,7 +321,26 @@ resource "kubernetes_deployment_v1" "web_ha" {
   }
 }
 
-# SERVIDOR SSH
+resource "kubernetes_service_v1" "web_service" {
+  metadata {
+    name = "web-service"
+  }
+  spec {
+    selector = {
+      app = "web-cliente"
+    }
+    type = "NodePort"
+    port {
+      port        = 80
+      target_port = local.web_port
+    }
+  }
+}
+
+# ==========================================
+# 3. SSH SERVER
+# ==========================================
+
 resource "kubernetes_deployment_v1" "ssh_server" {
   metadata {
     name = "ssh-server"
@@ -265,8 +366,10 @@ resource "kubernetes_deployment_v1" "ssh_server" {
           image = "lscr.io/linuxserver/openssh-server:latest"
           name  = "openssh"
           
+          image_pull_policy = "IfNotPresent"
+          
           port {
-            container_port = 22
+            container_port = 2222
           }
           
           env {
@@ -277,30 +380,12 @@ resource "kubernetes_deployment_v1" "ssh_server" {
             name  = "USER_PASSWORD"
             value = var.ssh_password
           }
-          
-          # VARIABLE DE USUARIO INYECTADA
           env {
             name  = "USER_NAME"
             value = var.ssh_user
           }
         }
       }
-    }
-  }
-}
-
-resource "kubernetes_service_v1" "web_service" {
-  metadata {
-    name = "web-service"
-  }
-  spec {
-    selector = {
-      app = "web-cliente"
-    }
-    type = "NodePort"
-    port {
-      port        = 80
-      target_port = 80
     }
   }
 }
@@ -316,12 +401,15 @@ resource "kubernetes_service_v1" "ssh_server_service" {
     type = "NodePort"
     port {
       port        = 22
-      target_port = 22
+      target_port = 2222
     }
   }
 }
 
+# ==========================================
 # OUTPUTS
+# ==========================================
+
 output "ssh_user" {
   value = var.ssh_user
 }

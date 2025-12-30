@@ -1,6 +1,6 @@
 <?php
 session_start();
-define('API_URL_BASE', 'http://192.168.1.135:8001/api/clientes');
+define('API_URL_BASE', 'http://host.docker.internal:8001/api/clientes');
 
 if (isset($_GET['action']) && $_GET['action'] == 'logout') { session_destroy(); header("Location: index.php"); exit; }
 if (!isset($_SESSION['user_id'])) { header("Location: index.php"); exit; }

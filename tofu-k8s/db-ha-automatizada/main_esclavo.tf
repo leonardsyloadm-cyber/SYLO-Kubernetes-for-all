@@ -1,4 +1,6 @@
-# --- CONFIGURACIÓN DEL ESCLAVO ---
+# ==========================================
+# CONFIGURACIÓN DEL ESCLAVO MYSQL
+# ==========================================
 
 resource "kubernetes_config_map_v1" "mysql_slave_config" {
   metadata {
@@ -19,6 +21,7 @@ resource "kubernetes_service_v1" "mysql_slave" {
     name = "mysql-slave"
   }
   spec {
+    # CORREGIDO: selector lleva =
     selector = {
       app = "mysql-slave"
     }
@@ -43,7 +46,7 @@ resource "kubernetes_stateful_set_v1" "mysql_slave" {
         app = "mysql-slave"
       }
     }
-
+    
     template {
       metadata {
         labels = {
@@ -55,16 +58,16 @@ resource "kubernetes_stateful_set_v1" "mysql_slave" {
           name              = "mysql"
           image             = "mysql:8.0"
           image_pull_policy = "IfNotPresent"
-
+          
           env {
             name  = "MYSQL_ROOT_PASSWORD"
             value = "password_root"
           }
-
+          
           port {
             container_port = 3306
           }
-
+          
           readiness_probe {
             exec {
               command = ["mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppassword_root"]
@@ -74,13 +77,13 @@ resource "kubernetes_stateful_set_v1" "mysql_slave" {
           }
 
           resources {
-            requests = {
-              cpu    = "500m"
-              memory = "512Mi"
-            }
             limits = {
               cpu    = "1000m"
               memory = "1Gi"
+            }
+            requests = {
+              cpu    = "500m"
+              memory = "512Mi"
             }
           }
 
@@ -93,7 +96,6 @@ resource "kubernetes_stateful_set_v1" "mysql_slave" {
             mount_path = "/etc/mysql/conf.d"
           }
         }
-        
         volume {
           name = "config"
           config_map {
@@ -102,7 +104,7 @@ resource "kubernetes_stateful_set_v1" "mysql_slave" {
         }
       }
     }
-
+    
     volume_claim_template {
       metadata {
         name = "mysql-data"
@@ -110,6 +112,7 @@ resource "kubernetes_stateful_set_v1" "mysql_slave" {
       spec {
         access_modes = ["ReadWriteOnce"]
         resources {
+          # CORREGIDO: requests lleva =
           requests = {
             storage = "1Gi"
           }

@@ -6,7 +6,7 @@ terraform {
   }
 }
 
-# --- VARIABLES (DEFINIDAS AQUÍ PARA NO USAR VARIABLES.TF) ---
+# --- VARIABLES ---
 variable "nombre" {
   description = "Nombre del cluster Minikube"
   type        = string
@@ -18,11 +18,16 @@ variable "ssh_password" {
   sensitive   = true
 }
 
-# Variable para el usuario SSH
 variable "ssh_user" {
   description = "Usuario SSH personalizado"
   type        = string
   default     = "cliente"
+}
+
+variable "db_name" {
+  description = "Nombre de la Base de Datos inicial"
+  type        = string
+  default     = "sylo_db"
 }
 
 provider "kubernetes" {
@@ -30,7 +35,9 @@ provider "kubernetes" {
   config_context = var.nombre
 }
 
-# --- 1. MAESTRO MYSQL (OPTIMIZADO) ---
+# ==========================================
+# 1. MAESTRO MYSQL
+# ==========================================
 resource "kubernetes_config_map_v1" "mysql_master_config" {
   metadata {
     name = "mysql-master-config"
@@ -51,6 +58,7 @@ resource "kubernetes_service_v1" "mysql_master" {
     name = "mysql-master"
   }
   spec {
+    # CORREGIDO: selector lleva =
     selector = {
       app = "mysql-master"
     }
@@ -92,10 +100,12 @@ resource "kubernetes_stateful_set_v1" "mysql_master" {
             name  = "MYSQL_ROOT_PASSWORD"
             value = "password_root"
           }
+          
           env {
             name  = "MYSQL_DATABASE"
-            value = "kylo_db"
+            value = var.db_name
           }
+          
           env {
             name  = "MYSQL_USER"
             value = "kylo_user"
@@ -118,13 +128,13 @@ resource "kubernetes_stateful_set_v1" "mysql_master" {
           }
 
           resources {
-            requests = {
-              cpu    = "500m"
-              memory = "512Mi"
-            }
             limits = {
               cpu    = "1000m"
               memory = "1Gi"
+            }
+            requests = {
+              cpu    = "500m"
+              memory = "512Mi"
             }
           }
 
@@ -154,6 +164,7 @@ resource "kubernetes_stateful_set_v1" "mysql_master" {
       spec {
         access_modes = ["ReadWriteOnce"]
         resources {
+          # CORREGIDO: requests lleva =
           requests = {
             storage = "1Gi"
           }
@@ -163,7 +174,9 @@ resource "kubernetes_stateful_set_v1" "mysql_master" {
   }
 }
 
-# --- 2. SERVIDOR SSH (POD BASTIÓN) ---
+# ==========================================
+# 2. SERVIDOR SSH (BASTIÓN)
+# ==========================================
 resource "kubernetes_deployment_v1" "ssh_box" {
   metadata {
     name = "ssh-server"
@@ -189,13 +202,11 @@ resource "kubernetes_deployment_v1" "ssh_box" {
           image             = "lscr.io/linuxserver/openssh-server:latest"
           image_pull_policy = "IfNotPresent"
           
-          # --- USAMOS LA VARIABLE DE USUARIO ---
           env {
             name  = "USER_NAME"
             value = var.ssh_user 
           }
-          # -------------------------------------
-
+          
           env {
             name  = "USER_PASSWORD"
             value = var.ssh_password
@@ -208,7 +219,7 @@ resource "kubernetes_deployment_v1" "ssh_box" {
             name  = "SUDO_ACCESS"
             value = "true"
           }
-           
+            
           port {
             container_port = 2222
           }
@@ -223,6 +234,7 @@ resource "kubernetes_service_v1" "ssh_service" {
     name = "ssh-access"
   }
   spec {
+    # CORREGIDO: selector lleva =
     selector = {
       app = "ssh"
     }

@@ -2,7 +2,7 @@
 set -eE -o pipefail
 
 # ==========================================
-# DEPLOY ORO (REDHAT CACHÉ EXPRESS) - V16
+# DEPLOY ORO (REDHAT CACHÉ EXPRESS) - V18 (Con CNI Calico)
 # ==========================================
 
 LOG_FILE="/tmp/deploy_oro_debug.log"
@@ -29,6 +29,10 @@ DB_NAME_ARG=$4
 WEB_NAME_ARG=$5
 SUBDOMAIN_ARG=$6
 
+# --- GESTIÓN DE IDENTIDAD (NUEVO) ---
+# Recogemos la variable de entorno que manda el Orquestador
+OWNER_ID="${TF_VAR_owner_id:-admin}"
+
 # --- SANITIZACIÓN ---
 [ -z "$ORDER_ID" ] && ORDER_ID="manual"
 SSH_USER="${SSH_USER_ARG:-admin_oro}"
@@ -39,7 +43,6 @@ SUBDOMAIN="${SUBDOMAIN_ARG:-cliente$ORDER_ID}"
 # --- 2. SELECCIÓN DE IMAGEN ---
 IMAGE_WEB="nginx:latest" 
 if [ "$OS_IMAGE_ARG" == "alpine" ]; then IMAGE_WEB="nginx:alpine"; fi
-# Imagen REAL de RedHat
 if [ "$OS_IMAGE_ARG" == "redhat" ]; then IMAGE_WEB="registry.access.redhat.com/ubi8/nginx-120"; fi
 
 CLUSTER_NAME="sylo-cliente-$ORDER_ID"
@@ -55,6 +58,7 @@ update_status() {
 
 # --- INICIO ---
 echo "--- INICIO DEL LOG ORO ($ORDER_ID) ---" > "$LOG_FILE"
+echo "Params: Owner=$OWNER_ID | Image=$OS_IMAGE_ARG" >> "$LOG_FILE"
 update_status 0 "Iniciando Plan ORO (Imagen: $OS_IMAGE_ARG)..."
 
 # LIMPIEZA
@@ -64,20 +68,20 @@ for ZOMBIE in $ZOMBIES; do
     minikube delete -p "$ZOMBIE" >> "$LOG_FILE" 2>&1 || true
 done
 
-# LEVANTAR CLUSTER
-update_status 15 "Arrancando Cluster..."
+# LEVANTAR CLUSTER (¡AHORA SEGURO!)
+update_status 15 "Arrancando Cluster Seguro..."
 minikube start -p "$CLUSTER_NAME" \
     --driver=docker \
+    --cni=calico \
     --cpus=3 \
     --memory=4000m \
-    --addons=default-storageclass,ingress \
+    --addons=default-storageclass,ingress,metrics-server \
     --force >> "$LOG_FILE" 2>&1
 
-# --- 🔥 AQUÍ ESTÁ LA MAGIA DE LA VELOCIDAD 🔥 ---
+# CARGA REDHAT (Si aplica)
 if [ "$OS_IMAGE_ARG" == "redhat" ]; then
     update_status 30 "Inyectando imagen RedHat (Carga Rápida)..."
     echo "Cargando imagen local en Minikube..." >> "$LOG_FILE"
-    # Esto coge la imagen que bajaste con 'docker pull' y la mete en el cluster
     minikube -p "$CLUSTER_NAME" image load registry.access.redhat.com/ubi8/nginx-120 >> "$LOG_FILE" 2>&1 || echo "Warning: No se pudo cargar imagen local" >> "$LOG_FILE"
 fi
 
@@ -87,7 +91,7 @@ cd "$SCRIPT_DIR"
 rm -f terraform.tfstate*
 tofu init -upgrade >> "$LOG_FILE" 2>&1
 
-# DESPLIEGUE TOFU
+# DESPLIEGUE TOFU (AÑADIDO owner_id)
 update_status 50 "Aplicando infraestructura..."
 tofu apply -auto-approve \
     -var="cluster_name=$CLUSTER_NAME" \
@@ -96,7 +100,8 @@ tofu apply -auto-approve \
     -var="db_name=$DB_NAME" \
     -var="web_custom_name=$WEB_NAME" \
     -var="image_web=$IMAGE_WEB" \
-    -var="subdomain=$SUBDOMAIN" >> "$LOG_FILE" 2>&1
+    -var="subdomain=$SUBDOMAIN" \
+    -var="owner_id=$OWNER_ID" >> "$LOG_FILE" 2>&1
 
 # ESPERA
 update_status 60 "Esperando arranque de servicios..."
@@ -125,7 +130,6 @@ fi
 # FINAL
 update_status 90 "Generando accesos..."
 HOST_IP=$(minikube ip -p "$CLUSTER_NAME")
-# Recogemos puertos del output de Tofu
 WEB_PORT=$(tofu output -raw web_port 2>/dev/null || echo "80")
 SSH_PORT=$(tofu output -raw ssh_port 2>/dev/null || echo "2222")
 
@@ -135,6 +139,7 @@ INFO_TEXT="[PLAN ORO - REDHAT EDITION]
 Sistema: RedHat UBI 8 (Cargado desde Local)
 URL WEB: http://$SUBDOMAIN.sylobi.org
 IP INTERNA: $HOST_IP:$WEB_PORT
+Owner ID: $OWNER_ID
 
 [ACCESO SSH]
 Usuario: $SSH_USER

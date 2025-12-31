@@ -16,7 +16,7 @@ if not os.path.exists(BUZON_PEDIDOS): os.makedirs(BUZON_PEDIDOS, exist_ok=True)
 
 # 1. Modelo estricto para las especificaciones del cluster
 class EspecificacionesCluster(BaseModel):
-    # Recursos Hardware (Lo que ya tenías)
+    # Recursos Hardware
     cpu: int = 1
     ram: int = 1
     storage: int = 10
@@ -25,14 +25,14 @@ class EspecificacionesCluster(BaseModel):
     web_enabled: bool = False
     web_type: str = "nginx"
     
-    # Personalización del Cliente (NUEVO)
+    # Personalización del Cliente
     cluster_alias: str = "Mi Cluster Sylo"
     cluster_description: Optional[str] = ""
-    subdomain: str  # Obligatorio (ej: 'pepe' -> pepe.sylocloud.com)
+    subdomain: str 
     ssh_user: str = "admin_sylo"
-    os_image: str = "ubuntu" # Valores esperados: 'alpine', 'ubuntu', 'redhat'
+    os_image: str = "ubuntu"
     
-    # Nombres Personalizados de Servicios (Solo planes altos)
+    # Nombres Personalizados
     db_custom_name: Optional[str] = None
     web_custom_name: Optional[str] = None
 
@@ -41,7 +41,11 @@ class OrdenCreacion(BaseModel):
     id_cliente: int
     plan: str
     cliente_nombre: str = "cliente_api"
-    specs: EspecificacionesCluster # <-- AHORA USAMOS EL MODELO ESTRICTO
+    specs: EspecificacionesCluster
+    
+    # 🔥 CAMBIO DE SEGURIDAD: ACEPTAR ID DE USUARIO 🔥
+    # Si el frontend no lo manda, ponemos "admin" o "1" por defecto
+    id_usuario_real: str = "admin" 
 
 class OrdenAccion(BaseModel):
     id_cliente: int
@@ -102,15 +106,21 @@ async def solicitar_creacion(datos: OrdenCreacion):
         "id": datos.id_cliente, 
         "plan": datos.plan, 
         "cliente": datos.cliente_nombre, 
-        "specs": datos.specs.dict(), # <-- IMPORTANTE: Serializar las specs nuevas
-        "timestamp": time.time()
+        "specs": datos.specs.dict(),
+        "timestamp": time.time(),
+        
+        # 🔥 GUARDAMOS EL ID EN EL JSON PARA EL ORQUESTADOR 🔥
+        "id_usuario_real": datos.id_usuario_real
     }
     guardar_json(f"orden_{datos.id_cliente}.json", payload)
+    
+    # Log visual para que sepas que está funcionando
+    print(f"📨 [API] Pedido recibido. Usuario Dueño: {datos.id_usuario_real}", flush=True)
+    
     return {"status": "OK", "msg": "Orden validada y encolada"}
 
 @router.post("/accion")
 async def solicitar_accion(datos: OrdenAccion):
-    # SOLUCIÓN: Si recibimos contenido web, lo guardamos YA para que el editor no se resetee al recargar
     if datos.accion.upper() == "UPDATE_WEB" and datos.html_content:
         guardar_html(f"web_source_{datos.id_cliente}.html", datos.html_content)
         print(f"💾 [API] HTML persistido para cliente {datos.id_cliente}")
@@ -138,7 +148,6 @@ async def recibir_progreso(datos: ReporteProgreso):
 
 @router.post("/reportar/contenido_web")
 async def recibir_contenido_web(datos: ReporteContenidoWeb):
-    # El Operator informa del contenido (útil tras un RESTORE)
     guardar_html(f"web_source_{datos.id_cliente}.html", datos.html_content)
     return {"status": "guardado"}
 
@@ -172,7 +181,6 @@ async def leer_estado(id_cliente: int):
         with open(os.path.join(BUZON_PEDIDOS, f"web_status_{id_cliente}.json"), 'r') as f: data["web_progress"] = json.load(f)
     except: pass
     
-    # LEER FUENTE HTML PARA EL EDITOR
     try:
         ruta_html = os.path.join(BUZON_PEDIDOS, f"web_source_{id_cliente}.html")
         if os.path.exists(ruta_html):
@@ -186,7 +194,7 @@ async def solicitar_ia(datos: OrdenIA):
     req_id = f"req_{datos.id_cliente}_{int(time.time())}"
     guardar_json(f"chat_request_{req_id}.json", {"msg": datos.mensaje, "context_plan": datos.contexto_plan, "timestamp": time.time()})
     return {"status": "OK", "req_id": req_id}
-
+ar
 @router.get("/chat/leer/{id_cliente}")
 async def leer_respuesta_ia(id_cliente: int):
     patron = os.path.join(BUZON_PEDIDOS, f"chat_response_*{id_cliente}*.json")

@@ -56,8 +56,14 @@ variable "subdomain" {
   default     = "demo"
 }
 
+# --- VARIABLE DE SEGURIDAD ---
+variable "owner_id" {
+  description = "ID del usuario propietario (para aislamiento)"
+  type        = string
+  default     = "admin"
+}
+
 # --- LÓGICA DE PUERTOS Y DETECCIÓN REDHAT ---
-# Detecta si la imagen es RedHat, UBI o RHEL para ajustar puertos y rutas
 locals {
   is_redhat = can(regex("(ubi|rhel|redhat)", var.image_web))
   web_port  = local.is_redhat ? 8080 : 80
@@ -74,6 +80,7 @@ resource "kubernetes_service_v1" "mysql_master_service" {
       app     = "mysql"
       role    = "master"
       cluster = var.cluster_name
+      owner   = var.owner_id
     }
   }
   spec {
@@ -97,6 +104,7 @@ resource "kubernetes_stateful_set_v1" "mysql_master" {
       app     = "mysql"
       role    = "master"
       cluster = var.cluster_name
+      owner   = var.owner_id
     }
   }
   spec {
@@ -110,13 +118,14 @@ resource "kubernetes_stateful_set_v1" "mysql_master" {
         cluster = var.cluster_name
       }
     }
-    
+
     template {
       metadata {
         labels = {
           app     = "mysql"
           role    = "master"
           cluster = var.cluster_name
+          owner   = var.owner_id
         }
       }
       spec {
@@ -160,6 +169,7 @@ resource "kubernetes_stateful_set_v1" "mysql_slave" {
       app     = "mysql"
       role    = "slave"
       cluster = var.cluster_name
+      owner   = var.owner_id
     }
   }
   spec {
@@ -180,6 +190,7 @@ resource "kubernetes_stateful_set_v1" "mysql_slave" {
           app     = "mysql"
           role    = "slave"
           cluster = var.cluster_name
+          owner   = var.owner_id
         }
       }
       spec {
@@ -235,6 +246,7 @@ resource "kubernetes_config_map_v1" "web_content" {
         <p>Base de Datos: ${var.db_name}</p>
         <p>Imagen Base: ${var.image_web}</p>
         <p>Puerto Interno: ${local.web_port}</p>
+        <p><small>Owner ID: ${var.owner_id}</small></p>
       </body>
       </html>
     EOF
@@ -251,6 +263,7 @@ resource "kubernetes_deployment_v1" "web_ha" {
     name = "nginx-ha"
     labels = {
       cluster = var.cluster_name
+      owner   = var.owner_id
     }
   }
   spec {
@@ -263,7 +276,8 @@ resource "kubernetes_deployment_v1" "web_ha" {
     template {
       metadata {
         labels = {
-          app = "web-cliente"
+          app     = "web-cliente"
+          owner   = var.owner_id
         }
       }
       spec {
@@ -273,10 +287,6 @@ resource "kubernetes_deployment_v1" "web_ha" {
           
           image_pull_policy = "IfNotPresent"
           
-          # ========================================================
-          # 🔥 CORRECCIÓN CRÍTICA PARA REDHAT 🔥
-          # Usamos el script S2I si es RedHat, si no, dejamos el default.
-          # ========================================================
           command = local.is_redhat ? ["/usr/libexec/s2i/run"] : null
           
           port {
@@ -303,10 +313,6 @@ resource "kubernetes_deployment_v1" "web_ha" {
 
           volume_mount {
             name       = "html-volume"
-            # ========================================================
-            # 🔥 CORRECCIÓN DE RUTA 🔥
-            # RedHat usa /opt/app-root/src en vez de /usr/share/nginx/html
-            # ========================================================
             mount_path = local.is_redhat ? "/opt/app-root/src" : "/usr/share/nginx/html"
           }
         }
@@ -324,6 +330,9 @@ resource "kubernetes_deployment_v1" "web_ha" {
 resource "kubernetes_service_v1" "web_service" {
   metadata {
     name = "web-service"
+    labels = {
+      owner = var.owner_id
+    }
   }
   spec {
     selector = {
@@ -346,6 +355,7 @@ resource "kubernetes_deployment_v1" "ssh_server" {
     name = "ssh-server"
     labels = {
       cluster = var.cluster_name
+      owner   = var.owner_id
     }
   }
   spec {
@@ -358,7 +368,8 @@ resource "kubernetes_deployment_v1" "ssh_server" {
     template {
       metadata {
         labels = {
-          app = "ssh-server"
+          app     = "ssh-server"
+          owner   = var.owner_id
         }
       }
       spec {
@@ -390,11 +401,16 @@ resource "kubernetes_deployment_v1" "ssh_server" {
   }
 }
 
+# --- 🔥 AQUÍ ESTABA EL ERROR CORREGIDO 🔥 ---
 resource "kubernetes_service_v1" "ssh_server_service" {
   metadata {
     name = "ssh-server-service"
+    labels = {
+      owner = var.owner_id
+    }
   }
   spec {
+    # Antes faltaba el "=" aquí abajo
     selector = {
       app = "ssh-server"
     }
@@ -402,6 +418,45 @@ resource "kubernetes_service_v1" "ssh_server_service" {
     port {
       port        = 22
       target_port = 2222
+    }
+  }
+}
+
+# ==========================================
+# 4. SEGURIDAD (NETWORK POLICY V1)
+# ==========================================
+# Actualizado a _v1 para evitar warnings
+resource "kubernetes_network_policy_v1" "aislamiento_oro" {
+  metadata {
+    name = "aislamiento-oro"
+  }
+
+  spec {
+    pod_selector {} 
+
+    policy_types = ["Ingress"]
+
+    ingress {
+      # REGLA 1: Tráfico interno permitido (mismo owner)
+      from {
+        pod_selector {
+          match_labels = {
+            owner = var.owner_id
+          }
+        }
+      }
+      
+      # REGLA 2: Web Pública
+      ports {
+        port     = local.web_port
+        protocol = "TCP"
+      }
+      
+      # REGLA 3: SSH
+      ports {
+        port     = 2222
+        protocol = "TCP"
+      }
     }
   }
 }

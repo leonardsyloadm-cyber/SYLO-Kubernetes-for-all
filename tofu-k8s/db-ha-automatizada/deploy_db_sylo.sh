@@ -2,7 +2,7 @@
 set -eE -o pipefail
 
 # ==========================================
-# DEPLOY PLATA (SOLO DB HA + SSH) - V15
+# DEPLOY PLATA (DB HA + SSH) - V18 (Blindado con Calico)
 # ==========================================
 
 LOG_FILE="/tmp/deploy_plata_debug.log"
@@ -27,6 +27,10 @@ OS_IMAGE_ARG=$3
 DB_NAME_ARG=$4
 SUBDOMAIN_ARG=$6
 
+# --- GESTIÓN DE IDENTIDAD (FALTABA ESTO) ---
+# Recogemos la variable de entorno que manda el Orquestador
+OWNER_ID="${TF_VAR_owner_id:-admin}"
+
 [ -z "$ORDER_ID" ] && ORDER_ID="manual"
 if [ -z "$SSH_USER_ARG" ]; then SSH_USER="admin_plata"; else SSH_USER="$SSH_USER_ARG"; fi
 if [ -z "$DB_NAME_ARG" ]; then DB_NAME="sylo_db"; else DB_NAME="$DB_NAME_ARG"; fi
@@ -46,6 +50,8 @@ update_status() {
 
 # --- INICIO ---
 echo "--- LOG PLATA ($ORDER_ID) ---" > "$LOG_FILE"
+echo "Params: Owner=$OWNER_ID | DB=$DB_NAME" >> "$LOG_FILE"
+
 update_status 0 "Iniciando Plan Plata (DB + SSH)..."
 
 # Limpieza
@@ -54,9 +60,16 @@ for ZOMBIE in $ZOMBIES; do
     minikube delete -p "$ZOMBIE" >> "$LOG_FILE" 2>&1 || true
 done
 
-# Minikube
-update_status 20 "Levantando Minikube..."
-(minikube start -p "$CLUSTER_NAME" --driver=docker --cpus=2 --memory=2048m --addons=default-storageclass --force) >> "$LOG_FILE" 2>&1
+# --- MINIKUBE SEGURO (CORREGIDO) ---
+update_status 20 "Levantando Minikube Seguro..."
+# FALTABA: --cni=calico y metrics-server
+minikube start -p "$CLUSTER_NAME" \
+    --driver=docker \
+    --cni=calico \
+    --cpus=2 \
+    --memory=2048m \
+    --addons=default-storageclass,metrics-server \
+    --force >> "$LOG_FILE" 2>&1
 
 update_status 40 "Configurando Tofu..."
 kubectl config use-context "$CLUSTER_NAME" >> "$LOG_FILE" 2>&1
@@ -64,28 +77,29 @@ cd "$SCRIPT_DIR"
 rm -f terraform.tfstate*
 tofu init -upgrade >> "$LOG_FILE" 2>&1
 
-# Apply
+# --- APPLY (CORREGIDO) ---
 update_status 50 "Desplegando Infraestructura..."
+# FALTABA: pasar el owner_id
 tofu apply -auto-approve \
     -var="nombre=$CLUSTER_NAME" \
     -var="ssh_password=$SSH_PASS" \
     -var="ssh_user=$SSH_USER" \
-    -var="db_name=$DB_NAME" >> "$LOG_FILE" 2>&1
+    -var="db_name=$DB_NAME" \
+    -var="owner_id=$OWNER_ID" >> "$LOG_FILE" 2>&1
 
 # Espera Pods
 update_status 70 "Esperando MySQL Pods..."
 kubectl --context "$CLUSTER_NAME" wait --for=condition=Ready pod/mysql-master-0 --timeout=120s >> "$LOG_FILE" 2>&1
 kubectl --context "$CLUSTER_NAME" wait --for=condition=Ready pod/mysql-slave-0 --timeout=120s >> "$LOG_FILE" 2>&1
 
-# --- MEJORA V15: ESTABILIZACIÓN ---
+# Estabilización
 update_status 75 "Estabilizando motor de base de datos..."
-sleep 20 # Damos tiempo extra para que el socket de MySQL esté listo
+sleep 20 
 
 # Replicación
 update_status 85 "Configurando Replicación..."
 MYSQL_CMD="mysql -h 127.0.0.1 -P 3306 --protocol=tcp -u root -ppassword_root"
 
-# Intentar comando con reintento por si el socket tarda un poco más
 n=0
 until [ "$n" -ge 5 ]
 do
@@ -106,7 +120,7 @@ update_status 95 "Generando accesos..."
 HOST_IP=$(minikube ip -p "$CLUSTER_NAME")
 NODE_PORT=$(tofu output -raw ssh_port 2>/dev/null || echo "Revisar")
 CMD_SSH="ssh $SSH_USER@$HOST_IP -p $NODE_PORT"
-INFO_DB="[DATABASE HA]\nName: $DB_NAME\nMaestro: mysql-master\nEsclavo: mysql-slave"
+INFO_DB="[DATABASE HA]\nName: $DB_NAME\nMaestro: mysql-master\nEsclavo: mysql-slave\nOwner ID: $OWNER_ID"
 INFO_FINAL="[SSH ACCESO]\nUser: $SSH_USER\nPass: $SSH_PASS\n\n$INFO_DB"
 
 JSON_STRING=$(python3 -c "import json; print(json.dumps({'percent': 100, 'message': '¡Plata Lista!', 'status': 'completed', 'ssh_cmd': '$CMD_SSH', 'ssh_pass': '''$INFO_FINAL'''}))")

@@ -1,77 +1,96 @@
 ===================================================
-🚀 GUÍA DE INSTALACIÓN SYLO - V2.0 (UNIVERSAL & AUTOCURATIVA)
+🚀 GUÍA DE INSTALACIÓN SYLO - V3.0 (ENTERPRISE SECURE)
 ===================================================
 
-¡Hola Leo! Esta versión ya NO depende de tu WiFi. 
-Puedes cambiar de casa, de red o de router, y Sylo seguirá funcionando.
+¡Hola Leo! Esta versión incluye la nueva arquitectura de SEGURIDAD (Calico)
+y persistencia de datos. Ahora vendemos Nube Privada REAL.
 
 REQUISITOS PREVIOS:
 - Docker Desktop instalado y corriendo.
 - Python 3 instalado.
 - Minikube instalado.
 - OpenTofu (tofu) instalado.
+- Kubectl instalado (viene con Docker/Minikube).
 
 ---------------------------------------------------
-PASO 0: LIMPIEZA DE RED (¡NUEVO!)
+PASO 0: LIMPIEZA DE RED (MODO UNIVERSAL)
 ---------------------------------------------------
-Ya NO necesitas poner tu IP local (192.168.x.x).
-Asegúrate de que tus archivos clave tengan estas direcciones "inmortales":
+Estas IPs son inmortales. No las cambies aunque cambies de WiFi.
 
-1. worker/operator_sylo.py  -> API_URL = "http://127.0.0.1:8001/api/clientes"
-2. worker/orchestrator_sylo.py -> API_URL = "http://127.0.0.1:8001/api/clientes"
-3. Cerebro/api_sylo.py      -> host="0.0.0.0"
-4. sylo-web/index.php       -> define('API_URL', 'http://host.docker.internal:8001/api/clientes');
+1. worker/operator_sylo.py      -> API_URL = "http://127.0.0.1:8001/api/clientes"
+2. worker/orchestrator_sylo.py  -> API_URL = "http://127.0.0.1:8001/api/clientes"
+3. Cerebro/api_sylo.py          -> host="0.0.0.0"
+4. sylo-web/index.php           -> define('API_URL', 'http://host.docker.internal:8001/api/clientes');
 
 ---------------------------------------------------
 PASO 1: PREPARAR LAS LIBRERÍAS
 ---------------------------------------------------
 1. Abre una terminal en la carpeta raíz del proyecto.
-
-2. Activa el entorno (si no lo has hecho):
+2. Activa el entorno virtual:
    $ source venv/bin/activate
 
-3. Asegúrate de tener estas librerías (añadidas FastAPI y Uvicorn):
+3. Instala/Actualiza las librerías necesarias:
    $ pip install fastapi uvicorn requests psutil mysql-connector-python
 
 ---------------------------------------------------
-PASO 2: ARRANCAR BASE DE DATOS Y WEB
+PASO 2: ARRANCAR INFRAESTRUCTURA BASE (WEB + MYSQL)
 ---------------------------------------------------
 1. En la raíz del proyecto:
    $ docker-compose up -d --build
 
-2. Si has cambiado de red WiFi recientemente, reinicia el contenedor web para que pille la nueva ruta:
+2. Si la web no conecta con la API tras cambiar de WiFi:
    $ docker restart sylo-web
 
 ---------------------------------------------------
 PASO 3: ARRANCAR EL CEREBRO (API)
 ---------------------------------------------------
-Este es el corazón. Sin esto, nada funciona.
+Este es el backend que gestiona la lógica.
 
-1. Abre una TERMINAL 1 (dedicada a la API):
+1. Abre una TERMINAL 1 (API):
    $ source venv/bin/activate
    $ python3 Cerebro/api_sylo.py
 
-   (Déjala abierta. Debes ver "API Restaurada y Lista").
+   (Debe decir: "API Restaurada y Lista" en el puerto 8001).
 
 ---------------------------------------------------
-PASO 4: ARRANCAR EL OPERADOR (EL GUARDIÁN)
+PASO 4: ARRANCAR EL ORQUESTADOR (EL CAPATAZ)
 ---------------------------------------------------
-Este es el script que arregla los fallos y reinicia los servidores si se caen.
+Este script escucha los pedidos y despliega los Kubernetes BLINDADOS.
 
-1. Abre una TERMINAL 2:
+1. Abre una TERMINAL 2 (Orquestador):
    $ source venv/bin/activate
-   $ sudo python3 worker/operator_sylo.py
+   $ sudo python3 worker/orchestrator_sylo.py
 
-   (Necesita 'sudo' para hablar con Minikube. Déjala abierta para ver los logs de "Inyección" y "Resurrección").
+   IMPORTANTE: Ahora los despliegues tardan un poco más porque instalan 
+   Calico (Seguridad) y Metrics Server (Gráficas). ¡Paciencia!
 
 ---------------------------------------------------
-PASO 5: LANZAR PEDIDOS (ORQUESTADOR)
+PASO 5: EL OPERADOR (MANTENIMIENTO - OPCIONAL)
 ---------------------------------------------------
-Solo necesitas esto cuando vayas a crear un servidor nuevo.
+Si tienes el script de auto-curación (operator_sylo.py), lánzalo aquí.
 
 1. Abre una TERMINAL 3:
    $ source venv/bin/activate
-   $ python3 worker/orchestrator_sylo.py
+   $ sudo python3 worker/operator_sylo.py
+
+---------------------------------------------------
+PASO 6: VERIFICACIÓN DE SEGURIDAD (¡NUEVO!)
+---------------------------------------------------
+Para confirmar que un cliente es seguro, usa estos comandos.
+(Ejemplo para el cliente con ID 17):
+
+1. Ver que la "Policía" (Calico) está patrullando:
+   $ minikube -p sylo-cliente-17 kubectl -- get pods -n kube-system
+
+   *Debes ver 'calico-node' y 'calico-kube-controllers' en Running.
+
+2. Ver si el muro funciona (Desde un Pod Hacker):
+   $ minikube -p sylo-cliente-17 kubectl -- run hacker --image=alpine --restart=Never -- /bin/sh -c "sleep 3600"
+   $ minikube -p sylo-cliente-17 kubectl -- exec -it hacker -- apk add curl
+   $ minikube -p sylo-cliente-17 kubectl -- exec -it hacker -- curl -v telnet://<IP_DB>:3306
+
+   *Si se queda en "Trying..." -> ES SEGURO.
+   *Si dice "Connected" -> PELIGRO (Revisar scripts).
 
 ---------------------------------------------------
 RESUMEN DE PANTALLAS
@@ -80,4 +99,4 @@ RESUMEN DE PANTALLAS
 - 🎛️ DASHBOARD: http://localhost:8000/dashboard_cliente.php
 - 🧠 API DOCS: http://localhost:8001/docs
 
-¡Disfruta de tu Nube Privada Indestructible! ☁️🛡️
+¡Nube Sylo Enterprise Lista! ☁️👮‍♂️🚀

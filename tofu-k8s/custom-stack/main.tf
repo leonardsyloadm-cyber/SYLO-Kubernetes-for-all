@@ -15,6 +15,7 @@ provider "kubernetes" {
 resource "kubernetes_persistent_volume_claim" "custom_storage" {
   metadata { 
     name = "custom-pvc" 
+    labels = { owner = var.owner_id } # <--- ETIQUETA
   }
   spec {
     access_modes = ["ReadWriteOnce"]
@@ -35,6 +36,7 @@ resource "kubernetes_deployment_v1" "db_mysql" {
   count = var.db_enabled && var.db_type == "mysql" ? 1 : 0
   metadata { 
     name = "custom-db" 
+    labels = { owner = var.owner_id } # <--- ETIQUETA
   }
   spec {
     replicas = 1
@@ -43,7 +45,7 @@ resource "kubernetes_deployment_v1" "db_mysql" {
     }
     template {
       metadata { 
-        labels = { app = "custom-db" } 
+        labels = { app = "custom-db", owner = var.owner_id } # <--- ETIQUETA POD
       }
       spec {
         container {
@@ -86,7 +88,10 @@ resource "kubernetes_deployment_v1" "db_mysql" {
 
 resource "kubernetes_service_v1" "svc_mysql" {
   count = var.db_enabled && var.db_type == "mysql" ? 1 : 0
-  metadata { name = "custom-db-service" }
+  metadata { 
+    name = "custom-db-service" 
+    labels = { owner = var.owner_id } # <--- ETIQUETA
+  }
   spec {
     selector = { app = "custom-db" }
     type = "ClusterIP"
@@ -100,12 +105,17 @@ resource "kubernetes_service_v1" "svc_mysql" {
 # --- PostgreSQL ---
 resource "kubernetes_deployment_v1" "db_postgres" {
   count = var.db_enabled && var.db_type == "postgresql" ? 1 : 0
-  metadata { name = "custom-db" }
+  metadata { 
+    name = "custom-db" 
+    labels = { owner = var.owner_id } # <--- ETIQUETA
+  }
   spec {
     replicas = 1
     selector { match_labels = { app = "custom-db" } }
     template {
-      metadata { labels = { app = "custom-db" } }
+      metadata { 
+        labels = { app = "custom-db", owner = var.owner_id } # <--- ETIQUETA POD
+      }
       spec {
         container {
           name  = "postgres"
@@ -143,7 +153,10 @@ resource "kubernetes_deployment_v1" "db_postgres" {
 
 resource "kubernetes_service_v1" "svc_postgres" {
   count = var.db_enabled && var.db_type == "postgresql" ? 1 : 0
-  metadata { name = "custom-db-service" }
+  metadata { 
+    name = "custom-db-service" 
+    labels = { owner = var.owner_id } # <--- ETIQUETA
+  }
   spec {
     selector = { app = "custom-db" }
     type = "ClusterIP"
@@ -157,12 +170,17 @@ resource "kubernetes_service_v1" "svc_postgres" {
 # --- MongoDB ---
 resource "kubernetes_deployment_v1" "db_mongo" {
   count = var.db_enabled && var.db_type == "mongodb" ? 1 : 0
-  metadata { name = "custom-db" }
+  metadata { 
+    name = "custom-db" 
+    labels = { owner = var.owner_id } # <--- ETIQUETA
+  }
   spec {
     replicas = 1
     selector { match_labels = { app = "custom-db" } }
     template {
-      metadata { labels = { app = "custom-db" } }
+      metadata { 
+        labels = { app = "custom-db", owner = var.owner_id } # <--- ETIQUETA POD
+      }
       spec {
         container {
           name  = "mongo"
@@ -200,7 +218,10 @@ resource "kubernetes_deployment_v1" "db_mongo" {
 
 resource "kubernetes_service_v1" "svc_mongo" {
   count = var.db_enabled && var.db_type == "mongodb" ? 1 : 0
-  metadata { name = "custom-db-service" }
+  metadata { 
+    name = "custom-db-service" 
+    labels = { owner = var.owner_id } # <--- ETIQUETA
+  }
   spec {
     selector = { app = "custom-db" }
     type = "ClusterIP"
@@ -225,6 +246,7 @@ resource "kubernetes_config_map_v1" "web_content" {
       <hr>
       <p>CPU: ${var.cpu} / RAM: ${var.ram} GB</p>
       <p>DB: ${var.db_enabled ? "${var.db_type} (${var.db_name})" : "No"}</p>
+      <p><small>Owner ID: ${var.owner_id}</small></p>
     EOF
   }
 }
@@ -232,12 +254,17 @@ resource "kubernetes_config_map_v1" "web_content" {
 # --- NGINX ---
 resource "kubernetes_deployment_v1" "web_nginx" {
   count = var.web_enabled && var.web_type == "nginx" ? 1 : 0
-  metadata { name = "custom-web" }
+  metadata { 
+    name = "custom-web" 
+    labels = { owner = var.owner_id } # <--- ETIQUETA
+  }
   spec {
     replicas = 1
     selector { match_labels = { app = "custom-web" } }
     template {
-      metadata { labels = { app = "custom-web" } }
+      metadata { 
+        labels = { app = "custom-web", owner = var.owner_id } # <--- ETIQUETA POD
+      }
       spec {
         # WEB CONTAINER
         container {
@@ -306,12 +333,17 @@ resource "kubernetes_deployment_v1" "web_nginx" {
 # --- APACHE ---
 resource "kubernetes_deployment_v1" "web_apache" {
   count = var.web_enabled && var.web_type == "apache" ? 1 : 0
-  metadata { name = "custom-web" }
+  metadata { 
+    name = "custom-web" 
+    labels = { owner = var.owner_id } # <--- ETIQUETA
+  }
   spec {
     replicas = 1
     selector { match_labels = { app = "custom-web" } }
     template {
-      metadata { labels = { app = "custom-web" } }
+      metadata { 
+        labels = { app = "custom-web", owner = var.owner_id } # <--- ETIQUETA POD
+      }
       spec {
         # WEB CONTAINER
         container {
@@ -384,6 +416,7 @@ resource "kubernetes_service_v1" "web_service" {
   count = var.web_enabled ? 1 : 0
   metadata { 
     name = "web-service" 
+    labels = { owner = var.owner_id } # <--- ETIQUETA
   }
   spec {
     selector = { app = "custom-web" }
@@ -398,6 +431,44 @@ resource "kubernetes_service_v1" "web_service" {
       name        = "ssh"
       port        = 22
       target_port = 2222 
+    }
+  }
+}
+
+# ==========================================================
+# 5. SEGURIDAD (NETWORK POLICY) - NUEVO
+# ==========================================================
+resource "kubernetes_network_policy" "aislamiento_custom" {
+  metadata {
+    name = "aislamiento-custom"
+  }
+
+  spec {
+    pod_selector {} # Aplica a todos
+
+    policy_types = ["Ingress"]
+
+    ingress {
+      # REGLA 1: Tráfico interno (Web <-> DB) si es el mismo dueño
+      from {
+        pod_selector {
+          match_labels = {
+            owner = var.owner_id
+          }
+        }
+      }
+      
+      # REGLA 2: Web Pública
+      ports {
+        port     = var.web_port_internal
+        protocol = "TCP"
+      }
+
+      # REGLA 3: SSH
+      ports {
+        port     = 2222
+        protocol = "TCP"
+      }
     }
   }
 }

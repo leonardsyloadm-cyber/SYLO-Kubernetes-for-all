@@ -16,6 +16,13 @@ variable "ssh_user" {
   default = "cliente"
 }
 
+# --- NUEVA VARIABLE DE SEGURIDAD (AÑADIDO) ---
+variable "owner_id" {
+  description = "ID del usuario propietario"
+  type        = string
+  default     = "admin"
+}
+
 # ==========================================
 # VARIABLES PERSONALIZADAS
 # ==========================================

@@ -2,7 +2,7 @@
 set -eE -o pipefail
 
 # ==========================================
-# DEPLOY CUSTOM (PERSONALIZADO) - V17 (PUERTO DINAMICO)
+# DEPLOY CUSTOM (PERSONALIZADO) - V18 (Blindado con Calico)
 # ==========================================
 
 LOG_FILE="/tmp/deploy_custom_debug.log"
@@ -36,6 +36,9 @@ DB_NAME_ARG=${11}
 WEB_NAME_ARG=${12}
 SUBDOMAIN_ARG=${13}
 
+# --- GESTIÓN DE IDENTIDAD ---
+OWNER_ID="${TF_VAR_owner_id:-admin}"
+
 # --- 2. DEFAULTS ---
 [ -z "$ORDER_ID" ] && ORDER_ID="manual"
 [ -z "$CPU_REQ" ] && CPU_REQ="2"
@@ -46,43 +49,35 @@ if [ -z "$WEB_NAME_ARG" ]; then WEB_NAME="Custom Cluster"; else WEB_NAME="$WEB_N
 if [ -z "$SUBDOMAIN_ARG" ]; then SUBDOMAIN="cliente$ORDER_ID"; else SUBDOMAIN="$SUBDOMAIN_ARG"; fi
 
 # --- 3. CÁLCULO INTELIGENTE: IMAGEN, RUTA Y PUERTO ---
-# Aquí definimos la "Matriz" de compatibilidad completa
-
 IMAGE_WEB="nginx:latest"
 MOUNT_PATH="/usr/share/nginx/html"
-WEB_PORT_INTERNAL=80  # Default estándar
+WEB_PORT_INTERNAL=80
 
 if [ "$WEB_TYPE" == "nginx" ]; then
-    # --- CONFIGURACIÓN NGINX ---
     if [ "$OS_IMAGE_ARG" == "alpine" ]; then
         IMAGE_WEB="nginx:alpine"
         MOUNT_PATH="/usr/share/nginx/html"
         WEB_PORT_INTERNAL=80
     elif [ "$OS_IMAGE_ARG" == "redhat" ]; then
-        # RedHat Nginx usa puerto 8080 y ruta opt
         IMAGE_WEB="registry.access.redhat.com/ubi8/nginx-120"
         MOUNT_PATH="/opt/app-root/src"
         WEB_PORT_INTERNAL=8080
     else 
-        # Ubuntu/Standard
         IMAGE_WEB="nginx:latest"
         MOUNT_PATH="/usr/share/nginx/html"
         WEB_PORT_INTERNAL=80
     fi
 
 elif [ "$WEB_TYPE" == "apache" ]; then
-    # --- CONFIGURACIÓN APACHE ---
     if [ "$OS_IMAGE_ARG" == "alpine" ]; then
         IMAGE_WEB="httpd:alpine"
         MOUNT_PATH="/usr/local/apache2/htdocs"
         WEB_PORT_INTERNAL=80
     elif [ "$OS_IMAGE_ARG" == "redhat" ]; then
-        # 🔥 RedHat Apache usa puerto 8080 🔥
         IMAGE_WEB="registry.access.redhat.com/ubi8/httpd-24"
         MOUNT_PATH="/var/www/html"
         WEB_PORT_INTERNAL=8080
     else
-        # Ubuntu
         IMAGE_WEB="ubuntu/apache2"
         MOUNT_PATH="/var/www/html"
         WEB_PORT_INTERNAL=80
@@ -104,17 +99,23 @@ update_status() {
 
 # --- INICIO ---
 echo "--- LOG CUSTOM ($ORDER_ID) ---" > "$LOG_FILE"
-echo "Specs: $OS_IMAGE_ARG | $WEB_TYPE | DB: $DB_TYPE" >> "$LOG_FILE"
-echo "Selected Image: $IMAGE_WEB | Path: $MOUNT_PATH | Port: $WEB_PORT_INTERNAL" >> "$LOG_FILE"
+echo "Specs: Owner=$OWNER_ID | OS=$OS_IMAGE_ARG | Web=$WEB_TYPE" >> "$LOG_FILE"
 update_status 0 "Iniciando Custom ($OS_IMAGE_ARG)..."
 
 # Limpieza
 ZOMBIES=$(minikube profile list 2>/dev/null | grep "\-$ORDER_ID" | awk '{print $2}' || true)
 for ZOMBIE in $ZOMBIES; do minikube delete -p "$ZOMBIE" >> "$LOG_FILE" 2>&1 || true; done
 
-# Minikube
-update_status 20 "Levantando Cluster..."
-minikube start -p "$CLUSTER_NAME" --driver=docker --cpus="$VM_CPU" --memory="${VM_RAM_MB}m" --addons=default-storageclass,ingress --force >> "$LOG_FILE" 2>&1
+# --- MINIKUBE SEGURO (CORREGIDO) ---
+update_status 20 "Levantando Cluster Seguro..."
+# FALTABA: --cni=calico y metrics-server
+minikube start -p "$CLUSTER_NAME" \
+    --driver=docker \
+    --cni=calico \
+    --cpus="$VM_CPU" \
+    --memory="${VM_RAM_MB}m" \
+    --addons=default-storageclass,ingress,metrics-server \
+    --force >> "$LOG_FILE" 2>&1
 
 update_status 40 "Configurando Tofu..."
 kubectl config use-context "$CLUSTER_NAME" >> "$LOG_FILE" 2>&1
@@ -122,7 +123,7 @@ cd "$SCRIPT_DIR"
 rm -f terraform.tfstate*
 tofu init -upgrade >> "$LOG_FILE" 2>&1
 
-# Apply CON TODAS LAS VARIABLES (INCLUYENDO PUERTO)
+# Apply (AÑADIDO owner_id)
 update_status 50 "Aplicando Infraestructura..."
 tofu apply -auto-approve \
     -var="cluster_name=$CLUSTER_NAME" \
@@ -140,7 +141,8 @@ tofu apply -auto-approve \
     -var="image_web=$IMAGE_WEB" \
     -var="subdomain=$SUBDOMAIN" \
     -var="web_mount_path=$MOUNT_PATH" \
-    -var="web_port_internal=$WEB_PORT_INTERNAL" >> "$LOG_FILE" 2>&1
+    -var="web_port_internal=$WEB_PORT_INTERNAL" \
+    -var="owner_id=$OWNER_ID" >> "$LOG_FILE" 2>&1
 
 # Esperas
 update_status 70 "Verificando servicios..."
@@ -153,7 +155,7 @@ HOST_IP=$(minikube ip -p "$CLUSTER_NAME")
 WEB_PORT=$(tofu output -raw web_port 2>/dev/null || echo "N/A")
 SSH_PORT=$(tofu output -raw ssh_port 2>/dev/null || echo "N/A")
 
-INFO_TEXT="[SPECS]\nSO: $OS_IMAGE_ARG\nWeb: $WEB_TYPE (Port $WEB_PORT_INTERNAL)\nDB: $DB_TYPE"
+INFO_TEXT="[SPECS]\nOwner ID: $OWNER_ID\nSO: $OS_IMAGE_ARG\nWeb: $WEB_TYPE (Port $WEB_PORT_INTERNAL)\nDB: $DB_TYPE"
 if [ "$WEB_ENABLED" = "true" ]; then INFO_TEXT="$INFO_TEXT\n\n[WEB]\nURL: http://$HOST_IP:$WEB_PORT"; fi
 if [ "$DB_ENABLED" = "true" ]; then INFO_TEXT="$INFO_TEXT\n\n[DATABASE]\nMotor: $DB_TYPE\nNombre: $DB_NAME"; fi
 INFO_TEXT="$INFO_TEXT\n\n[SSH]\nUser: $SSH_USER\nPass: $SSH_PASS"

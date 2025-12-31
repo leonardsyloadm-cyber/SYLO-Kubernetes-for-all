@@ -55,17 +55,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     // REGISTRO
     if ($action === 'register') {
-        // ... (Lógica de registro original mantenida para brevedad, asumo que funciona)
         $user = htmlspecialchars($input['username']);
         $pass = $input['password'];
         $email = filter_var($input['email'], FILTER_VALIDATE_EMAIL);
         $name = htmlspecialchars($input['full_name']);
-        // ... resto de campos ...
         
-        // Simulación rápida para que funcione el ejemplo si copiaste el JS extendido
         try {
             $hash = password_hash($pass, PASSWORD_BCRYPT);
-            // Insert básico para que funcione la demo
             $sql = "INSERT INTO users (username, full_name, email, password_hash, role) VALUES (?, ?, ?, ?, 'client')";
             $stmt = $conn->prepare($sql);
             $stmt->execute([$user, $name, $email, $hash]);
@@ -93,13 +89,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if ($action === 'logout') { session_destroy(); echo json_encode(["status"=>"success"]); exit; }
 
     // =========================================================
-    // 🚀 ACCIÓN COMPRAR (ACTUALIZADA V15)
+    // 🚀 ACCIÓN COMPRAR (ACTUALIZADA V16 - SEGURIDAD)
     // =========================================================
     if ($action === 'comprar') {
         if (!isset($_SESSION['user_id'])) { echo json_encode(["status"=>"auth_required","mensaje"=>"Inicia sesión."]); exit; }
         
         $plan_name = htmlspecialchars($input['plan']);
-        $specs = $input['specs']; // Ahora recibimos el objeto specs completo
+        $specs = $input['specs']; 
 
         try {
             // 1. DB LOCAL
@@ -135,12 +131,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 'webname' => $specs['web_custom_name']
             ]);
             
-            // 2. ORDEN A LA API
+            // 2. ORDEN A LA API (Con ID de Usuario REAL)
             $api_payload = [
                 "id_cliente" => (int)$order_id,
                 "plan" => $plan_name,
                 "cliente_nombre" => $_SESSION['username'],
-                "specs" => $specs
+                "specs" => $specs,
+                
+                // 🔥🔥🔥 AQUÍ ESTÁ LA INYECCIÓN DE SEGURIDAD 🔥🔥🔥
+                // Pasamos el ID de la sesión PHP al JSON que va a Python
+                "id_usuario_real" => (string)$_SESSION['user_id']
             ];
 
             $ch = curl_init(API_URL . "/crear");

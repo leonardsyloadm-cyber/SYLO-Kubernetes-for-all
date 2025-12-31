@@ -12,7 +12,7 @@ provider "kubernetes" {
 }
 
 # ==========================================
-# VARIABLES (FORMATO EXTENDIDO)
+# VARIABLES
 # ==========================================
 
 variable "cluster_name" {
@@ -44,6 +44,13 @@ variable "subdomain" {
   default     = "demo"
 }
 
+# --- NUEVA VARIABLE DE IDENTIDAD ---
+variable "owner_id" {
+  description = "ID del usuario propietario (para aislamiento)"
+  type        = string
+  default     = "admin"
+}
+
 # ==========================================
 # RECURSOS
 # ==========================================
@@ -52,7 +59,8 @@ resource "kubernetes_deployment_v1" "ssh_box" {
   metadata {
     name = "ssh-server"
     labels = {
-      app = "bronce-ssh"
+      app   = "bronce-ssh"
+      owner = var.owner_id  # <--- ETIQUETA DE IDENTIDAD
     }
   }
 
@@ -68,7 +76,8 @@ resource "kubernetes_deployment_v1" "ssh_box" {
     template {
       metadata {
         labels = {
-          app = "bronce-ssh"
+          app   = "bronce-ssh"
+          owner = var.owner_id  # <--- ETIQUETA EN EL POD
         }
       }
 
@@ -77,8 +86,6 @@ resource "kubernetes_deployment_v1" "ssh_box" {
           name  = "terminal"
           image = "lscr.io/linuxserver/openssh-server:latest"
 
-          # --- VARIABLES DE ENTORNO ---
-          
           env {
             name  = "USER_NAME"
             value = var.ssh_user
@@ -99,7 +106,6 @@ resource "kubernetes_deployment_v1" "ssh_box" {
             value = "true"
           }
 
-          # Variable informativa del OS
           env {
             name  = "OS_TYPE"
             value = var.os_image
@@ -124,6 +130,9 @@ resource "kubernetes_deployment_v1" "ssh_box" {
 resource "kubernetes_service_v1" "ssh_service" {
   metadata {
     name = "ssh-access"
+    labels = {
+      owner = var.owner_id # <--- ETIQUETA EN EL SERVICIO
+    }
   }
 
   spec {
@@ -136,6 +145,39 @@ resource "kubernetes_service_v1" "ssh_service" {
     port {
       port        = 22
       target_port = 2222
+    }
+  }
+}
+
+# ==========================================
+# SEGURIDAD (NETWORK POLICY)
+# ==========================================
+# Esto define las reglas del "Portero de Discoteca" automáticamente
+resource "kubernetes_network_policy" "aislamiento" {
+  metadata {
+    name = "aislamiento-usuario"
+  }
+
+  spec {
+    pod_selector {} # Aplica a todos los pods
+
+    policy_types = ["Ingress"]
+
+    ingress {
+      # REGLA 1: Permitir tráfico entre pods del MISMO DUEÑO
+      from {
+        pod_selector {
+          match_labels = {
+            owner = var.owner_id
+          }
+        }
+      }
+      
+      # REGLA 2: Permitir tráfico SSH desde fuera (necesario para que te conectes)
+      ports {
+        port     = 2222
+        protocol = "TCP"
+      }
     }
   }
 }

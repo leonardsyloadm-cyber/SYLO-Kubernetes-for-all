@@ -16,37 +16,31 @@ provider "kubernetes" {
 # ==========================================
 
 variable "cluster_name" {
-  description = "Nombre del cluster minikube"
-  type        = string
+  type = string
 }
 
 variable "ssh_password" {
-  description = "Contraseña para SSH"
-  type        = string
-  sensitive   = true
+  type      = string
+  sensitive = true
 }
 
 variable "ssh_user" {
-  description = "Usuario SSH"
-  type        = string
-  default     = "cliente"
+  type    = string
+  default = "cliente"
 }
 
 variable "os_image" {
-  description = "Imagen del sistema operativo"
-  type        = string
-  default     = "alpine:latest"
+  type    = string
+  default = "alpine"
 }
 
 variable "subdomain" {
-  description = "Subdominio asignado"
-  type        = string
-  default     = "demo"
+  type    = string
+  default = "demo"
 }
 
-# --- NUEVA VARIABLE DE IDENTIDAD ---
 variable "owner_id" {
-  description = "ID del usuario propietario (para aislamiento)"
+  description = "ID del usuario propietario"
   type        = string
   default     = "admin"
 }
@@ -60,7 +54,7 @@ resource "kubernetes_deployment_v1" "ssh_box" {
     name = "ssh-server"
     labels = {
       app   = "bronce-ssh"
-      owner = var.owner_id  # <--- ETIQUETA DE IDENTIDAD
+      owner = var.owner_id
     }
   }
 
@@ -77,7 +71,7 @@ resource "kubernetes_deployment_v1" "ssh_box" {
       metadata {
         labels = {
           app   = "bronce-ssh"
-          owner = var.owner_id  # <--- ETIQUETA EN EL POD
+          owner = var.owner_id
         }
       }
 
@@ -90,29 +84,30 @@ resource "kubernetes_deployment_v1" "ssh_box" {
             name  = "USER_NAME"
             value = var.ssh_user
           }
-
           env {
             name  = "USER_PASSWORD"
             value = var.ssh_password
           }
-
           env {
             name  = "PASSWORD_ACCESS"
             value = "true"
           }
-
           env {
             name  = "SUDO_ACCESS"
             value = "true"
           }
 
-          env {
-            name  = "OS_TYPE"
-            value = var.os_image
-          }
-
           port {
             container_port = 2222
+          }
+
+          # Sonda de vida para asegurar que el puerto responde antes de enviar tráfico
+          readiness_probe {
+            tcp_socket {
+              port = 2222
+            }
+            initial_delay_seconds = 5
+            period_seconds        = 2
           }
 
           resources {
@@ -131,7 +126,7 @@ resource "kubernetes_service_v1" "ssh_service" {
   metadata {
     name = "ssh-access"
     labels = {
-      owner = var.owner_id # <--- ETIQUETA EN EL SERVICIO
+      owner = var.owner_id
     }
   }
 
@@ -139,9 +134,7 @@ resource "kubernetes_service_v1" "ssh_service" {
     selector = {
       app = "bronce-ssh"
     }
-
     type = "NodePort"
-
     port {
       port        = 22
       target_port = 2222
@@ -150,21 +143,20 @@ resource "kubernetes_service_v1" "ssh_service" {
 }
 
 # ==========================================
-# SEGURIDAD (NETWORK POLICY)
+# SEGURIDAD (NETWORK POLICY - FIX)
 # ==========================================
-# Esto define las reglas del "Portero de Discoteca" automáticamente
-resource "kubernetes_network_policy" "aislamiento" {
+resource "kubernetes_network_policy_v1" "aislamiento" {
   metadata {
     name = "aislamiento-usuario"
   }
 
   spec {
-    pod_selector {} # Aplica a todos los pods
+    pod_selector {} 
 
     policy_types = ["Ingress"]
 
+    # REGLA 1: Tráfico interno (mismo owner)
     ingress {
-      # REGLA 1: Permitir tráfico entre pods del MISMO DUEÑO
       from {
         pod_selector {
           match_labels = {
@@ -172,8 +164,16 @@ resource "kubernetes_network_policy" "aislamiento" {
           }
         }
       }
+    }
       
-      # REGLA 2: Permitir tráfico SSH desde fuera (necesario para que te conectes)
+    # REGLA 2: SSH desde FUERA (FIX: IP_BLOCK EXPLÍCITO)
+    ingress {
+      # Aquí está el cambio: Decimos explícitamente "desde cualquier IP"
+      from {
+        ip_block {
+          cidr = "0.0.0.0/0"
+        }
+      }
       ports {
         port     = 2222
         protocol = "TCP"
@@ -181,10 +181,6 @@ resource "kubernetes_network_policy" "aislamiento" {
     }
   }
 }
-
-# ==========================================
-# OUTPUTS
-# ==========================================
 
 output "ssh_port" {
   value = kubernetes_service_v1.ssh_service.spec[0].port[0].node_port

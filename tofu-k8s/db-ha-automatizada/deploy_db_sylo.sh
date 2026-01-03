@@ -2,7 +2,8 @@
 set -eE -o pipefail
 
 # ==========================================
-# DEPLOY PLATA (DB HA + SSH) - V18 (Blindado con Calico)
+# DEPLOY PLATA SIMPLE (MySQL Single + SSH) - V26
+# Fix: Output JSON Limpio para Alpine/Ubuntu
 # ==========================================
 
 LOG_FILE="/tmp/deploy_plata_debug.log"
@@ -25,10 +26,8 @@ ORDER_ID=$1
 SSH_USER_ARG=$2
 OS_IMAGE_ARG=$3
 DB_NAME_ARG=$4
-SUBDOMAIN_ARG=$6
+SUBDOMAIN_ARG=$5
 
-# --- GESTIÓN DE IDENTIDAD (FALTABA ESTO) ---
-# Recogemos la variable de entorno que manda el Orquestador
 OWNER_ID="${TF_VAR_owner_id:-admin}"
 
 [ -z "$ORDER_ID" ] && ORDER_ID="manual"
@@ -37,7 +36,8 @@ if [ -z "$DB_NAME_ARG" ]; then DB_NAME="sylo_db"; else DB_NAME="$DB_NAME_ARG"; f
 
 CLUSTER_NAME="sylo-cliente-$ORDER_ID"
 BUZON_STATUS="$PROJECT_ROOT/buzon-pedidos/status_$ORDER_ID.json"
-SSH_PASS=$(openssl rand -base64 12)
+SSH_PASS=$(openssl rand -hex 8) 
+
 TF_VAR_nombre="$CLUSTER_NAME"
 export TF_VAR_nombre
 
@@ -49,20 +49,20 @@ update_status() {
 }
 
 # --- INICIO ---
-echo "--- LOG PLATA ($ORDER_ID) ---" > "$LOG_FILE"
-echo "Params: Owner=$OWNER_ID | DB=$DB_NAME" >> "$LOG_FILE"
+echo "--- LOG PLATA SIMPLE ($ORDER_ID) ---" > "$LOG_FILE"
+echo "Params: Owner=$OWNER_ID | DB=$DB_NAME | OS=$OS_IMAGE_ARG" >> "$LOG_FILE"
 
-update_status 0 "Iniciando Plan Plata (DB + SSH)..."
+update_status 0 "Iniciando Plan Plata (Simple)..."
 
-# Limpieza
+# --- LIMPIEZA TOTAL ---
 ZOMBIES=$(minikube profile list 2>/dev/null | grep "\-$ORDER_ID" | awk '{print $2}' || true)
 for ZOMBIE in $ZOMBIES; do
-    minikube delete -p "$ZOMBIE" >> "$LOG_FILE" 2>&1 || true
+    minikube delete -p "$ZOMBIE" --purge >> "$LOG_FILE" 2>&1 || true
 done
+docker volume prune -f >> "$LOG_FILE" 2>&1 || true
 
-# --- MINIKUBE SEGURO (CORREGIDO) ---
-update_status 20 "Levantando Minikube Seguro..."
-# FALTABA: --cni=calico y metrics-server
+# --- MINIKUBE ---
+update_status 20 "Levantando Minikube..."
 minikube start -p "$CLUSTER_NAME" \
     --driver=docker \
     --cni=calico \
@@ -77,53 +77,67 @@ cd "$SCRIPT_DIR"
 rm -f terraform.tfstate*
 tofu init -upgrade >> "$LOG_FILE" 2>&1
 
-# --- APPLY (CORREGIDO) ---
-update_status 50 "Desplegando Infraestructura..."
-# FALTABA: pasar el owner_id
+# --- APPLY ---
+update_status 50 "Desplegando Infraestructura ($OS_IMAGE_ARG)..."
 tofu apply -auto-approve \
     -var="nombre=$CLUSTER_NAME" \
     -var="ssh_password=$SSH_PASS" \
     -var="ssh_user=$SSH_USER" \
     -var="db_name=$DB_NAME" \
-    -var="owner_id=$OWNER_ID" >> "$LOG_FILE" 2>&1
+    -var="owner_id=$OWNER_ID" \
+    -var="os_image=$OS_IMAGE_ARG" >> "$LOG_FILE" 2>&1
 
 # Espera Pods
-update_status 70 "Esperando MySQL Pods..."
-kubectl --context "$CLUSTER_NAME" wait --for=condition=Ready pod/mysql-master-0 --timeout=120s >> "$LOG_FILE" 2>&1
-kubectl --context "$CLUSTER_NAME" wait --for=condition=Ready pod/mysql-slave-0 --timeout=120s >> "$LOG_FILE" 2>&1
-
-# Estabilización
-update_status 75 "Estabilizando motor de base de datos..."
-sleep 20 
-
-# Replicación
-update_status 85 "Configurando Replicación..."
-MYSQL_CMD="mysql -h 127.0.0.1 -P 3306 --protocol=tcp -u root -ppassword_root"
-
-n=0
-until [ "$n" -ge 5 ]
-do
-   kubectl --context "$CLUSTER_NAME" exec mysql-master-0 -- $MYSQL_CMD -e "CREATE USER IF NOT EXISTS 'repl'@'%' IDENTIFIED WITH mysql_native_password BY 'repl'; GRANT REPLICATION SLAVE ON *.* TO 'repl'@'%'; FLUSH PRIVILEGES;" >> "$LOG_FILE" 2>&1 && break
-   n=$((n+1)) 
-   echo "Retrying MySQL connection..." >> "$LOG_FILE"
-   sleep 5
-done
-
-M_STATUS=$(kubectl --context "$CLUSTER_NAME" exec mysql-master-0 -- $MYSQL_CMD -e "SHOW MASTER STATUS\G")
-FILE=$(echo "$M_STATUS" | grep "File:" | awk '{print $2}')
-POS=$(echo "$M_STATUS" | grep "Position:" | awk '{print $2}')
-
-kubectl --context "$CLUSTER_NAME" exec mysql-slave-0 -- $MYSQL_CMD -e "STOP SLAVE; CHANGE MASTER TO MASTER_HOST='mysql-master.default.svc.cluster.local', MASTER_USER='repl', MASTER_PASSWORD='repl', MASTER_LOG_FILE='$FILE', MASTER_LOG_POS=$POS; START SLAVE;" >> "$LOG_FILE" 2>&1
+update_status 80 "Esperando servicios..."
+kubectl --context "$CLUSTER_NAME" wait --for=condition=available deployment/mysql-server --timeout=300s >> "$LOG_FILE" 2>&1
+kubectl --context "$CLUSTER_NAME" wait --for=condition=available deployment/ssh-server --timeout=300s >> "$LOG_FILE" 2>&1
 
 # Final
 update_status 95 "Generando accesos..."
 HOST_IP=$(minikube ip -p "$CLUSTER_NAME")
-NODE_PORT=$(tofu output -raw ssh_port 2>/dev/null || echo "Revisar")
-CMD_SSH="ssh $SSH_USER@$HOST_IP -p $NODE_PORT"
-INFO_DB="[DATABASE HA]\nName: $DB_NAME\nMaestro: mysql-master\nEsclavo: mysql-slave\nOwner ID: $OWNER_ID"
-INFO_FINAL="[SSH ACCESO]\nUser: $SSH_USER\nPass: $SSH_PASS\n\n$INFO_DB"
+# Redirigimos stderr a /dev/null para que solo capturemos el número
+SSH_PORT=$(tofu output -raw ssh_port 2>/dev/null || echo "2222")
+DB_PORT=$(tofu output -raw db_port 2>/dev/null || echo "3306")
 
-JSON_STRING=$(python3 -c "import json; print(json.dumps({'percent': 100, 'message': '¡Plata Lista!', 'status': 'completed', 'ssh_cmd': '$CMD_SSH', 'ssh_pass': '''$INFO_FINAL'''}))")
-echo "$JSON_STRING" > "$BUZON_STATUS"
+OS_PRETTY="Linux Genérico"
+if [[ "$OS_IMAGE_ARG" == "ubuntu" ]]; then OS_PRETTY="Ubuntu Server LTS"; fi
+if [[ "$OS_IMAGE_ARG" == "alpine" ]]; then OS_PRETTY="Alpine Linux (Optimizado)"; fi
+
+CMD_SSH="ssh $SSH_USER@$HOST_IP -p $SSH_PORT"
+
+INFO_DB="[DATABASE]
+Motor: MySQL 8.0 (Single)
+Host: $HOST_IP
+Puerto Externo: $DB_PORT
+User: root
+Pass: password_root
+DB Name: $DB_NAME"
+
+INFO_FINAL="[SSH ACCESO]
+Sistema: $OS_PRETTY
+User: $SSH_USER
+Pass: $SSH_PASS
+
+$INFO_DB"
+
+# --- GENERACIÓN DE JSON SEGURA ---
+# Usamos un script de Python embebido para garantizar JSON válido
+# y escribimos DIRECTAMENTE al archivo de estado, sin echos intermedios
+python3 -c "
+import json
+import sys
+
+data = {
+    'percent': 100, 
+    'message': '¡Plata Lista!', 
+    'status': 'completed', 
+    'ssh_cmd': sys.argv[1], 
+    'ssh_pass': sys.argv[2],
+    'os_info': sys.argv[3]
+}
+
+with open('$BUZON_STATUS', 'w') as f:
+    json.dump(data, f)
+" "$CMD_SSH" "$INFO_FINAL" "$OS_PRETTY"
 
 echo "✅ Despliegue Plata completado."

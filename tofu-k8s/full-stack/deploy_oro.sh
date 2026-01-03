@@ -2,7 +2,8 @@
 set -eE -o pipefail
 
 # ==========================================
-# DEPLOY ORO (REDHAT CACHÉ EXPRESS) - V18 (Con CNI Calico)
+# DEPLOY ORO (FULL STACK HA) - V19
+# RedHat/Alpine/Ubuntu + MySQL HA + Web
 # ==========================================
 
 LOG_FILE="/tmp/deploy_oro_debug.log"
@@ -29,8 +30,7 @@ DB_NAME_ARG=$4
 WEB_NAME_ARG=$5
 SUBDOMAIN_ARG=$6
 
-# --- GESTIÓN DE IDENTIDAD (NUEVO) ---
-# Recogemos la variable de entorno que manda el Orquestador
+# --- GESTIÓN DE IDENTIDAD ---
 OWNER_ID="${TF_VAR_owner_id:-admin}"
 
 # --- SANITIZACIÓN ---
@@ -40,14 +40,15 @@ DB_NAME="${DB_NAME_ARG:-sylo_db}"
 WEB_NAME="${WEB_NAME_ARG:-Sylo Web Cluster}"
 SUBDOMAIN="${SUBDOMAIN_ARG:-cliente$ORDER_ID}"
 
-# --- 2. SELECCIÓN DE IMAGEN ---
+# --- 2. SELECCIÓN DE IMAGEN WEB ---
+# Si es RedHat, usamos la imagen UBI. Si es Alpine, nginx:alpine. Si no, nginx standard.
 IMAGE_WEB="nginx:latest" 
 if [ "$OS_IMAGE_ARG" == "alpine" ]; then IMAGE_WEB="nginx:alpine"; fi
 if [ "$OS_IMAGE_ARG" == "redhat" ]; then IMAGE_WEB="registry.access.redhat.com/ubi8/nginx-120"; fi
 
 CLUSTER_NAME="sylo-cliente-$ORDER_ID"
 BUZON_STATUS="$PROJECT_ROOT/buzon-pedidos/status_$ORDER_ID.json"
-SSH_PASS=$(openssl rand -base64 12)
+SSH_PASS=$(openssl rand -hex 8) # Hexadecimal seguro
 
 update_status() {
     if [ -d "$(dirname "$BUZON_STATUS")" ]; then
@@ -58,18 +59,19 @@ update_status() {
 
 # --- INICIO ---
 echo "--- INICIO DEL LOG ORO ($ORDER_ID) ---" > "$LOG_FILE"
-echo "Params: Owner=$OWNER_ID | Image=$OS_IMAGE_ARG" >> "$LOG_FILE"
+echo "Params: Owner=$OWNER_ID | Image=$OS_IMAGE_ARG | WebImg=$IMAGE_WEB" >> "$LOG_FILE"
 update_status 0 "Iniciando Plan ORO (Imagen: $OS_IMAGE_ARG)..."
 
-# LIMPIEZA
-update_status 5 "Limpiando sistema..."
+# --- LIMPIEZA PROFUNDA (Evita errores de MySQL persistente) ---
+update_status 5 "Limpiando sistema y discos..."
 ZOMBIES=$(minikube profile list 2>/dev/null | grep "\-$ORDER_ID" | awk '{print $2}' || true)
 for ZOMBIE in $ZOMBIES; do
-    minikube delete -p "$ZOMBIE" >> "$LOG_FILE" 2>&1 || true
+    minikube delete -p "$ZOMBIE" --purge >> "$LOG_FILE" 2>&1 || true
 done
+docker volume prune -f >> "$LOG_FILE" 2>&1 || true
 
-# LEVANTAR CLUSTER (¡AHORA SEGURO!)
-update_status 15 "Arrancando Cluster Seguro..."
+# --- LEVANTAR CLUSTER ---
+update_status 15 "Arrancando Cluster High-Spec..."
 minikube start -p "$CLUSTER_NAME" \
     --driver=docker \
     --cni=calico \
@@ -78,11 +80,10 @@ minikube start -p "$CLUSTER_NAME" \
     --addons=default-storageclass,ingress,metrics-server \
     --force >> "$LOG_FILE" 2>&1
 
-# CARGA REDHAT (Si aplica)
+# CARGA REDHAT (Optimización)
 if [ "$OS_IMAGE_ARG" == "redhat" ]; then
-    update_status 30 "Inyectando imagen RedHat (Carga Rápida)..."
-    echo "Cargando imagen local en Minikube..." >> "$LOG_FILE"
-    minikube -p "$CLUSTER_NAME" image load registry.access.redhat.com/ubi8/nginx-120 >> "$LOG_FILE" 2>&1 || echo "Warning: No se pudo cargar imagen local" >> "$LOG_FILE"
+    update_status 30 "Pre-cargando RedHat UBI..."
+    minikube -p "$CLUSTER_NAME" image pull registry.access.redhat.com/ubi8/nginx-120 >> "$LOG_FILE" 2>&1 || true
 fi
 
 update_status 40 "Configurando Tofu..."
@@ -91,8 +92,8 @@ cd "$SCRIPT_DIR"
 rm -f terraform.tfstate*
 tofu init -upgrade >> "$LOG_FILE" 2>&1
 
-# DESPLIEGUE TOFU (AÑADIDO owner_id)
-update_status 50 "Aplicando infraestructura..."
+# --- DESPLIEGUE TOFU ---
+update_status 50 "Aplicando infraestructura Full Stack..."
 tofu apply -auto-approve \
     -var="cluster_name=$CLUSTER_NAME" \
     -var="ssh_password=$SSH_PASS" \
@@ -103,41 +104,61 @@ tofu apply -auto-approve \
     -var="subdomain=$SUBDOMAIN" \
     -var="owner_id=$OWNER_ID" >> "$LOG_FILE" 2>&1
 
-# ESPERA
+# --- ESPERA ---
 update_status 60 "Esperando arranque de servicios..."
-kubectl wait --for=condition=available deployment/nginx-ha --timeout=600s >> "$LOG_FILE" 2>&1
+kubectl wait --for=condition=available deployment/nginx-ha --timeout=300s >> "$LOG_FILE" 2>&1
 kubectl wait --for=condition=Ready pod/mysql-master-0 --timeout=300s >> "$LOG_FILE" 2>&1
 
-# DB HA
-update_status 75 "Configurando Base de Datos HA..."
-sleep 15
-MYSQL_CMD="mysql -h 127.0.0.1 -P 3306 --protocol=tcp -u root -ppassword_root"
-for i in {1..5}; do
-   kubectl exec mysql-master-0 -- $MYSQL_CMD -e "status" >> "$LOG_FILE" 2>&1 && break
+# --- DB HA SETUP (Con Respiro) ---
+update_status 75 "Inicializando Cluster MySQL..."
+sleep 30 # Respiro vital para que MySQL cree sus archivos
+
+# Comando de conexión (sin host para usar socket local)
+MYSQL_CMD="mysql -u root -ppassword_root"
+
+# Check de vida
+n=0
+until [ "$n" -ge 10 ]
+do
+   if kubectl exec mysql-master-0 -- mysqladmin -u root -ppassword_root ping >> "$LOG_FILE" 2>&1; then
+       break
+   fi
+   n=$((n+1)) 
+   echo "Waiting for MySQL... ($n/10)" >> "$LOG_FILE"
    sleep 5
 done
 
-kubectl exec mysql-master-0 -- $MYSQL_CMD -e "CREATE USER IF NOT EXISTS 'repl'@'%' IDENTIFIED WITH mysql_native_password BY 'repl'; GRANT REPLICATION SLAVE ON *.* TO 'repl'@'%'; FLUSH PRIVILEGES;" >> "$LOG_FILE" 2>&1
+# Configuración Replicación
+kubectl exec mysql-master-0 -- sh -c "$MYSQL_CMD -e \"CREATE USER IF NOT EXISTS 'repl'@'%' IDENTIFIED WITH mysql_native_password BY 'repl'; GRANT REPLICATION SLAVE ON *.* TO 'repl'@'%'; FLUSH PRIVILEGES;\"" >> "$LOG_FILE" 2>&1
 
-M_STATUS=$(kubectl exec mysql-master-0 -- $MYSQL_CMD -e "SHOW MASTER STATUS\G")
+M_STATUS=$(kubectl exec mysql-master-0 -- sh -c "$MYSQL_CMD -e 'SHOW MASTER STATUS\G'")
 FILE=$(echo "$M_STATUS" | grep "File:" | awk '{print $2}')
 POS=$(echo "$M_STATUS" | grep "Position:" | awk '{print $2}')
 
 if [ ! -z "$FILE" ]; then
-    kubectl exec mysql-slave-0 -- $MYSQL_CMD -e "STOP SLAVE; CHANGE MASTER TO MASTER_HOST='mysql-master.default.svc.cluster.local', MASTER_USER='repl', MASTER_PASSWORD='repl', MASTER_LOG_FILE='$FILE', MASTER_LOG_POS=$POS; START SLAVE;" >> "$LOG_FILE" 2>&1
+    kubectl exec mysql-slave-0 -- sh -c "$MYSQL_CMD -e \"STOP SLAVE; CHANGE MASTER TO MASTER_HOST='mysql-master.default.svc.cluster.local', MASTER_USER='repl', MASTER_PASSWORD='repl', MASTER_LOG_FILE='$FILE', MASTER_LOG_POS=$POS; START SLAVE;\"" >> "$LOG_FILE" 2>&1
 fi
 
-# FINAL
-update_status 90 "Generando accesos..."
+# --- FINAL ---
+update_status 90 "Generando reporte..."
 HOST_IP=$(minikube ip -p "$CLUSTER_NAME")
+# Capturamos puertos limpios
 WEB_PORT=$(tofu output -raw web_port 2>/dev/null || echo "80")
 SSH_PORT=$(tofu output -raw ssh_port 2>/dev/null || echo "2222")
 
+# Nombre bonito para la API
+OS_PRETTY="Linux Genérico"
+if [[ "$OS_IMAGE_ARG" == "alpine" ]]; then OS_PRETTY="Alpine Linux (Optimizado)"; fi
+if [[ "$OS_IMAGE_ARG" == "ubuntu" ]]; then OS_PRETTY="Ubuntu Server LTS"; fi
+if [[ "$OS_IMAGE_ARG" == "redhat" ]]; then OS_PRETTY="RedHat Enterprise (UBI)"; fi
+
 CMD_SSH="ssh $SSH_USER@$HOST_IP -p $SSH_PORT"
-INFO_TEXT="[PLAN ORO - REDHAT EDITION]
+URL_WEB="http://$SUBDOMAIN.sylobi.org"
+
+INFO_TEXT="[PLAN ORO - FULL STACK]
 -------------------------------------------
-Sistema: RedHat UBI 8 (Cargado desde Local)
-URL WEB: http://$SUBDOMAIN.sylobi.org
+Sistema: $OS_PRETTY
+URL WEB: $URL_WEB
 IP INTERNA: $HOST_IP:$WEB_PORT
 Owner ID: $OWNER_ID
 
@@ -147,15 +168,25 @@ Password: $SSH_PASS
 
 [BASE DE DATOS]
 DB Name: $DB_NAME
-Replica: ACTIVA"
+Replica: ACTIVA (Master/Slave)"
 
-JSON_STRING=$(python3 -c "import json, sys; print(json.dumps({
+# --- JSON GENERATION (PYTHON SAFE) ---
+python3 -c "
+import json
+import sys
+
+data = {
     'percent': 100, 
     'message': '¡Despliegue ORO Completado!', 
     'status': 'completed', 
     'ssh_cmd': sys.argv[1], 
-    'ssh_pass': sys.argv[2]
-}))" "$CMD_SSH" "$INFO_TEXT")
+    'ssh_pass': sys.argv[2],
+    'web_url': sys.argv[3],
+    'os_info': sys.argv[4]
+}
 
-echo "$JSON_STRING" > "$BUZON_STATUS"
+with open('$BUZON_STATUS', 'w') as f:
+    json.dump(data, f)
+" "$CMD_SSH" "$INFO_TEXT" "$URL_WEB" "$OS_PRETTY"
+
 echo -e "✅ Despliegue Oro completado."

@@ -88,9 +88,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     // LOGOUT
     if ($action === 'logout') { session_destroy(); echo json_encode(["status"=>"success"]); exit; }
 
-    // =========================================================
-    // 🚀 ACCIÓN COMPRAR (ACTUALIZADA V16 - SEGURIDAD)
-    // =========================================================
+    // COMPRAR
     if ($action === 'comprar') {
         if (!isset($_SESSION['user_id'])) { echo json_encode(["status"=>"auth_required","mensaje"=>"Inicia sesión."]); exit; }
         
@@ -107,7 +105,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $stmt->execute(['uid' => $_SESSION['user_id'], 'pid' => $pid]);
             $order_id = $conn->lastInsertId();
 
-            // INSERTAR ESPECIFICACIONES NUEVAS
             $sqlSpecs = "INSERT INTO order_specs 
                 (order_id, cpu_cores, ram_gb, storage_gb, db_enabled, db_type, web_enabled, web_type, 
                  cluster_alias, subdomain, ssh_user, os_image, db_custom_name, web_custom_name) 
@@ -131,15 +128,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 'webname' => $specs['web_custom_name']
             ]);
             
-            // 2. ORDEN A LA API (Con ID de Usuario REAL)
+            // 2. ORDEN A LA API
             $api_payload = [
                 "id_cliente" => (int)$order_id,
                 "plan" => $plan_name,
                 "cliente_nombre" => $_SESSION['username'],
                 "specs" => $specs,
-                
-                // 🔥🔥🔥 AQUÍ ESTÁ LA INYECCIÓN DE SEGURIDAD 🔥🔥🔥
-                // Pasamos el ID de la sesión PHP al JSON que va a Python
                 "id_usuario_real" => (string)$_SESSION['user_id']
             ];
 
@@ -304,8 +298,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         <h5 class="fw-bold text-muted">Bronce</h5>
                         <div class="price-tag my-3">5€<span class="fs-6 text-muted fw-normal">/mes</span></div>
                         <ul class="list-unstyled mb-4 small text-secondary">
-                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>1 Nodo K8s</li>
-                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>1 vCPU / 1 GB RAM</li> <li class="mb-2 text-muted"><i class="fas fa-times me-2"></i>Sin Persistencia</li>
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>1 Nodo K8s (Alpine)</li>
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>1 vCPU / 1 GB RAM</li> 
+                            <li class="mb-2 text-muted"><i class="fas fa-check text-success me-2"></i>Acceso SSH</li>
+                            <li class="mb-2 text-muted"><i class="fas fa-times me-2"></i>Sin Web ni DB</li>
                         </ul>
                         <button onclick="prepararPedido('Bronce')" class="btn btn-outline-dark w-100 rounded-pill fw-bold">Elegir Bronce</button>
                     </div>
@@ -316,7 +312,9 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         <div class="price-tag my-3">15€<span class="fs-6 text-muted fw-normal">/mes</span></div>
                         <ul class="list-unstyled mb-4 small text-secondary">
                             <li class="mb-2"><i class="fas fa-check text-success me-2"></i>MySQL Cluster HA</li>
-                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>2 vCPU / 2 GB RAM</li> <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Replicación Activa</li>
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>2 vCPU / 2 GB RAM</li> 
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Ubuntu o Alpine</li>
+                            <li class="mb-2 text-muted"><i class="fas fa-times me-2"></i>Sin Web</li>
                         </ul>
                         <button onclick="prepararPedido('Plata')" class="btn btn-primary w-100 rounded-pill fw-bold shadow-sm">Elegir Plata</button>
                     </div>
@@ -326,8 +324,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         <h5 class="fw-bold" style="color: #d4af37;">Oro</h5>
                         <div class="price-tag my-3">30€<span class="fs-6 text-muted fw-normal">/mes</span></div>
                         <ul class="list-unstyled mb-4 small text-secondary">
-                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i><strong>Full Stack HA</strong></li>
-                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>3 vCPU / 3 GB RAM</li> <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Soporte Prioritario</li>
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i><strong>Full Stack</strong></li>
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>3 vCPU / 3 GB RAM</li> 
+                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Alpine/Ubuntu/RedHat</li>
+                            <li class="mb-2"><i class="fas fa-globe text-success me-2"></i>Dominio Público</li>
                         </ul>
                         <button onclick="prepararPedido('Oro')" class="btn btn-dark w-100 rounded-pill fw-bold">Elegir Oro</button>
                     </div>
@@ -363,13 +363,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                             <label class="form-label fw-bold">Nombre del Cluster (Alias)</label>
                             <input type="text" id="cfg-alias" class="form-control rounded-pill bg-light border-0" placeholder="Ej: Mi Tienda Online">
                         </div>
-                        <div class="col-md-6 mb-3">
+                        
+                        <div class="col-md-6 mb-3" id="grp-subdomain">
                             <label class="form-label fw-bold">Subdominio (*.sylobi.org)</label>
                             <div class="input-group">
                                 <input type="text" id="cfg-subdomain" class="form-control rounded-start-pill bg-light border-0" placeholder="ej: mi-tienda" pattern="[a-z0-9-]+">
                                 <span class="input-group-text rounded-end-pill border-0 bg-white fw-bold">.sylobi.org</span>
                             </div>
                         </div>
+                        
                         <div class="col-md-6">
                             <label class="form-label fw-bold">Usuario SSH Admin</label>
                             <input type="text" id="cfg-ssh-user" class="form-control rounded-pill bg-light border-0" value="admin_sylo">
@@ -505,53 +507,86 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             const rangeCpu = document.getElementById('range-cpu');
             const rangeRam = document.getElementById('range-ram');
             const selStorage = document.getElementById('sel-storage');
-            const secResources = document.getElementById('section-resources'); // Contenedor de sliders
-            const secSoftware = document.getElementById('section-software'); // Contenedor de checks DB/Web
+            const secResources = document.getElementById('section-resources');
+            const secSoftware = document.getElementById('section-software');
             const secNames = document.getElementById('section-names');
             
             const selOS = document.getElementById('cfg-os');
             const grpDB = document.getElementById('grp-db-name');
             const grpWeb = document.getElementById('grp-web-name');
+            const grpSubdomain = document.getElementById('grp-subdomain');
 
-            // RESET
+            // 1. RESET (Habilitamos todo por defecto)
             secResources.style.opacity = "1";
             secResources.style.pointerEvents = "auto";
             secSoftware.style.display = "block";
             secNames.style.display = "none";
             grpDB.style.display = "none";
             grpWeb.style.display = "none";
+            grpSubdomain.style.display = 'none'; // Por defecto oculto en Bronce/Plata
+            
+            // OS Reset
             selOS.disabled = false;
             Array.from(selOS.options).forEach(o => o.disabled = false);
+            
+            // Toggles Reset
+            document.getElementById('check-db').disabled = false;
+            document.getElementById('check-web').disabled = false;
 
+            // ==========================================
             // LOGICA SEGUN PLAN
+            // ==========================================
             if (planName === 'Bronce') {
-                // Bloqueado a 1CPU/1RAM, Solo Alpine
+                // SOLO SSH, SOLO ALPINE
                 rangeCpu.value = 1; rangeRam.value = 1; selStorage.value = "5";
-                secResources.style.opacity = "0.5"; secResources.style.pointerEvents = "none"; // Bloquear sliders
+                secResources.style.opacity = "0.5"; secResources.style.pointerEvents = "none";
+                
                 selOS.value = "alpine"; selOS.disabled = true;
+                
+                // Forzamos apagado de DB y Web
+                document.getElementById('check-db').checked = false;
+                document.getElementById('check-web').checked = false;
+                secSoftware.style.display = 'none'; // No configurable
             } 
             else if (planName === 'Plata') {
-                // 2CPU/2RAM, Alpine/Ubuntu, DB OBLIGATORIA
+                // DB OBLIGATORIA (MySQL), NO WEB, ALPINE O UBUNTU
                 rangeCpu.value = 2; rangeRam.value = 2; selStorage.value = "25";
                 secResources.style.opacity = "0.5"; secResources.style.pointerEvents = "none";
+                
                 secNames.style.display = "block";
-                grpDB.style.display = "block";
+                grpDB.style.display = "block"; // Nombre DB visible
+                grpWeb.style.display = "none";
+                
                 selOS.value = "ubuntu";
-                selOS.querySelector('option[value="redhat"]').disabled = true;
+                selOS.querySelector('option[value="redhat"]').disabled = true; // Bloqueado RedHat
+                
+                // Forzamos DB ON y Web OFF
+                document.getElementById('check-db').checked = true;
+                document.getElementById('check-web').checked = false;
+                secSoftware.style.display = 'none'; // No se puede cambiar
             }
             else if (planName === 'Oro') {
-                // 3CPU/3RAM, Todo desbloqueado en OS, DB+WEB obligatorios
+                // TODO INCLUIDO (Web + DB), TODO OS PERMITIDO
                 rangeCpu.value = 3; rangeRam.value = 3; selStorage.value = "50";
                 secResources.style.opacity = "0.5"; secResources.style.pointerEvents = "none";
+                
                 secNames.style.display = "block";
                 grpDB.style.display = "block";
                 grpWeb.style.display = "block";
+                grpSubdomain.style.display = 'block'; // DOMINIO VISIBLE
+                
                 selOS.value = "ubuntu";
+                
+                // Forzamos DB y Web ON
+                document.getElementById('check-db').checked = true;
+                document.getElementById('check-web').checked = true;
+                secSoftware.style.display = 'none'; // No se puede quitar nada
             }
             else if (planName === 'Personalizado') {
                 // TODO LIBRE
                 secNames.style.display = "block";
-                toggleInputs(); // Chequear qué mostrar según los checks
+                grpSubdomain.style.display = 'block'; // DOMINIO VISIBLE
+                toggleInputs();
             }
 
             updateVal('cpu'); updateVal('ram');
@@ -568,7 +603,13 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         async function lanzarPedido() {
             const alias = document.getElementById('cfg-alias').value;
-            const sub = document.getElementById('cfg-subdomain').value;
+            let sub = document.getElementById('cfg-subdomain').value;
+            
+            // Si es Bronce o Plata, el dominio está oculto, generamos uno dummy para que no falle validación
+            if (document.getElementById('grp-subdomain').style.display === 'none') {
+                sub = "interno-" + Math.floor(Math.random() * 100000);
+            }
+
             if(!alias || !sub) { alert("Alias y Subdominio obligatorios"); return; }
 
             // Recopilar datos
@@ -587,12 +628,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 ram: parseInt(document.getElementById('range-ram').value),
                 storage: parseInt(document.getElementById('sel-storage').value),
                 
-                // Software Toggles (Forzados si es plan fijo, leídos si es custom)
+                // Software Toggles (Lógica ajustada)
                 db_enabled: currentPlan==='Plata'||currentPlan==='Oro'||(currentPlan==='Personalizado' && document.getElementById('check-db').checked),
                 web_enabled: currentPlan==='Oro'||(currentPlan==='Personalizado' && document.getElementById('check-web').checked),
                 
-                // Tipos (Leídos del select)
-                db_type: document.getElementById('sel-db-type').value,
+                // Tipos (Leídos del select, aunque estén ocultos se leen los defaults)
+                db_type: document.getElementById('sel-db-type').value, // Plata usará el default (mysql)
                 web_type: document.getElementById('sel-web-type').value
             };
 
@@ -629,24 +670,17 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                         num.innerText = s.percent + "%";
                     }
 
-                    // CAMBIO CLAVE: Verificamos que ssh_cmd y ssh_pass existan y tengan longitud
                     if (s.status === 'completed' && s.ssh_cmd && s.ssh_pass) { 
                         clearInterval(int); 
                         progressModal.hide(); 
-                        
-                        // Actualizamos el contenido
                         sshCmd.innerText = s.ssh_cmd;
                         sshPass.innerText = s.ssh_pass;
-                        
                         successModal.show(); 
-                    } else if (s.status === 'completed' && (!s.ssh_cmd || !s.ssh_pass)) {
-                        // Si está completed pero faltan datos, esperamos un ciclo más
-                        console.log("Esperando datos finales...");
-                    }
+                    } 
                     
                     if (s.status === 'error') { 
                         clearInterval(int); 
-                        alert("Error crítico en el despliegue del Plan Oro"); 
+                        alert("Error crítico en el despliegue"); 
                         progressModal.hide(); 
                     }
                 } catch (e) {
@@ -662,7 +696,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             if(d.status==='success') location.reload(); else document.getElementById('authMessage').innerText=d.mensaje;
         }
         async function handleRegister() {
-            // Registro simplificado para demo
             const r=await fetch('index.php',{method:'POST',body:JSON.stringify({action:'register', username:document.getElementById('reg_user').value, full_name:document.getElementById('reg_name').value, email:document.getElementById('reg_email').value, password:document.getElementById('reg_pass').value})});
             const d=await r.json(); if(d.status==='success') location.reload(); else document.getElementById('authMessage').innerText=d.mensaje;
         }

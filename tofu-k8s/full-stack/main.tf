@@ -56,15 +56,15 @@ variable "subdomain" {
   default     = "demo"
 }
 
-# --- VARIABLE DE SEGURIDAD ---
 variable "owner_id" {
-  description = "ID del usuario propietario (para aislamiento)"
+  description = "ID del usuario propietario"
   type        = string
   default     = "admin"
 }
 
-# --- LÓGICA DE PUERTOS Y DETECCIÓN REDHAT ---
+# --- LÓGICA REDHAT ---
 locals {
+  # Las imágenes RedHat UBI suelen exponer el puerto 8080 en lugar del 80
   is_redhat = can(regex("(ubi|rhel|redhat)", var.image_web))
   web_port  = local.is_redhat ? 8080 : 80
 }
@@ -148,6 +148,12 @@ resource "kubernetes_stateful_set_v1" "mysql_master" {
             container_port = 3306
           }
           
+          readiness_probe {
+            exec { command = ["mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppassword_root"] }
+            initial_delay_seconds = 20 
+            period_seconds        = 5
+          }
+
           args = [
             "--server-id=1", 
             "--log-bin=mysql-bin", 
@@ -204,13 +210,15 @@ resource "kubernetes_stateful_set_v1" "mysql_slave" {
             name  = "MYSQL_ROOT_PASSWORD"
             value = "password_root"
           }
-          env {
-            name  = "MYSQL_DATABASE"
-            value = var.db_name
-          }
           
           port {
             container_port = 3306
+          }
+          
+          readiness_probe {
+            exec { command = ["mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppassword_root"] }
+            initial_delay_seconds = 20 
+            period_seconds        = 5
           }
           
           args = [
@@ -238,14 +246,14 @@ resource "kubernetes_config_map_v1" "web_content" {
       <!DOCTYPE html>
       <html lang="es">
       <head><title>${var.subdomain} - Sylo Oro</title></head>
-      <body style="text-align:center; padding:50px; font-family: sans-serif;">
-        <h1>🥇 Plan ORO Activo</h1>
+      <body style="text-align:center; padding:50px; font-family: sans-serif; background: #f0f9ff;">
+        <h1 style="color:#d4af37;">🥇 Plan ORO Activo</h1>
         <h2>${var.web_custom_name}</h2>
         <p>Dominio: <b>${var.subdomain}.sylobi.org</b></p>
         <hr>
-        <p>Base de Datos: ${var.db_name}</p>
+        <p>Base de Datos: <b>${var.db_name}</b> (HA Cluster)</p>
         <p>Imagen Base: ${var.image_web}</p>
-        <p>Puerto Interno: ${local.web_port}</p>
+        <p>Puerto Interno Container: ${local.web_port}</p>
         <p><small>Owner ID: ${var.owner_id}</small></p>
       </body>
       </html>
@@ -254,11 +262,6 @@ resource "kubernetes_config_map_v1" "web_content" {
 }
 
 resource "kubernetes_deployment_v1" "web_ha" {
-  timeouts {
-    create = "15m"
-    update = "15m"
-  }
-
   metadata {
     name = "nginx-ha"
     labels = {
@@ -287,6 +290,7 @@ resource "kubernetes_deployment_v1" "web_ha" {
           
           image_pull_policy = "IfNotPresent"
           
+          # Si es RedHat, usamos el comando específico de S2I
           command = local.is_redhat ? ["/usr/libexec/s2i/run"] : null
           
           port {
@@ -313,6 +317,7 @@ resource "kubernetes_deployment_v1" "web_ha" {
 
           volume_mount {
             name       = "html-volume"
+            # Ruta cambia según la imagen (RedHat usa /opt/app-root/src)
             mount_path = local.is_redhat ? "/opt/app-root/src" : "/usr/share/nginx/html"
           }
         }
@@ -395,13 +400,16 @@ resource "kubernetes_deployment_v1" "ssh_server" {
             name  = "USER_NAME"
             value = var.ssh_user
           }
+          env {
+            name  = "SUDO_ACCESS"
+            value = "true"
+          }
         }
       }
     }
   }
 }
 
-# --- 🔥 AQUÍ ESTABA EL ERROR CORREGIDO 🔥 ---
 resource "kubernetes_service_v1" "ssh_server_service" {
   metadata {
     name = "ssh-server-service"
@@ -410,7 +418,6 @@ resource "kubernetes_service_v1" "ssh_server_service" {
     }
   }
   spec {
-    # Antes faltaba el "=" aquí abajo
     selector = {
       app = "ssh-server"
     }
@@ -423,9 +430,8 @@ resource "kubernetes_service_v1" "ssh_server_service" {
 }
 
 # ==========================================
-# 4. SEGURIDAD (NETWORK POLICY V1)
+# 4. SEGURIDAD (CORREGIDA)
 # ==========================================
-# Actualizado a _v1 para evitar warnings
 resource "kubernetes_network_policy_v1" "aislamiento_oro" {
   metadata {
     name = "aislamiento-oro"
@@ -436,8 +442,8 @@ resource "kubernetes_network_policy_v1" "aislamiento_oro" {
 
     policy_types = ["Ingress"]
 
+    # REGLA 1: Tráfico interno (mismo owner)
     ingress {
-      # REGLA 1: Tráfico interno permitido (mismo owner)
       from {
         pod_selector {
           match_labels = {
@@ -445,16 +451,22 @@ resource "kubernetes_network_policy_v1" "aislamiento_oro" {
           }
         }
       }
+    }
       
-      # REGLA 2: Web Pública
-      ports {
-        port     = local.web_port
-        protocol = "TCP"
+    # REGLA 2: Acceso Externo (SSH y Web)
+    # ⚠️ FIX: Bloque limpio, sin anidar ingress dentro de ingress
+    ingress {
+      from {
+        ip_block {
+          cidr = "0.0.0.0/0"
+        }
       }
-      
-      # REGLA 3: SSH
       ports {
         port     = 2222
+        protocol = "TCP"
+      }
+      ports {
+        port     = local.web_port # 80 o 8080
         protocol = "TCP"
       }
     }

@@ -8,45 +8,48 @@ from typing import Optional, List
 
 router = APIRouter()
 
+# Rutas relativas para encontrar el buzón
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) 
 BUZON_PEDIDOS = os.path.join(os.path.dirname(BASE_DIR), "buzon-pedidos")
 if not os.path.exists(BUZON_PEDIDOS): os.makedirs(BUZON_PEDIDOS, exist_ok=True)
 
-# --- MODELOS DE DATOS (ACTUALIZADOS) ---
+# ==========================================
+# MODELOS DE DATOS (ACTUALIZADOS V21)
+# ==========================================
 
-# 1. Modelo estricto para las especificaciones del cluster
+# 1. Especificaciones del Cluster (Lo que viene del Frontend)
 class EspecificacionesCluster(BaseModel):
     # Recursos Hardware
     cpu: int = 1
     ram: int = 1
     storage: int = 10
+    
+    # Toggles de Software
     db_enabled: bool = False
     db_type: str = "mysql"
     web_enabled: bool = False
     web_type: str = "nginx"
     
-    # Personalización del Cliente
+    # Personalización e Identidad
     cluster_alias: str = "Mi Cluster Sylo"
-    cluster_description: Optional[str] = ""
     subdomain: str 
     ssh_user: str = "admin_sylo"
-    os_image: str = "ubuntu"
+    os_image: str = "ubuntu" # 'alpine', 'ubuntu', 'redhat'
     
     # Nombres Personalizados
     db_custom_name: Optional[str] = None
     web_custom_name: Optional[str] = None
 
-# 2. Orden de Creación actualizada
+# 2. Orden de Creación (Pedido Completo)
 class OrdenCreacion(BaseModel):
     id_cliente: int
     plan: str
     cliente_nombre: str = "cliente_api"
     specs: EspecificacionesCluster
-    
-    # 🔥 CAMBIO DE SEGURIDAD: ACEPTAR ID DE USUARIO 🔥
-    # Si el frontend no lo manda, ponemos "admin" o "1" por defecto
+    # ID del usuario dueño (Crítico para seguridad/aislamiento)
     id_usuario_real: str = "admin" 
 
+# 3. Acciones sobre el cluster (Backups, etc)
 class OrdenAccion(BaseModel):
     id_cliente: int
     accion: str
@@ -56,11 +59,14 @@ class OrdenAccion(BaseModel):
     html_content: Optional[str] = "" 
     filename_to_delete: Optional[str] = ""
 
+# 4. Reporte de Métricas y Estado Final (Lo que envían los scripts)
 class ReporteMetrica(BaseModel):
     id_cliente: int
     metrics: dict
     ssh_cmd: str = ""
     web_url: str = ""
+    # 🔥 CAMBIO VITAL: Campo nuevo para recibir el nombre bonito del OS
+    os_info: Optional[str] = "Linux Genérico"
 
 class ReporteProgreso(BaseModel):
     id_cliente: int
@@ -82,7 +88,9 @@ class OrdenIA(BaseModel):
     mensaje: str
     contexto_plan: dict = {}
 
-# --- HELPER GUARDADO SEGURO ---
+# ==========================================
+# HELPERS (Gestión de Archivos)
+# ==========================================
 def guardar_json(nombre, data):
     try:
         ruta = os.path.join(BUZON_PEDIDOS, nombre)
@@ -97,26 +105,24 @@ def guardar_html(nombre, contenido):
         os.chmod(ruta, 0o666)
     except Exception as e: print(f"❌ Error escritura HTML: {e}", flush=True)
 
-# --- ENDPOINTS ---
+# ==========================================
+# ENDPOINTS
+# ==========================================
 
 @router.post("/crear")
 async def solicitar_creacion(datos: OrdenCreacion):
-    # Convertimos el objeto Pydantic a diccionario para guardarlo
+    # Serializamos la orden a JSON para que el Orquestador la lea
     payload = {
         "id": datos.id_cliente, 
         "plan": datos.plan, 
         "cliente": datos.cliente_nombre, 
         "specs": datos.specs.dict(),
         "timestamp": time.time(),
-        
-        # 🔥 GUARDAMOS EL ID EN EL JSON PARA EL ORQUESTADOR 🔥
         "id_usuario_real": datos.id_usuario_real
     }
     guardar_json(f"orden_{datos.id_cliente}.json", payload)
     
-    # Log visual para que sepas que está funcionando
-    print(f"📨 [API] Pedido recibido. Usuario Dueño: {datos.id_usuario_real}", flush=True)
-    
+    print(f"📨 [API] Nuevo Pedido Recibido. Plan: {datos.plan} | Dueño: {datos.id_usuario_real}", flush=True)
     return {"status": "OK", "msg": "Orden validada y encolada"}
 
 @router.post("/accion")
@@ -132,7 +138,14 @@ async def solicitar_accion(datos: OrdenAccion):
 
 @router.post("/reportar/metricas")
 async def recibir_metricas(datos: ReporteMetrica):
-    payload = {"metrics": datos.metrics, "ssh_cmd": datos.ssh_cmd, "web_url": datos.web_url, "last_update": time.time()}
+    # Guardamos el estado final que envía el script bash/python
+    payload = {
+        "metrics": datos.metrics, 
+        "ssh_cmd": datos.ssh_cmd, 
+        "web_url": datos.web_url, 
+        "os_info": datos.os_info, # Guardamos el OS bonito
+        "last_update": time.time()
+    }
     guardar_json(f"status_{datos.id_cliente}.json", payload)
     return {"status": "recibido"}
 
@@ -158,25 +171,31 @@ async def recibir_lista_backups(datos: ReporteListaBackups):
 
 @router.get("/estado/{id_cliente}")
 async def leer_estado(id_cliente: int):
+    # Estado base por si no hay archivos aún
     data = {
         "metrics": {"cpu":0, "ram":0}, 
         "ssh_cmd": "Cargando...", 
-        "web_url": "", 
+        "web_url": "",
+        "os_info": "Pendiente...", # Default 
         "backups_list": [], 
         "backup_progress": None, 
         "web_progress": None,
         "html_source": "" 
     }
     
+    # Leemos todos los JSONs generados por los workers
     try:
         with open(os.path.join(BUZON_PEDIDOS, f"status_{id_cliente}.json"), 'r') as f: data.update(json.load(f))
     except: pass
+    
     try:
         with open(os.path.join(BUZON_PEDIDOS, f"backups_list_{id_cliente}.json"), 'r') as f: data["backups_list"] = json.load(f)
     except: pass
+    
     try:
         with open(os.path.join(BUZON_PEDIDOS, f"backup_status_{id_cliente}.json"), 'r') as f: data["backup_progress"] = json.load(f)
     except: pass
+    
     try:
         with open(os.path.join(BUZON_PEDIDOS, f"web_status_{id_cliente}.json"), 'r') as f: data["web_progress"] = json.load(f)
     except: pass
@@ -194,15 +213,17 @@ async def solicitar_ia(datos: OrdenIA):
     req_id = f"req_{datos.id_cliente}_{int(time.time())}"
     guardar_json(f"chat_request_{req_id}.json", {"msg": datos.mensaje, "context_plan": datos.contexto_plan, "timestamp": time.time()})
     return {"status": "OK", "req_id": req_id}
-ar
+
 @router.get("/chat/leer/{id_cliente}")
 async def leer_respuesta_ia(id_cliente: int):
     patron = os.path.join(BUZON_PEDIDOS, f"chat_response_*{id_cliente}*.json")
     archivos = glob.glob(patron)
     if archivos:
         try:
+            # Ordenamos por fecha para leer el último
+            archivos.sort(key=os.path.getmtime, reverse=True)
             with open(archivos[0], 'r') as f: data = json.load(f)
-            os.remove(archivos[0])
+            os.remove(archivos[0]) # Lo borramos tras leer para no repetir
             return data
         except: pass
     return {"reply": None}

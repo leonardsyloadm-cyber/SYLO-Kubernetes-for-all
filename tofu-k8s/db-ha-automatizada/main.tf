@@ -11,70 +11,79 @@ provider "kubernetes" {
   config_context = var.nombre
 }
 
-# --- VARIABLES ---
-variable "nombre" { type = string }
-variable "ssh_password" { type = string; sensitive = true }
-variable "ssh_user" { type = string; default = "cliente" }
-variable "db_name" { type = string; default = "sylo_db" }
+# ==========================================
+# VARIABLES (SINTAXIS CORREGIDA)
+# ==========================================
 
-# NUEVA VARIABLE DE SEGURIDAD
+variable "nombre" {
+  type = string
+}
+
+variable "ssh_password" {
+  type      = string
+  sensitive = true
+}
+
+variable "ssh_user" {
+  type    = string
+  default = "cliente"
+}
+
+variable "db_name" {
+  type    = string
+  default = "sylo_db"
+}
+
 variable "owner_id" {
-  description = "ID del usuario propietario (para aislamiento)"
+  description = "ID del usuario propietario"
   type        = string
   default     = "admin"
 }
 
-# ==========================================
-# 1. MAESTRO MYSQL
-# ==========================================
-resource "kubernetes_config_map_v1" "mysql_master_config" {
-  metadata { name = "mysql-master-config" }
-  data = {
-    "my.cnf" = <<-EOF
-      [mysqld]
-      server-id = 1
-      log_bin = /var/lib/mysql/mysql-bin.log
-      binlog_format = ROW
-      default_authentication_plugin=mysql_native_password
-    EOF
-  }
+variable "os_image" {
+  description = "ubuntu o alpine"
+  type        = string
+  default     = "ubuntu"
 }
 
-resource "kubernetes_service_v1" "mysql_master" {
-  metadata { 
-    name = "mysql-master"
-    labels = { owner = var.owner_id } # <--- ETIQUETA
-  }
-  spec {
-    selector = { app = "mysql-master" }
-    port {
-      port        = 3306
-      target_port = 3306
+# ==========================================
+# LÓGICA DE PUERTOS Y OS
+# ==========================================
+locals {
+  # Si es Alpine, usamos linuxserver (puerto 2222)
+  # Si es Ubuntu, usamos rastasheep (puerto 22)
+  is_alpine = var.os_image == "alpine"
+  
+  ssh_image = local.is_alpine ? "lscr.io/linuxserver/openssh-server:latest" : "rastasheep/ubuntu-sshd:18.04"
+  ssh_port  = local.is_alpine ? 2222 : 22
+}
+
+# ==========================================
+# 1. SERVIDOR MYSQL (SIMPLE - NO HA)
+# ==========================================
+resource "kubernetes_deployment_v1" "mysql" {
+  metadata {
+    name = "mysql-server"
+    labels = {
+      app   = "mysql"
+      owner = var.owner_id
     }
-    type = "ClusterIP"
   }
-}
 
-resource "kubernetes_stateful_set_v1" "mysql_master" {
-  metadata { 
-    name = "mysql-master" 
-    labels = { owner = var.owner_id } # <--- ETIQUETA
-  }
   spec {
-    service_name = "mysql-master"
-    replicas     = 1
-    selector { match_labels = { app = "mysql-master" } }
+    replicas = 1
+    selector {
+      match_labels = { app = "mysql" }
+    }
     template {
-      metadata { 
-        labels = { 
-          app = "mysql-master" 
-          owner = var.owner_id # <--- ETIQUETA POD
-        } 
+      metadata {
+        labels = { app = "mysql", owner = var.owner_id }
       }
       spec {
         container {
           name  = "mysql"
           image = "mysql:8.0"
+          
           env {
             name  = "MYSQL_ROOT_PASSWORD"
             value = "password_root"
@@ -83,155 +92,67 @@ resource "kubernetes_stateful_set_v1" "mysql_master" {
             name  = "MYSQL_DATABASE"
             value = var.db_name
           }
-          env {
-            name  = "MYSQL_USER"
-            value = "kylo_user"
+
+          port {
+            container_port = 3306
           }
-          env {
-            name  = "MYSQL_PASSWORD"
-            value = "kylo_password"
-          }
-          port { container_port = 3306 }
+
           readiness_probe {
-            exec { command = ["mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppassword_root"] }
-            initial_delay_seconds = 5
-            period_seconds        = 2
-          }
-          volume_mount {
-            name       = "mysql-data"
-            mount_path = "/var/lib/mysql"
-          }
-          volume_mount {
-            name       = "config"
-            mount_path = "/etc/mysql/conf.d"
+            tcp_socket { port = 3306 }
+            initial_delay_seconds = 15
+            period_seconds        = 5
           }
         }
-        volume {
-          name = "config"
-          config_map { name = "mysql-master-config" }
-        }
-      }
-    }
-    volume_claim_template {
-      metadata { name = "mysql-data" }
-      spec {
-        access_modes = ["ReadWriteOnce"]
-        resources { requests = { storage = "1Gi" } }
       }
     }
   }
 }
 
-# ==========================================
-# 2. ESCLAVO MYSQL
-# ==========================================
-resource "kubernetes_config_map_v1" "mysql_slave_config" {
-  metadata { name = "mysql-slave-config" }
-  data = {
-    "my.cnf" = <<-EOF
-      [mysqld]
-      server-id = 2
-      relay-log = /var/lib/mysql/mysql-relay-bin.log
-      default_authentication_plugin=mysql_native_password
-    EOF
-  }
-}
-
-resource "kubernetes_service_v1" "mysql_slave" {
-  metadata { 
-    name = "mysql-slave"
-    labels = { owner = var.owner_id } # <--- ETIQUETA
+resource "kubernetes_service_v1" "mysql_service" {
+  metadata {
+    name = "mysql-service"
+    labels = { owner = var.owner_id }
   }
   spec {
-    selector = { app = "mysql-slave" }
+    selector = { app = "mysql" }
+    type = "NodePort"
     port {
       port        = 3306
       target_port = 3306
     }
-    type = "ClusterIP"
-  }
-}
-
-resource "kubernetes_stateful_set_v1" "mysql_slave" {
-  metadata { 
-    name = "mysql-slave"
-    labels = { owner = var.owner_id } # <--- ETIQUETA
-  }
-  spec {
-    service_name = "mysql-slave"
-    replicas     = 1
-    selector { match_labels = { app = "mysql-slave" } }
-    template {
-      metadata { 
-        labels = { 
-          app = "mysql-slave" 
-          owner = var.owner_id # <--- ETIQUETA POD
-        } 
-      }
-      spec {
-        container {
-          name  = "mysql"
-          image = "mysql:8.0"
-          env {
-            name  = "MYSQL_ROOT_PASSWORD"
-            value = "password_root"
-          }
-          port { container_port = 3306 }
-          readiness_probe {
-            exec { command = ["mysqladmin", "ping", "-h", "localhost", "-u", "root", "-ppassword_root"] }
-            initial_delay_seconds = 5
-            period_seconds        = 2
-          }
-          volume_mount {
-            name       = "mysql-data"
-            mount_path = "/var/lib/mysql"
-          }
-          volume_mount {
-            name       = "config"
-            mount_path = "/etc/mysql/conf.d"
-          }
-        }
-        volume {
-          name = "config"
-          config_map { name = "mysql-slave-config" }
-        }
-      }
-    }
-    volume_claim_template {
-      metadata { name = "mysql-data" }
-      spec {
-        access_modes = ["ReadWriteOnce"]
-        resources { requests = { storage = "1Gi" } }
-      }
-    }
   }
 }
 
 # ==========================================
-# 3. SERVIDOR SSH (BASTIÓN)
+# 2. SERVIDOR SSH (ADAPTATIVO)
 # ==========================================
 resource "kubernetes_deployment_v1" "ssh_box" {
-  metadata { 
-    name = "ssh-server" 
-    labels = { owner = var.owner_id } # <--- ETIQUETA
+  metadata {
+    name = "ssh-server"
+    labels = {
+      app   = "ssh"
+      owner = var.owner_id
+    }
   }
+
   spec {
     replicas = 1
-    selector { match_labels = { app = "ssh" } }
+    selector {
+      match_labels = { app = "ssh" }
+    }
     template {
-      metadata { 
-        labels = { 
-          app = "ssh" 
-          owner = var.owner_id # <--- ETIQUETA POD
-        } 
+      metadata {
+        labels = { app = "ssh", owner = var.owner_id }
       }
       spec {
         container {
-          name  = "ubuntu"
-          image = "lscr.io/linuxserver/openssh-server:latest"
+          name  = "os-container"
+          image = local.ssh_image
+
+          # Variables universales (funcionan en Alpine, ignoradas en Ubuntu básico)
           env {
             name  = "USER_NAME"
-            value = var.ssh_user 
+            value = var.ssh_user
           }
           env {
             name  = "USER_PASSWORD"
@@ -245,7 +166,11 @@ resource "kubernetes_deployment_v1" "ssh_box" {
             name  = "SUDO_ACCESS"
             value = "true"
           }
-          port { container_port = 2222 }
+
+          # Usamos el puerto calculado dinámicamente
+          port {
+            container_port = local.ssh_port
+          }
         }
       }
     }
@@ -253,52 +178,51 @@ resource "kubernetes_deployment_v1" "ssh_box" {
 }
 
 resource "kubernetes_service_v1" "ssh_service" {
-  metadata { 
+  metadata {
     name = "ssh-access"
-    labels = { owner = var.owner_id } # <--- ETIQUETA
+    labels = { owner = var.owner_id }
   }
   spec {
     selector = { app = "ssh" }
     type = "NodePort"
+    
     port {
       port        = 22
-      target_port = 2222
+      # Aquí está la magia: apunta al puerto correcto según el OS
+      target_port = local.ssh_port
     }
   }
 }
 
 # ==========================================
-# 4. SEGURIDAD (NETWORK POLICY)
+# 3. SEGURIDAD (ABIERTA PARA PRUEBAS)
 # ==========================================
-resource "kubernetes_network_policy" "aislamiento_plata" {
+resource "kubernetes_network_policy_v1" "aislamiento_plata" {
   metadata {
     name = "aislamiento-plata"
   }
-
   spec {
-    pod_selector {} # Aplica a todos
-
+    pod_selector {} 
     policy_types = ["Ingress"]
-
+    
+    # 1. Tráfico Interno
     ingress {
-      # REGLA: Tráfico interno permitido solo si tienes el mismo owner
-      # (Esto permite que el Maestro y el Esclavo se hablen)
       from {
         pod_selector {
-          match_labels = {
-            owner = var.owner_id
-          }
+          match_labels = { owner = var.owner_id }
         }
       }
-      
-      # REGLA: Permitir SSH desde fuera
+    }
+
+    # 2. Acceso Externo (SSH y DB)
+    ingress {
+      from {
+        ip_block { cidr = "0.0.0.0/0" }
+      }
       ports {
-        port     = 2222
+        port     = local.ssh_port
         protocol = "TCP"
       }
-      
-      # REGLA: Permitir MySQL (3306) SOLO si viene del mismo owner
-      # (Ya cubierto arriba, pero para claridad)
       ports {
         port     = 3306
         protocol = "TCP"
@@ -307,6 +231,13 @@ resource "kubernetes_network_policy" "aislamiento_plata" {
   }
 }
 
+# ==========================================
+# OUTPUTS
+# ==========================================
 output "ssh_port" {
   value = kubernetes_service_v1.ssh_service.spec[0].port[0].node_port
+}
+
+output "db_port" {
+  value = kubernetes_service_v1.mysql_service.spec[0].port[0].node_port
 }

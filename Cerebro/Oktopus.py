@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+# ==============================================================================
+#  🐙 OKTOPUS ENTERPRISE MANAGER - V23 (DNS SUDO ENABLED)
+#  Control Central: API, Workers y DNS (Privileged)
+# ==============================================================================
+
 import sys
 import os
 import subprocess
@@ -29,7 +34,7 @@ def install_dependencies():
     except ImportError:
         print("⚙️ [BOOT] Instalando librerías faltantes...")
         subprocess.check_call([sys.executable, "-m", "pip", "install"] + required)
-        print("✅ [BOOT] Dependencias instaladas. Reiniciando...")
+        print("✅ [BOOT] Dependencias instaladas. Reiniciando Oktopus...")
         os.execv(sys.executable, [sys.executable] + sys.argv)
 
 install_dependencies()
@@ -39,41 +44,38 @@ import customtkinter as ctk
 import psutil
 import requests
 from tkinter import messagebox
-import tkinter as tk # Para fuentes
+import tkinter as tk 
 
 # --- CONFIGURACIÓN ---
 WORKER_DIR = os.path.join(BASE_DIR, "worker")
 BUZON_DIR = os.path.join(BASE_DIR, "buzon-pedidos")
 LOGO_PATH = os.path.join(CURRENT_DIR, "Logo.png")
-API_URL = "http://192.168.1.135:8001/api/clientes"
+API_URL = "http://127.0.0.1:8001/api/clientes"
 
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("dark-blue")
 
 # --- PALETA DE COLORES "NEON GENESIS" ---
-C_BG_MAIN = "#050a14"      # Fondo ultra oscuro
-C_BG_SIDEBAR = "#0a1120"   # Barra lateral
-C_BG_CARD = "#131c31"      # Tarjetas
-C_BG_CARD_HOVER = "#1c2a45" # Hover
-C_ACCENT_CYAN = "#06b6d4"  # Cian neón
-C_ACCENT_BLUE = "#3b82f6"  # Azul eléctrico
-C_ACCENT_PURPLE = "#a855f7" # Púrpura
-C_SUCCESS = "#10b981"      # Verde
-C_WARNING = "#f59e0b"      # Naranja
-C_DANGER = "#ef4444"       # Rojo
+C_BG_MAIN = "#050a14"      
+C_BG_SIDEBAR = "#0a1120"   
+C_BG_CARD = "#131c31"      
+C_BG_CARD_HOVER = "#1c2a45" 
+C_ACCENT_CYAN = "#06b6d4"  
+C_ACCENT_BLUE = "#3b82f6"  
+C_ACCENT_PURPLE = "#a855f7" 
+C_SUCCESS = "#10b981"      
+C_WARNING = "#f59e0b"      
+C_DANGER = "#ef4444"       
 C_TEXT_WHITE = "#f8fafc"
 C_TEXT_MUTED = "#94a3b8"
-C_BORDER_GLOW = "#1e3a8a"  # Borde brillante
+C_BORDER_GLOW = "#1e3a8a"  
 
-# Colores de Consola (Matrix Style)
 C_CONSOLE_BG = "#000000"
-C_API_TXT = "#00ffff"     # Cian para API
-C_SYS_TXT = "#00ff00"     # Verde para Sistema
+C_API_TXT = "#00ffff"     
+C_SYS_TXT = "#00ff00"     
 
 # --- FUENTES ---
-# Intentamos usar fuentes modernas si están disponibles
 try:
-    # Truco sucio para no abrir ventana extra: asumir fuentes estándar si falla
     FONT_HEAD = ("Montserrat", 22, "bold")
     FONT_SUBHEAD = ("Roboto", 14, "bold")
     FONT_BODY = ("Roboto", 12)
@@ -183,7 +185,7 @@ class DatabaseManager(ctk.CTkToplevel):
 class OktopusApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Sylo Enterprise Control Center v20.0 (Neon Edition)")
+        self.title("🐙 Oktopus Enterprise - Master Control (SUDO ENABLED)")
         self.geometry("1600x950")
         self.configure(fg_color=C_BG_MAIN)
         self.running = True
@@ -207,8 +209,6 @@ class OktopusApp(ctk.CTk):
             if self.api_process: return
             script = os.path.join(CURRENT_DIR, "api_sylo.py")
             self.api_log_file = open("/tmp/sylo_api.log", "w")
-            # --- AQUÍ ESTÁ LA MAGIA DE LOS LOGS ---
-            # Usamos -u para unbuffered output, CRÍTICO para ver logs en tiempo real
             self.api_process = subprocess.Popen(
                 [sys.executable, "-u", script], 
                 stdout=self.api_log_file, 
@@ -242,7 +242,7 @@ class OktopusApp(ctk.CTk):
                 ctk.CTkLabel(self.splash_frame, text="SYLO", font=("Montserrat", 90, "bold"), text_color=C_ACCENT_CYAN).pack(pady=(150, 10))
         except: pass
 
-        ctk.CTkLabel(self.splash_frame, text="OKTOPUS KERNEL V20", font=FONT_HEAD, text_color=C_TEXT_WHITE).pack(pady=(0, 30))
+        ctk.CTkLabel(self.splash_frame, text="OKTOPUS KERNEL V23", font=FONT_HEAD, text_color=C_TEXT_WHITE).pack(pady=(0, 30))
         self.progress_bar = ctk.CTkProgressBar(self.splash_frame, width=500, height=10, corner_radius=5, progress_color=C_ACCENT_CYAN, fg_color=C_BG_CARD)
         self.progress_bar.set(0); self.progress_bar.pack(pady=10)
         self.status_lbl = ctk.CTkLabel(self.splash_frame, text="Iniciando...", font=FONT_MONO, text_color=C_TEXT_MUTED); self.status_lbl.pack()
@@ -267,7 +267,7 @@ class OktopusApp(ctk.CTk):
         self.sidebar = ctk.CTkFrame(self, width=280, fg_color=C_BG_SIDEBAR, corner_radius=0); self.sidebar.grid(row=0, column=0, sticky="nsew")
         
         ctk.CTkLabel(self.sidebar, text="🐙 OKTOPUS", font=("Montserrat", 30, "bold"), text_color=C_ACCENT_CYAN).pack(pady=(30, 5))
-        ctk.CTkLabel(self.sidebar, text="V20 OPERATIONS", font=FONT_MONO, text_color=C_ACCENT_BLUE).pack(pady=(0, 40))
+        ctk.CTkLabel(self.sidebar, text="V23 ROOT ACCESS", font=FONT_MONO, text_color=C_ACCENT_BLUE).pack(pady=(0, 40))
 
         menu = {"DASHBOARD": "📊", "CEREBRO API": "🧠", "INFRAESTRUCTURA": "🏗️", "FINANZAS": "💰", "LOGS GLOBALES": "📜"}
         for s, icon in menu.items():
@@ -303,20 +303,23 @@ class OktopusApp(ctk.CTk):
         ctk.CTkLabel(f, text="Servicios", font=FONT_HEAD, text_color=C_TEXT_WHITE).pack(anchor="w", pady=(20, 10))
         st = ModernCard(f); st.pack(fill="x", ipady=20, padx=5)
         
-        keys = ["API GATEWAY", "WEB SERVER", "DATABASE", "OPERATOR", "ORCHESTRATOR", "BRAIN"]
+        keys = ["API GATEWAY", "WEB SERVER", "DATABASE", "OPERATOR", "ORCHESTRATOR", "BRAIN", "DNS SERVER"]
         for i, s in enumerate(keys):
             sf = ctk.CTkFrame(st, fg_color="transparent"); sf.pack(side="left", expand=True)
             led = LEDIndicator(sf, s); led.pack()
             ctk.CTkLabel(sf, text=s, font=("Roboto", 10, "bold"), text_color=C_TEXT_MUTED).pack()
             self.status_indicators[s] = led
 
-        ctk.CTkLabel(f, text="Workers & Brain", font=FONT_HEAD, text_color=C_TEXT_WHITE).pack(anchor="w", pady=(30, 10))
+        ctk.CTkLabel(f, text="Workers & Brain & DNS", font=FONT_HEAD, text_color=C_TEXT_WHITE).pack(anchor="w", pady=(30, 10))
         wf = ModernCard(f); wf.pack(fill="x", ipady=10)
         self.create_api_worker_ctrl(wf)
         ctk.CTkFrame(wf, fg_color=C_BORDER_GLOW, height=1).pack(fill="x", padx=20, pady=5)
+        
+        # --- WORKERS (INCLUYE DNS) ---
         self.create_worker_ctrl(wf, "operator_sylo.py", "OPERATOR")
         self.create_worker_ctrl(wf, "orchestrator_sylo.py", "ORCHESTRATOR")
         self.create_worker_ctrl(wf, "sylo_brain.py", "BRAIN")
+        self.create_worker_ctrl(wf, "sylo_dns.py", "DNS SERVER")
 
     def create_kpi(self, p, t, v, c, i):
         fr = ModernCard(p, hover_effect=True); fr.pack(side="left", expand=True, fill="both", padx=5, ipady=5)
@@ -355,7 +358,6 @@ class OktopusApp(ctk.CTk):
         ctk.CTkLabel(h, text="🧠 Monitor de API Gateway", font=FONT_HEAD, text_color=C_ACCENT_CYAN).pack(side="left")
         self.api_status_ui = ctk.CTkLabel(h, text="● OFFLINE", text_color=C_DANGER, font=FONT_SUBHEAD); self.api_status_ui.pack(side="right")
         
-        # PANTALLA NEGRA API
         con = ModernCard(f, border_color=C_ACCENT_CYAN); con.pack(fill="both", expand=True)
         self.api_console = ctk.CTkTextbox(con, font=FONT_MONO, fg_color=C_CONSOLE_BG, text_color=C_API_TXT, wrap="word", border_width=0)
         self.api_console.pack(fill="both", expand=True, padx=2, pady=2)
@@ -387,7 +389,6 @@ class OktopusApp(ctk.CTk):
         ctk.CTkLabel(h, text="📜 Bitácora Global", font=FONT_HEAD, text_color=C_WARNING).pack(side="left")
         ctk.CTkButton(h, text="🗑️ LIMPIAR", fg_color=C_BG_CARD, command=lambda: self.clear_console(self.master_console)).pack(side="right")
         
-        # PANTALLA NEGRA LOGS
         con = ModernCard(f, border_color=C_WARNING); con.pack(fill="both", expand=True)
         self.master_console = ctk.CTkTextbox(con, font=FONT_MONO, fg_color=C_CONSOLE_BG, text_color=C_SYS_TXT, wrap="word", border_width=0)
         self.master_console.pack(fill="both", expand=True, padx=2, pady=2)
@@ -456,7 +457,12 @@ class OktopusApp(ctk.CTk):
         except: pass
         self.status_indicators["WEB SERVER"].set_status(web_ok)
 
-        km = {"operator_sylo.py": "OPERATOR", "orchestrator_sylo.py": "ORCHESTRATOR", "sylo_brain.py": "BRAIN"}
+        km = {
+            "operator_sylo.py": "OPERATOR", 
+            "orchestrator_sylo.py": "ORCHESTRATOR", 
+            "sylo_brain.py": "BRAIN",
+            "sylo_dns.py": "DNS SERVER" # <--- INTEGRACION VISUAL
+        }
         for s, w in self.worker_widgets.items():
             if s == "API_SRV": continue
             on = self.find_process(s) is not None
@@ -493,15 +499,46 @@ class OktopusApp(ctk.CTk):
                 if p.info['cmdline'] and n in ' '.join(p.info['cmdline']): return p.info['pid']
             except: pass
         return None
+
     def start_worker(self, s):
+        # --- 🔥 LÓGICA ESPECIAL PARA DNS (REQUIERE SUDO) 🔥 ---
+        if s == "sylo_dns.py":
+            dialog = ctk.CTkInputDialog(text="Este servicio requiere permisos de ROOT (Puerto 53).\nIntroduce contraseña de SUDO:", title="Autenticación Requerida")
+            pwd = dialog.get_input()
+            if not pwd: return
+            
+            try:
+                l = open(f"/tmp/sylo_{s}.log", "w")
+                # Ejecutamos sudo -S (lee password de stdin)
+                proc = subprocess.Popen(
+                    ["sudo", "-S", sys.executable, "-u", os.path.join(WORKER_DIR, s)],
+                    stdin=subprocess.PIPE,
+                    stdout=l,
+                    stderr=subprocess.STDOUT,
+                    text=True # Importante para enviar string
+                )
+                proc.stdin.write(pwd + "\n")
+                proc.stdin.flush()
+                self.log_to_console("SISTEMA", "Iniciando Servidor DNS con privilegios elevados...", C_ACCENT_PURPLE)
+            except Exception as e:
+                self.log_to_console("ERROR", f"Fallo al elevar DNS: {e}", C_DANGER)
+            return
+
+        # --- LÓGICA ESTÁNDAR ---
         try:
             l = open(f"/tmp/sylo_{s}.log", "w")
-            # FIX: Usar sys.executable con unbuffered -u
+            # Usamos -u para logs en tiempo real
             subprocess.Popen([sys.executable, "-u", os.path.join(WORKER_DIR, s)], stdout=l, stderr=subprocess.STDOUT)
         except: pass
+
     def stop_worker(self, s):
         pid = self.find_process(s); 
-        if pid: os.kill(pid, signal.SIGTERM)
+        if pid: 
+            if s == "sylo_dns.py": # Matar con sudo si es DNS
+                os.system(f"echo 'Matando DNS' && sudo kill {pid}")
+            else:
+                os.kill(pid, signal.SIGTERM)
+
     def kill_machine_direct(self, name):
         cid = name.lower().replace("sylo-cliente-", "").replace("cliente", "")
         if not messagebox.askyesno("CONFIRM", f"Del {cid}?"): return

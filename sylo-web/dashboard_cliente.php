@@ -1,7 +1,11 @@
 <?php
+// =================================================================================
+// 🛡️ SYLO DASHBOARD CLIENTE - V15 (VISUAL SYNC FIX)
+// =================================================================================
 session_start();
 define('API_URL_BASE', 'http://host.docker.internal:8001/api/clientes');
 
+// AUTH & DB
 if (isset($_GET['action']) && $_GET['action'] == 'logout') { session_destroy(); header("Location: index.php"); exit; }
 if (!isset($_SESSION['user_id'])) { header("Location: index.php"); exit; }
 
@@ -13,6 +17,8 @@ try { $conn = new PDO("mysql:host=$servername;dbname=$dbname", $username_db, $pa
 
 $buzon_path = "../buzon-pedidos"; 
 $user_id = $_SESSION['user_id'];
+
+// UPDATE PROFILE
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] == 'update_profile') {
     $sql = "UPDATE users SET full_name=?, email=?, dni=?, telefono=?, company_name=?, calle=? WHERE id=?";
     $conn->prepare($sql)->execute([$_POST['full_name'], $_POST['email'], $_POST['dni'], $_POST['telefono'], $_POST['company_name'], $_POST['calle'], $user_id]);
@@ -20,10 +26,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 $stmt = $conn->prepare("SELECT * FROM users WHERE id = ?"); $stmt->execute([$user_id]); $user_info = $stmt->fetch(PDO::FETCH_ASSOC);
 
-function calculateWeeklyPrice($r) { $p=match($r['plan_name']){'Bronce'=>5,'Plata'=>15,'Oro'=>30,default=>0}; if($r['plan_name']=='Personalizado'){$p=(intval($r['custom_cpu'])*5)+(intval($r['custom_ram'])*5); if(!empty($r['db_enabled']))$p+=10; if(!empty($r['web_enabled']))$p+=10;} return $p/4; }
-function getBackupLimit($r) { $m=match($r['plan_name']){'Bronce'=>5,'Plata'=>15,'Oro'=>30,default=>0}; if($r['plan_name']=='Personalizado'){$m=(intval($r['custom_cpu'])*5)+(intval($r['custom_ram'])*5); if(!empty($r['db_enabled']))$m+=10; if(!empty($r['web_enabled']))$m+=10;} return ($r['plan_name']=='Oro'||$m>=30)?5:(($r['plan_name']=='Plata'||$m>=15)?3:2); }
+// HELPERS
+function calculateWeeklyPrice($r) { 
+    $p=match($r['plan_name']??''){'Bronce'=>5,'Plata'=>15,'Oro'=>30,default=>0}; 
+    if(($r['plan_name']??'')=='Personalizado'){
+        $p=(intval($r['custom_cpu']??0)*5)+(intval($r['custom_ram']??0)*5); 
+        if(!empty($r['db_enabled']))$p+=10; 
+        if(!empty($r['web_enabled']))$p+=10;
+    } 
+    return $p/4; 
+}
+function getBackupLimit($r) { 
+    $m=match($r['plan_name']??''){'Bronce'=>5,'Plata'=>15,'Oro'=>30,default=>0}; 
+    if(($r['plan_name']??'')=='Personalizado'){
+        $m=(intval($r['custom_cpu']??0)*5)+(intval($r['custom_ram']??0)*5); 
+        if(!empty($r['db_enabled']))$m+=10; 
+        if(!empty($r['web_enabled']))$m+=10;
+    } 
+    return (($r['plan_name']??'')=='Oro'||$m>=30)?5:((($r['plan_name']??'')=='Plata'||$m>=15)?3:2); 
+}
 function getPlanStyle($n) { return match($n) { 'Bronce'=>'background:#CD7F32;color:#fff;box-shadow:0 0 10px rgba(205,127,50,0.4);', 'Plata'=>'background:#94a3b8;color:#fff;box-shadow:0 0 10px rgba(148,163,184,0.4);', 'Oro'=>'background:#FFD700;color:#000;font-weight:bold;box-shadow:0 0 15px rgba(255,215,0,0.6);', 'Personalizado'=>'background:linear-gradient(45deg,#CD7F32,#94a3b8,#FFD700);color:#fff;font-weight:bold;border:1px solid rgba(255,255,255,0.3);', default=>'background:#334155;color:#fff;' }; }
 function getSidebarStyle($n) { $c=match($n){'Bronce'=>'#CD7F32','Plata'=>'#94a3b8','Oro'=>'#FFD700','Personalizado'=>'#a855f7',default=>'#3b82f6'}; return "border-left:3px solid $c;background:linear-gradient(90deg,{$c}11,transparent);"; }
+function getOSIconHtml($os) {
+    $os = strtolower($os ?? 'ubuntu');
+    if (strpos($os, 'alpine') !== false) return '<i class="bi bi-snow2 text-info fs-4"></i>';
+    if (strpos($os, 'redhat') !== false) return '<i class="bi bi-motherboard text-danger fs-4"></i>'; 
+    return '<i class="bi bi-ubuntu text-warning fs-4"></i>';
+}
+function getOSNamePretty($os) {
+    $os = strtolower($os ?? 'ubuntu');
+    if (strpos($os, 'alpine') !== false) return 'Alpine Linux';
+    if (strpos($os, 'redhat') !== false) return 'Red Hat Enterprise';
+    return 'Ubuntu Server';
+}
 
 // --- AJAX API ---
 if (isset($_GET['ajax_data']) && isset($_GET['id'])) {
@@ -49,14 +84,7 @@ if (isset($_GET['ajax_data']) && isset($_GET['id'])) {
 
     if ($api_json) {
         $d = json_decode($api_json, true);
-        if ($d) {
-            $res['metrics'] = $d['metrics'] ?? $res['metrics'];
-            $res['ssh_cmd'] = $d['ssh_cmd'] ?? $res['ssh_cmd'];
-            $res['web_url'] = $d['web_url'] ?? $res['web_url'];
-            $res['backups_list'] = $d['backups_list'] ?? [];
-            $res['backup_progress'] = $d['backup_progress'] ?? null;
-            $res['web_progress'] = $d['web_progress'] ?? null;
-        }
+        if ($d) $res = array_merge($res, $d);
     }
     
     $chat_file = "$buzon_path/chat_response_$oid.json";
@@ -68,12 +96,9 @@ if (isset($_GET['ajax_data']) && isset($_GET['id'])) {
 }
 
 // --- ACTIONS ---
-$is_ajax = isset($_GET['ajax_action']);
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] != 'update_profile') {
     $oid = $_POST['order_id']; $act = $_POST['action'];
-    $data = ["id" => (int)$oid, "action" => strtoupper($act), "user" => $_SESSION['username']];
     
-    // PAYLOAD GENÉRICO
     $payload_api = [
         "id_cliente" => (int)$oid,
         "accion" => $act,
@@ -86,12 +111,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 
     if($act == 'send_chat') {
         $msg = $_POST['message'];
-        $sql = "SELECT p.name as plan_name, os.db_enabled, os.web_enabled, os.db_type, os.web_type FROM orders o JOIN plans p ON o.plan_id=p.id LEFT JOIN order_specs os ON o.id = os.order_id WHERE o.id = ?";
-        $stmt = $conn->prepare($sql); $stmt->execute([$oid]); $pi = $stmt->fetch(PDO::FETCH_ASSOC);
-        $chat_payload = ["id_cliente" => (int)$oid, "mensaje" => $msg, "contexto_plan" => ["name"=>$pi['plan_name']??'Estándar']];
+        $chat_payload = ["id_cliente" => (int)$oid, "mensaje" => $msg];
         $opts = ['http' => ['header' => "Content-type: application/json\r\n", 'method' => 'POST', 'content' => json_encode($chat_payload)]];
         @file_get_contents(API_URL_BASE . "/chat", false, stream_context_create($opts));
-        if($is_ajax) { echo json_encode(['status'=>'ok']); exit; }
+        if(isset($_GET['ajax_action'])) { echo json_encode(['status'=>'ok']); exit; }
         exit; 
     }
 
@@ -114,37 +137,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         @file_get_contents($url, false, stream_context_create($options));
     }
     
-    if($is_ajax) { header('Content-Type: application/json'); echo json_encode(['status'=>'ok']); exit; }
+    if(isset($_GET['ajax_action'])) { header('Content-Type: application/json'); echo json_encode(['status'=>'ok']); exit; }
     header("Location: dashboard_cliente.php?id=$oid"); exit;
 }
 
-// --- INIT (CARGA HTML DESDE API) ---
-$sql = "SELECT o.*, p.name as plan_name, p.cpu_cores as p_cpu, p.ram_gb as p_ram, os.cpu_cores as custom_cpu, os.ram_gb as custom_ram, os.db_enabled, os.web_enabled FROM orders o JOIN plans p ON o.plan_id=p.id LEFT JOIN order_specs os ON o.id = os.order_id WHERE user_id=? AND status!='cancelled' ORDER BY o.id DESC";
+// --- INIT DATA ---
+$sql = "SELECT o.*, p.name as plan_name, p.cpu_cores as p_cpu, p.ram_gb as p_ram, os.cpu_cores as custom_cpu, os.ram_gb as custom_ram, os.db_enabled, os.web_enabled, os.os_image FROM orders o JOIN plans p ON o.plan_id=p.id LEFT JOIN order_specs os ON o.id = os.order_id WHERE user_id=? AND status!='cancelled' ORDER BY o.id DESC";
 $stmt = $conn->prepare($sql); $stmt->execute([$_SESSION['user_id']]); $clusters = $stmt->fetchAll(PDO::FETCH_ASSOC);
-$current = null; $creds = ['ssh_cmd'=>'Esperando...', 'ssh_pass'=>'...']; $web_url = null; $has_web = false; $has_db = false; $total_weekly = 0; $plan_cpus = 1; $backup_limit = 2;
-foreach($clusters as $c) $total_weekly += calculateWeeklyPrice($c);
 
+$current = null; 
+$os_image = 'ubuntu'; 
+$total_weekly = 0; 
+$creds = ['ssh_cmd'=>'Esperando...', 'ssh_pass'=>'...'];
+$web_url = null;
 $html_code = "<!DOCTYPE html>\n<html>\n<body>\n<h1>Bienvenido a Sylo</h1>\n</body>\n</html>";
+
+foreach($clusters as $c) $total_weekly += calculateWeeklyPrice($c);
 
 if($clusters) {
     $current = (isset($_GET['id'])) ? array_values(array_filter($clusters, fn($c)=>$c['id']==$_GET['id']))[0] ?? $clusters[0] : $clusters[0];
-    if ($current['plan_name'] == 'Personalizado') $plan_cpus = intval($current['custom_cpu'] ?? 1); else $plan_cpus = intval($current['p_cpu'] ?? 1); if ($plan_cpus < 1) $plan_cpus = 1;
+    if ($current['plan_name'] == 'Personalizado') $plan_cpus = intval($current['custom_cpu'] ?? 1); else $plan_cpus = intval($current['p_cpu'] ?? 1); 
+    if ($plan_cpus < 1) $plan_cpus = 1;
     $backup_limit = getBackupLimit($current);
     $has_web = ($current['plan_name'] === 'Oro' || (!empty($current['web_enabled']) && $current['web_enabled'] == 1));
     $has_db = ($current['plan_name'] === 'Oro' || (!empty($current['db_enabled']) && $current['db_enabled'] == 1));
+    $os_image = $current['os_image'] ?? 'ubuntu';
     
     $ctx = stream_context_create(['http'=> ['timeout' => 1]]);
     $api_init = @file_get_contents(API_URL_BASE . "/estado/{$current['id']}", false, $ctx);
+    
     if($api_init) { 
         $d = json_decode($api_init, true); 
-        if($d) { 
-            $creds['ssh_cmd'] = $d['ssh_cmd']??'...'; 
-            $web_url = $d['web_url']??null;
-            // SI LA API TIENE HTML GUARDADO, LO USAMOS
+        if($d) {
+            $creds['ssh_cmd'] = $d['ssh_cmd'] ?? 'Esperando...';
+            $creds['ssh_pass'] = $d['ssh_pass'] ?? '...';
+            $web_url = $d['web_url'] ?? null;
             if(isset($d['html_source']) && !empty($d['html_source'])) {
                 $html_code = $d['html_source'];
             }
-        } 
+        }
     }
 }
 ?>
@@ -235,7 +266,7 @@ if($clusters) {
     <div class="d-flex justify-content-between align-items-center mb-5">
         <div>
             <h3 class="fw-bold mb-0 text-white">Panel de Control</h3>
-            <small class="text-light-muted">Bienvenido, <?=htmlspecialchars($user_info['username'])?></small>
+            <small class="text-light-muted">Bienvenido, <?=htmlspecialchars($user_info['username']??'Usuario')?></small>
         </div>
         <div class="d-flex align-items-center gap-3">
             <button class="btn btn-dark border border-secondary position-relative" data-bs-toggle="modal" data-bs-target="#profileModal">
@@ -250,10 +281,23 @@ if($clusters) {
     
     <div class="row g-4">
         <div class="col-lg-8">
-            <div class="d-flex align-items-center mb-4 gap-3">
-                <h4 class="fw-bold mb-0 text-white">Servidor #<?=$current['id']?></h4>
-                <div><span class="badge bg-success bg-opacity-10 text-success border border-success px-3 py-2 rounded-pill">ONLINE</span></div>
-                <div><span class="badge px-3 py-2 rounded-pill" style="<?=getPlanStyle($current['plan_name'])?>">PLAN <?=strtoupper($current['plan_name'])?></span></div>
+            <div class="d-flex align-items-center justify-content-between mb-4">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="bg-black bg-opacity-25 p-3 rounded-circle border border-secondary">
+                        <?=getOSIconHtml($os_image)?>
+                    </div>
+                    <div>
+                        <h4 class="fw-bold mb-0 text-white">Servidor #<?=$current['id']?></h4>
+                        <small class="text-light-muted font-monospace"><i class="bi bi-hdd-network me-1"></i> <?=getOSNamePretty($os_image)?></small>
+                    </div>
+                </div>
+                
+                <div class="d-flex gap-2">
+                    <span class="badge bg-success bg-opacity-10 text-success border border-success px-3 py-2 rounded-pill">ONLINE</span>
+                    <span class="badge px-3 py-2 rounded-pill" style="<?=getPlanStyle($current['plan_name'])?>">
+                        PLAN <?=strtoupper($current['plan_name'])?>
+                    </span>
+                </div>
             </div>
             
             <div class="row g-4 mb-4">
@@ -279,7 +323,7 @@ if($clusters) {
                     <button onclick="copyAllCreds()" class="btn btn-sm btn-outline-secondary"><i class="bi bi-copy me-1"></i> Copiar</button>
                 </div>
                 <div class="terminal-container" id="all-creds-box">
-                    <?php if($has_web): ?><div><span class="term-label">WEB:</span> <a href="<?=htmlspecialchars($web_url)?>" target="_blank" class="term-val text-decoration-none hover-white" id="disp-web-url"><?=htmlspecialchars($web_url)?></a></div><?php endif; ?>
+                    <?php if($has_web): ?><div><span class="term-label">WEB:</span> <a href="<?=htmlspecialchars($web_url??'#')?>" target="_blank" class="term-val text-decoration-none hover-white" id="disp-web-url"><?=htmlspecialchars($web_url??'Esperando IP...')?></a></div><?php endif; ?>
                     <?php if($has_db): ?>
                         <div class="mt-2 text-light-muted small">// DATABASE CLUSTER</div>
                         <div><span class="term-label">MASTER:</span> <span class="term-val">mysql-master-0 (Write)</span></div>
@@ -369,7 +413,7 @@ if($clusters) {
     </div>
     <div class="chat-body" id="chatBody">
         <div class="chat-msg support">
-            Hola <?=htmlspecialchars($_SESSION['username'])?>, si tienes preguntas, estas son las más frecuentes:
+            Hola <?=htmlspecialchars($_SESSION['username']??'Usuario')?>, si tienes preguntas, estas son las más frecuentes:
             <br><br>
             1️⃣ ¿Cómo entro a mi servidor? (SSH)<br>
             2️⃣ ¿Cuál es mi página web?<br>

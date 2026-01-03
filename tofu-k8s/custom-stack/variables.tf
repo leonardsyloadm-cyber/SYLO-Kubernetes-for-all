@@ -16,7 +16,6 @@ variable "ssh_user" {
   default = "cliente"
 }
 
-# --- NUEVA VARIABLE DE SEGURIDAD (AÑADIDO) ---
 variable "owner_id" {
   description = "ID del usuario propietario"
   type        = string
@@ -47,14 +46,18 @@ variable "subdomain" {
   default = "demo"
 }
 
-# 🔥 VARIABLE CRÍTICA PARA RUTAS (REDHAT/ALPINE) 🔥
+variable "os_image" {
+  type    = string
+  default = "ubuntu"
+}
+
+# Rutas y Puertos Dinámicos (Vital para RedHat/Alpine)
 variable "web_mount_path" {
   type        = string
   description = "Ruta donde se monta el HTML segun el OS"
   default     = "/usr/share/nginx/html"
 }
 
-# 🔥 NUEVA VARIABLE: PUERTO INTERNO (CRÍTICA PARA REDHAT 8080) 🔥
 variable "web_port_internal" {
   type        = number
   description = "Puerto del contenedor (80 para Alpine/Ubuntu, 8080 para RedHat)"

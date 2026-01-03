@@ -2,7 +2,8 @@
 set -eE -o pipefail
 
 # ==========================================
-# DEPLOY CUSTOM (PERSONALIZADO) - V18 (Blindado con Calico)
+# DEPLOY CUSTOM (PERSONALIZADO) - V27
+# Sintaxis Segura, Multi-OS y Limpieza
 # ==========================================
 
 LOG_FILE="/tmp/deploy_custom_debug.log"
@@ -12,7 +13,6 @@ PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 handle_error() {
     local exit_code=$?
     echo -e "\n\033[0;31m❌ ERROR CUSTOM (Exit: $exit_code). Ver log: $LOG_FILE\033[0m"
-    tail -n 20 "$LOG_FILE"
     BUZON_ERR="$PROJECT_ROOT/buzon-pedidos/status_$1.json"
     if [ -d "$(dirname "$BUZON_ERR")" ]; then
         echo "{\"percent\": 100, \"message\": \"Fallo Crítico Custom.\", \"status\": \"error\"}" > "$BUZON_ERR"
@@ -21,7 +21,7 @@ handle_error() {
 }
 trap 'handle_error $1' ERR
 
-# --- 1. RECEPCIÓN DE ARGUMENTOS ---
+# --- ARGUMENTOS (Vienen del Orquestador V21) ---
 ORDER_ID=$1
 CPU_REQ=$2
 RAM_REQ=$3
@@ -36,10 +36,10 @@ DB_NAME_ARG=${11}
 WEB_NAME_ARG=${12}
 SUBDOMAIN_ARG=${13}
 
-# --- GESTIÓN DE IDENTIDAD ---
+# --- IDENTIDAD ---
 OWNER_ID="${TF_VAR_owner_id:-admin}"
 
-# --- 2. DEFAULTS ---
+# --- DEFAULTS ---
 [ -z "$ORDER_ID" ] && ORDER_ID="manual"
 [ -z "$CPU_REQ" ] && CPU_REQ="2"
 [ -z "$RAM_REQ" ] && RAM_REQ="4"
@@ -48,7 +48,7 @@ if [ -z "$DB_NAME_ARG" ]; then DB_NAME="custom_db"; else DB_NAME="$DB_NAME_ARG";
 if [ -z "$WEB_NAME_ARG" ]; then WEB_NAME="Custom Cluster"; else WEB_NAME="$WEB_NAME_ARG"; fi
 if [ -z "$SUBDOMAIN_ARG" ]; then SUBDOMAIN="cliente$ORDER_ID"; else SUBDOMAIN="$SUBDOMAIN_ARG"; fi
 
-# --- 3. CÁLCULO INTELIGENTE: IMAGEN, RUTA Y PUERTO ---
+# --- LÓGICA DE IMÁGENES Y PUERTOS ---
 IMAGE_WEB="nginx:latest"
 MOUNT_PATH="/usr/share/nginx/html"
 WEB_PORT_INTERNAL=80
@@ -57,36 +57,27 @@ if [ "$WEB_TYPE" == "nginx" ]; then
     if [ "$OS_IMAGE_ARG" == "alpine" ]; then
         IMAGE_WEB="nginx:alpine"
         MOUNT_PATH="/usr/share/nginx/html"
-        WEB_PORT_INTERNAL=80
     elif [ "$OS_IMAGE_ARG" == "redhat" ]; then
         IMAGE_WEB="registry.access.redhat.com/ubi8/nginx-120"
         MOUNT_PATH="/opt/app-root/src"
         WEB_PORT_INTERNAL=8080
-    else 
-        IMAGE_WEB="nginx:latest"
-        MOUNT_PATH="/usr/share/nginx/html"
-        WEB_PORT_INTERNAL=80
     fi
-
 elif [ "$WEB_TYPE" == "apache" ]; then
-    if [ "$OS_IMAGE_ARG" == "alpine" ]; then
-        IMAGE_WEB="httpd:alpine"
-        MOUNT_PATH="/usr/local/apache2/htdocs"
-        WEB_PORT_INTERNAL=80
-    elif [ "$OS_IMAGE_ARG" == "redhat" ]; then
+    IMAGE_WEB="httpd:latest"
+    MOUNT_PATH="/usr/local/apache2/htdocs"
+    if [ "$OS_IMAGE_ARG" == "alpine" ]; then IMAGE_WEB="httpd:alpine"; fi
+    if [ "$OS_IMAGE_ARG" == "redhat" ]; then
         IMAGE_WEB="registry.access.redhat.com/ubi8/httpd-24"
         MOUNT_PATH="/var/www/html"
         WEB_PORT_INTERNAL=8080
-    else
-        IMAGE_WEB="ubuntu/apache2"
-        MOUNT_PATH="/var/www/html"
-        WEB_PORT_INTERNAL=80
     fi
 fi
 
 CLUSTER_NAME="sylo-cliente-$ORDER_ID"
 BUZON_STATUS="$PROJECT_ROOT/buzon-pedidos/status_$ORDER_ID.json"
-SSH_PASS=$(openssl rand -base64 12)
+SSH_PASS=$(openssl rand -hex 8) 
+
+# Recursos VM Minikube
 VM_CPU=$((CPU_REQ + 1))
 VM_RAM_MB=$((RAM_REQ * 1024 + 1024)) 
 
@@ -99,16 +90,19 @@ update_status() {
 
 # --- INICIO ---
 echo "--- LOG CUSTOM ($ORDER_ID) ---" > "$LOG_FILE"
-echo "Specs: Owner=$OWNER_ID | OS=$OS_IMAGE_ARG | Web=$WEB_TYPE" >> "$LOG_FILE"
+echo "Specs: Owner=$OWNER_ID | OS=$OS_IMAGE_ARG | Web=$WEB_TYPE | DB=$DB_TYPE" >> "$LOG_FILE"
 update_status 0 "Iniciando Custom ($OS_IMAGE_ARG)..."
 
-# Limpieza
+# --- LIMPIEZA PROFUNDA ---
+update_status 5 "Limpiando recursos..."
 ZOMBIES=$(minikube profile list 2>/dev/null | grep "\-$ORDER_ID" | awk '{print $2}' || true)
-for ZOMBIE in $ZOMBIES; do minikube delete -p "$ZOMBIE" >> "$LOG_FILE" 2>&1 || true; done
+for ZOMBIE in $ZOMBIES; do 
+    minikube delete -p "$ZOMBIE" --purge >> "$LOG_FILE" 2>&1 || true
+done
+docker volume prune -f >> "$LOG_FILE" 2>&1 || true
 
-# --- MINIKUBE SEGURO (CORREGIDO) ---
-update_status 20 "Levantando Cluster Seguro..."
-# FALTABA: --cni=calico y metrics-server
+# --- MINIKUBE ---
+update_status 15 "Arrancando Cluster Personalizado..."
 minikube start -p "$CLUSTER_NAME" \
     --driver=docker \
     --cni=calico \
@@ -123,7 +117,7 @@ cd "$SCRIPT_DIR"
 rm -f terraform.tfstate*
 tofu init -upgrade >> "$LOG_FILE" 2>&1
 
-# Apply (AÑADIDO owner_id)
+# --- APPLY ---
 update_status 50 "Aplicando Infraestructura..."
 tofu apply -auto-approve \
     -var="cluster_name=$CLUSTER_NAME" \
@@ -142,24 +136,85 @@ tofu apply -auto-approve \
     -var="subdomain=$SUBDOMAIN" \
     -var="web_mount_path=$MOUNT_PATH" \
     -var="web_port_internal=$WEB_PORT_INTERNAL" \
-    -var="owner_id=$OWNER_ID" >> "$LOG_FILE" 2>&1
+    -var="owner_id=$OWNER_ID" \
+    -var="os_image=$OS_IMAGE_ARG" >> "$LOG_FILE" 2>&1
 
-# Esperas
+# --- ESPERAS CONDICIONALES ---
 update_status 70 "Verificando servicios..."
-if [ "$DB_ENABLED" = "true" ]; then kubectl wait --for=condition=Ready pod -l app=custom-db --timeout=300s >> "$LOG_FILE" 2>&1 || true; fi
-if [ "$WEB_ENABLED" = "true" ]; then kubectl wait --for=condition=available deployment/custom-web --timeout=300s >> "$LOG_FILE" 2>&1 || true; fi
 
-# Credenciales
+if [ "$DB_ENABLED" = "true" ]; then 
+    echo "Esperando DB..." >> "$LOG_FILE"
+    kubectl wait --for=condition=available deployment/custom-db --timeout=300s >> "$LOG_FILE" 2>&1 || true
+    sleep 15
+fi
+
+if [ "$WEB_ENABLED" = "true" ]; then 
+    echo "Esperando Web..." >> "$LOG_FILE"
+    kubectl wait --for=condition=available deployment/custom-web --timeout=300s >> "$LOG_FILE" 2>&1 || true
+fi
+
+# SSH siempre activo
+kubectl wait --for=condition=available deployment/ssh-server --timeout=300s >> "$LOG_FILE" 2>&1
+
+# --- FINAL ---
 update_status 90 "Finalizando..."
 HOST_IP=$(minikube ip -p "$CLUSTER_NAME")
 WEB_PORT=$(tofu output -raw web_port 2>/dev/null || echo "N/A")
 SSH_PORT=$(tofu output -raw ssh_port 2>/dev/null || echo "N/A")
 
-INFO_TEXT="[SPECS]\nOwner ID: $OWNER_ID\nSO: $OS_IMAGE_ARG\nWeb: $WEB_TYPE (Port $WEB_PORT_INTERNAL)\nDB: $DB_TYPE"
-if [ "$WEB_ENABLED" = "true" ]; then INFO_TEXT="$INFO_TEXT\n\n[WEB]\nURL: http://$HOST_IP:$WEB_PORT"; fi
-if [ "$DB_ENABLED" = "true" ]; then INFO_TEXT="$INFO_TEXT\n\n[DATABASE]\nMotor: $DB_TYPE\nNombre: $DB_NAME"; fi
-INFO_TEXT="$INFO_TEXT\n\n[SSH]\nUser: $SSH_USER\nPass: $SSH_PASS"
+# Nombre bonito
+OS_PRETTY="Linux ($OS_IMAGE_ARG)"
+if [[ "$OS_IMAGE_ARG" == "alpine" ]]; then OS_PRETTY="Alpine Linux"; fi
+if [[ "$OS_IMAGE_ARG" == "ubuntu" ]]; then OS_PRETTY="Ubuntu Server"; fi
+if [[ "$OS_IMAGE_ARG" == "redhat" ]]; then OS_PRETTY="RedHat Enterprise"; fi
 
-JSON_STRING=$(python3 -c "import json; print(json.dumps({'percent': 100, 'message': '¡Despliegue Listo!', 'status': 'completed', 'ssh_cmd': 'ssh $SSH_USER@$HOST_IP -p $SSH_PORT', 'ssh_pass': '''$INFO_TEXT'''}))")
-echo "$JSON_STRING" > "$BUZON_STATUS"
-echo "✅ Despliegue completado."
+CMD_SSH="ssh $SSH_USER@$HOST_IP -p $SSH_PORT"
+
+INFO_TEXT="[SPECS CUSTOM]
+Owner ID: $OWNER_ID
+SO: $OS_PRETTY
+CPU: $CPU_REQ / RAM: $RAM_REQ GB"
+
+if [ "$WEB_ENABLED" = "true" ]; then 
+    INFO_TEXT="$INFO_TEXT
+    
+[WEB]
+URL: http://$HOST_IP:$WEB_PORT
+Server: $WEB_TYPE (Port $WEB_PORT_INTERNAL)"
+fi
+
+if [ "$DB_ENABLED" = "true" ]; then 
+    INFO_TEXT="$INFO_TEXT
+    
+[DATABASE]
+Motor: $DB_TYPE
+Nombre: $DB_NAME
+User: root / Pass: root"
+fi
+
+INFO_TEXT="$INFO_TEXT
+
+[SSH]
+User: $SSH_USER
+Pass: $SSH_PASS"
+
+# --- JSON SEGURO ---
+python3 -c "
+import json
+import sys
+
+data = {
+    'percent': 100, 
+    'message': '¡Despliegue Custom Listo!', 
+    'status': 'completed', 
+    'ssh_cmd': sys.argv[1], 
+    'ssh_pass': sys.argv[2],
+    'os_info': sys.argv[3],
+    'web_url': sys.argv[4] if sys.argv[4] != 'N/A' else ''
+}
+
+with open('$BUZON_STATUS', 'w') as f:
+    json.dump(data, f)
+" "$CMD_SSH" "$INFO_TEXT" "$OS_PRETTY" "$WEB_PORT"
+
+echo "✅ Despliegue Custom completado."

@@ -14,7 +14,7 @@ try: import requests
 except: pass
 
 # ==========================================
-# ORQUESTADOR SYLO V19 (SEGURIDAD & AISLAMIENTO)
+# ORQUESTADOR SYLO V21 (Lógica de Negocio Estricta)
 # ==========================================
 
 WORKER_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -88,17 +88,11 @@ def enable_monitoring(profile):
 
 # --- SEGURIDAD: APLICAR NETWORK POLICIES ---
 def apply_security_policy(profile, owner_id):
-    """
-    Inyecta las reglas de aislamiento (NetworkPolicy) al cluster recién creado.
-    """
     log(f"🔒 Aplicando Escudo de Seguridad para Usuario {owner_id} en {profile}...", Colors.YELLOW)
     try:
-        # Asegurarnos de que existe el directorio de seguridad
         if not os.path.exists(SECURITY_DIR):
             os.makedirs(SECURITY_DIR)
             
-        # Plantilla Base (Si no existe, la creamos en memoria)
-        # NOTA: En producción esto debería leerse de un archivo yaml
         tpl_isolation = """
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -106,16 +100,14 @@ metadata:
   name: aislamiento-usuario
   namespace: default
 spec:
-  podSelector: {} # Aplica a todos los pods
+  podSelector: {} 
   policyTypes:
   - Ingress
   ingress:
-  # 1. Permitir tráfico interno SOLO si tienen el mismo dueño
   - from:
     - podSelector:
         matchLabels:
           owner: "OWNER_ID_PLACEHOLDER"
-  # 2. Permitir tráfico externo necesario (Ingress, SSH, Monitoring)
   - from:
     - namespaceSelector:
         matchLabels:
@@ -125,24 +117,17 @@ spec:
           kubernetes.io/metadata.name: metallb-system
     - namespaceSelector:
         matchLabels:
-          kubernetes.io/metadata.name: kube-system # Para métricas
+          kubernetes.io/metadata.name: kube-system 
 """
-        # Reemplazar el placeholder con el ID real
         final_yaml = tpl_isolation.replace("OWNER_ID_PLACEHOLDER", str(owner_id))
-        
-        # Guardar temporalmente
         tmp_policy = f"/tmp/policy_{profile}.yaml"
         with open(tmp_policy, "w") as f: f.write(final_yaml)
         
-        # Aplicar con kubectl
         subprocess.run(["minikube", "-p", profile, "kubectl", "--", "apply", "-f", tmp_policy], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
-        # Limpiar
         try: os.remove(tmp_policy)
         except: pass
         
         log(f"🛡️ Seguridad Activada: Cluster blindado.", Colors.GREEN)
-        
     except Exception as e:
         log(f"⚠️ Error aplicando seguridad: {e}", Colors.RED)
 
@@ -201,38 +186,40 @@ spec:
     except Exception as e:
         log(f"⚠️ Error red: {e}", Colors.RED)
 
-def push_final_credentials(oid, profile, subdomain, ip_cluster):
+def push_final_credentials(oid, profile, subdomain, ip_cluster, os_real_name="Linux"):
     try:
-        log(f"📝 Generando reporte final para API...", Colors.CYAN)
-        web_url = f"http://{subdomain}.sylobi.org"
+        log(f"📝 Generando reporte final para API (OS: {os_real_name})...", Colors.CYAN)
+        
+        # Leemos el JSON generado por el script BASH para obtener datos precisos
         ssh_cmd = "SSH no disponible"
-        cmd_port = ["minikube", "-p", profile, "kubectl", "--", "get", "svc", "web-service", "-o", "json"]
+        web_url = f"http://{subdomain}.sylobi.org"
         
-        # Intentamos obtener SSH del servicio principal o de uno dedicado
-        svc_info = subprocess.run(cmd_port, stdout=subprocess.PIPE, text=True)
-        if svc_info.returncode != 0:
-             cmd_port = ["minikube", "-p", profile, "kubectl", "--", "get", "svc", "ssh-server-service", "-o", "json"]
-             svc_info = subprocess.run(cmd_port, stdout=subprocess.PIPE, text=True)
-        
-        if svc_info.returncode == 0 and svc_info.stdout:
-            data = json.loads(svc_info.stdout)
-            # Buscar en lista de puertos o puertos directos
-            ports = data.get('spec', {}).get('ports', [])
-            for port in ports:
-                # Buscamos puerto 22 o nombre ssh
-                if (port.get('port') == 22 or port.get('name') == 'ssh') and port.get('nodePort'):
-                    ssh_port = port['nodePort']
-                    ssh_cmd = f"ssh root@{ip_cluster} -p {ssh_port}"
-                    break
-        
+        status_file = os.path.join(BUZON, f"status_{oid}.json")
+        if os.path.exists(status_file):
+            try:
+                with open(status_file, 'r') as f:
+                    data = json.load(f)
+                    ssh_cmd = data.get("ssh_cmd", ssh_cmd)
+                    # Si el script bash reportó web_url vacía (Bronce), la respetamos
+                    if "web_url" in data and not data["web_url"]:
+                        web_url = "No Web Service"
+            except: pass
+
+        # Formateo bonito del OS para la API
+        os_display = os_real_name.capitalize()
+        if "alpine" in os_real_name.lower(): os_display = "Alpine Linux (Optimizado)"
+        elif "ubuntu" in os_real_name.lower(): os_display = "Ubuntu Server LTS"
+        elif "redhat" in os_real_name.lower(): os_display = "RedHat Enterprise (UBI)"
+
         payload = {
             "id_cliente": int(oid), 
             "metrics": {"cpu": 5, "ram": 12},
             "ssh_cmd": ssh_cmd, 
-            "web_url": web_url
+            "web_url": web_url,
+            "os_info": os_display
         }
         requests.post(f"{API_URL}/reportar/metricas", json=payload, timeout=2)
-        log(f"✅ Reporte enviado a API: {web_url}", Colors.GREEN)
+        log(f"✅ Reporte enviado a API: {web_url} [{os_display}]", Colors.GREEN)
         
     except Exception as e: 
         log(f"⚠️ Error enviando reporte: {e}", Colors.RED)
@@ -241,7 +228,6 @@ def run_bash_script(script_path, args, env_vars=None, cwd=None):
     if shutdown_event.is_set(): return False
     cmd = ["bash", script_path] + [str(a) for a in args]
     
-    # Fusión de variables de entorno (Sistema + Nuevas)
     current_env = os.environ.copy()
     if env_vars:
         current_env.update(env_vars)
@@ -265,38 +251,61 @@ def process_order(json_file):
         oid = data.get("id"); plan_raw = data.get("plan")
         specs = data.get("specs", {})
         
-        # --- NUEVO: OBTENER DUEÑO ---
-        # Si no viene (pedidos antiguos), usamos 'admin'
+        # OBTENER DUEÑO
         owner_id = str(data.get("id_usuario_real", "admin"))
         
+        # Datos del Pedido (Lo que el cliente pidió)
         subdomain = specs.get("subdomain", f"cliente{oid}")
         ssh_user = specs.get("ssh_user", "usuario")
-        os_image = specs.get("os_image", "ubuntu") 
+        os_requested = specs.get("os_image", "ubuntu") # Lo que eligió en la web
         
-        log(f"👉 PROCESANDO ID: {oid} | User: {owner_id} | Plan: {plan_raw}", Colors.GREEN)
+        log(f"👉 PROCESANDO ID: {oid} | User: {owner_id} | Plan: {plan_raw} | ReqOS: {os_requested}", Colors.GREEN)
         update_db_state(oid, "creating")
-        report_progress(oid, 10, "Preparando entorno blindado...")
+        
         cluster_profile = f"sylo-cliente-{oid}"
         success = False
-
-        # Preparamos las variables de entorno para Terraform
         env_vars = {"TF_VAR_owner_id": owner_id}
 
+        # ==============================================================================
+        # 🧠 ROUTER DE LÓGICA DE NEGOCIO (THEMATIC ENFORCEMENT)
+        # ==============================================================================
+
+        # --- PLAN BRONCE ---
+        # Temática: Siempre Alpine, Solo SSH. Ignoramos lo que venga en el JSON de Web/DB.
         if plan_raw == "Bronce":
-            args = [oid, ssh_user, os_image, subdomain]
+            report_progress(oid, 10, "Iniciando Plan Bronce (Forzando Alpine)...")
+            # Argumentos: ID, User, OS(Forzado), DB(Ignorado), Web(Ignorado), Subdomain
+            args = [oid, ssh_user, "alpine", "no-db", "no-web", subdomain]
             success = run_bash_script(SCRIPT_BRONCE, args, env_vars)
             
+            # Variable para reporte final (La real, no la pedida)
+            os_final = "alpine"
+
+        # --- PLAN PLATA ---
+        # Temática: Alpine o Ubuntu. DB Obligatoria (MySQL). Sin Web.
         elif plan_raw == "Plata":
             db_name = specs.get("db_custom_name", "sylo_db")
-            args = [oid, ssh_user, os_image, db_name, subdomain]
+            report_progress(oid, 10, f"Iniciando Plan Plata ({os_requested})...")
+            # Argumentos del script: ID, User, OS, DB_Name, Subdomain
+            args = [oid, ssh_user, os_requested, db_name, subdomain]
             success = run_bash_script(f"./{os.path.basename(SCRIPT_PLATA)}", args, env_vars, cwd=os.path.dirname(SCRIPT_PLATA))
             
+            os_final = os_requested
+
+        # --- PLAN ORO ---
+        # Temática: Todo permitido (inc. RedHat). Web + DB Obligatorios.
         elif plan_raw == "Oro":
             db_name = specs.get("db_custom_name", "sylo_db")
             web_name = specs.get("web_custom_name", "sylo_web")
-            args = [oid, ssh_user, os_image, db_name, web_name, subdomain]
+            report_progress(oid, 10, f"Iniciando Plan Oro ({os_requested} Full Stack)...")
+            # Argumentos: ID, User, OS, DB_Name, Web_Name, Subdomain
+            args = [oid, ssh_user, os_requested, db_name, web_name, subdomain]
             success = run_bash_script(SCRIPT_ORO, args, env_vars)
             
+            os_final = os_requested
+
+        # --- PLAN PERSONALIZADO ---
+        # Temática: A la carta. Pasamos todos los parámetros crudos.
         elif plan_raw == "Personalizado":
             cpu = specs.get("cpu", "2"); ram = specs.get("ram", "4"); storage = specs.get("storage", "10")
             db_en = str(specs.get("db_enabled", "")).lower(); db_type = specs.get("db_type", "mysql")
@@ -304,23 +313,33 @@ def process_order(json_file):
             db_name = specs.get("db_custom_name", "custom_db")
             web_name = specs.get("web_custom_name", "custom_web")
             
-            args = [oid, cpu, ram, storage, db_en, db_type, web_en, web_type, ssh_user, os_image, db_name, web_name, subdomain]
+            report_progress(oid, 10, f"Iniciando Custom ({os_requested})...")
+            
+            args = [oid, cpu, ram, storage, db_en, db_type, web_en, web_type, ssh_user, os_requested, db_name, web_name, subdomain]
             success = run_bash_script(SCRIPT_CUSTOM, args, env_vars)
+            
+            os_final = os_requested
+
+        # ==============================================================================
 
         if success:
             log(f"✅ ID {oid} Desplegado. Aplicando Seguridad...", Colors.GREEN)
             
-            # 1. APLICAR SEGURIDAD (Network Policy)
+            # 1. SEGURIDAD
             apply_security_policy(cluster_profile, owner_id)
             
-            # 2. CONFIGURAR RED Y MONITORING
+            # 2. RED Y MONITORING
             ip_cluster = save_cluster_data(oid, cluster_profile)
-            report_progress(oid, 90, "Asignando DNS y SSL...")
-            enable_monitoring(cluster_profile)
-            activating_red_pro(cluster_profile, oid, subdomain) 
+            
+            # Solo activamos Ingress/Metallb si NO es Bronce (Bronce es solo SSH)
+            if plan_raw != "Bronce":
+                report_progress(oid, 90, "Asignando DNS y SSL...")
+                enable_monitoring(cluster_profile)
+                activating_red_pro(cluster_profile, oid, subdomain) 
             
             if ip_cluster:
-                push_final_credentials(oid, cluster_profile, subdomain, ip_cluster)
+                # Usamos os_final para que la API sepa qué se instaló realmente
+                push_final_credentials(oid, cluster_profile, subdomain, ip_cluster, os_final)
             
             update_db_state(oid, "active")
             report_progress(oid, 100, "Despliegue finalizado.")
@@ -342,7 +361,7 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
     
-    log(f"=== ORQUESTADOR SYLO V19 (SEGURIDAD ACTIVA) ===", Colors.BLUE)
+    log(f"=== ORQUESTADOR SYLO V21 (LOGIC TIER ENFORCEMENT) ===", Colors.BLUE)
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         while not shutdown_event.is_set():
             files = glob.glob(os.path.join(BUZON, "orden_*.json"))

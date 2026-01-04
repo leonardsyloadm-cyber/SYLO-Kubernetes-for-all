@@ -1,214 +1,320 @@
 #!/usr/bin/env python3
-import sys, os, subprocess, time, json, datetime, threading, signal, shutil, glob, codecs
+import sys, os, subprocess, time, json, datetime, threading, signal, shutil, tarfile, glob, codecs
 
-# --- CONFIGURACIÓN ---
+# ==============================================================================
+# ⚙️ CONFIGURACIÓN
+# ==============================================================================
 sys.stdout.reconfigure(line_buffering=True)
 WORKER_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(WORKER_DIR)
 BUZON = os.path.join(BASE_DIR, "buzon-pedidos")
-API_URL = "http://172.17.0.1:8001/api/clientes" 
+API_URL = "http://127.0.0.1:8001/api/clientes" 
 
 status_lock = threading.Lock()
 cmd_lock = threading.Lock()
 shutdown_event = threading.Event()
 
-# --- LOGS ---
-C_RESET="\033[0m"; C_CYAN="\033[96m"; C_YELLOW="\033[93m"; C_GREEN="\033[92m"; C_RED="\033[91m"; C_GREY="\033[90m"
-def log(msg, color=C_CYAN): print(f"{color}[{datetime.datetime.now().strftime('%H:%M:%S')}] {msg}{C_RESET}", flush=True)
-def signal_handler(s, f): log("🛑 Operator detenido.", C_RED); shutdown_event.set(); sys.exit(0)
+# ==============================================================================
+# 🎨 LOGS
+# ==============================================================================
+C_RESET = "\033[0m"; C_CYAN = "\033[96m"; C_YELLOW = "\033[93m"; C_GREEN = "\033[92m"; C_RED = "\033[91m"; C_GREY = "\033[90m"
 
-# --- EJECUTOR HABLADOR (VUELVEN LOS COMANDOS) ---
+def log(msg, color=C_CYAN):
+    timestamp = datetime.datetime.now().strftime('%H:%M:%S')
+    print(f"{color}[{timestamp}] {msg}{C_RESET}", flush=True)
+
+def signal_handler(signum, frame):
+    log("🛑 Parada solicitada.", C_RED)
+    shutdown_event.set()
+    sys.exit(0)
+
+# ==============================================================================
+# 🛠️ EJECUTOR
+# ==============================================================================
 def run_command(cmd, timeout=300, silent=False):
     with cmd_lock:
         try:
-            if not silent: 
-                log(f"CMD > {cmd}", C_YELLOW)
-            
-            res = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout)
-            
+            if not silent: log(f"CMD > {cmd}", C_YELLOW)
+            res = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout, bufsize=10485760)
             if res.returncode != 0:
-                log(f"⚠️ ERROR ({res.returncode}): {res.stderr.strip()}", C_RED)
+                if "grep" not in cmd: log(f"⚠️ ERROR ({res.returncode}): {res.stderr.strip()[:200]}", C_RED)
             elif not silent:
-                out = res.stdout.strip()
-                if out: log(f"   OUT: {out[:200]}...", C_GREY)
-                
+                preview = res.stdout.strip()[:100].replace('\n', ' ')
+                if preview: log(f"   OUT: {preview}...", C_GREY)
             return res.stdout.strip()
-        except Exception as e: 
-            log(f"❌ EXCEPCION CMD: {e}", C_RED)
+        except Exception as e:
+            log(f"❌ EXCEPCIÓN: {e}", C_RED)
             return ""
 
-# --- API ---
+# ==============================================================================
+# 📡 API
+# ==============================================================================
 try: import requests
-except: pass
+except ImportError: log("⚠️ Falta 'requests'", C_RED)
 
 def report_progress(oid, tipo, status, pct, msg):
-    log(f"📡 API REPORT: {status} ({pct}%)", C_GREY)
-    try: 
+    log(f"📡 API > Cliente {oid} [{tipo}]: {msg} ({pct}%)", C_GREY)
+    try:
         requests.post(f"{API_URL}/reportar/progreso", json={
             "id_cliente": int(oid), "tipo": tipo, "status_text": status, "percent": int(pct), "msg": str(msg)
         }, timeout=2)
     except: pass
 
-def report_backups(oid):
-    files = glob.glob(os.path.join(BUZON, f"backup_v{oid}_*.tar.gz"))
-    backups = []
-    for f in sorted(files, reverse=True):
-        try:
-            p = os.path.basename(f).split('_')
-            if len(p)>=5: backups.append({"file":os.path.basename(f), "name":p[3], "type":p[2], "date":"Hoy"})
-        except: pass
-    try: requests.post(f"{API_URL}/reportar/lista_backups", json={"id_cliente": int(oid), "backups": backups}, timeout=2)
+def report_backups_list(oid):
+    try:
+        files = glob.glob(os.path.join(BUZON, f"backup_v{oid}_*.tar.gz"))
+        backups = []
+        for f in sorted(files, reverse=True):
+            try:
+                parts = os.path.basename(f).split('_')
+                if len(parts) >= 5:
+                    ts = parts[4].split('.')[0]
+                    date_fmt = f"{ts[6:8]}/{ts[4:6]} {ts[8:10]}:{ts[10:12]}"
+                    b_type = parts[2].upper()
+                    backups.append({"file": os.path.basename(f), "name": parts[3], "type": b_type, "date": date_fmt})
+            except: continue
+        requests.post(f"{API_URL}/reportar/lista_backups", json={"id_cliente": int(oid), "backups": backups}, timeout=2)
     except: pass
 
-# --- UTILS ---
-def wait_pods(prof, txt, retries=5):
-    log(f"🔎 Buscando pods '{txt}'...", C_CYAN)
-    for i in range(retries):
-        raw = run_command(f"minikube -p {prof} kubectl -- get pods --no-headers", silent=True)
-        for l in raw.splitlines():
-            if txt in l and "Running" in l: 
-                pod = l.split()[0]
-                log(f"✅ Pod detectado: {pod}", C_GREEN)
-                return [pod]
-        time.sleep(1)
-    return []
+# ==============================================================================
+# 🔍 HELPERS
+# ==============================================================================
+def find_web_pod(profile):
+    cmd = f"minikube -p {profile} kubectl -- get pods"
+    raw = run_command(cmd, silent=True)
+    candidates = []
+    for line in raw.splitlines():
+        if "NAME" in line: continue
+        parts = line.split()
+        if len(parts) < 3: continue
+        name, status = parts[0], parts[2]
+        if "mysql" in name or "db" in name: continue
+        if "Running" in status: candidates.append(name)
+    
+    for c in candidates: 
+        if "web" in c: return c
+    for c in candidates: 
+        if "http" in c or "nginx" in c or "apache" in c or "custom" in c: return c
+    if candidates: return candidates[0]
+    return None
 
-# ==========================================
-# 🔥 LÓGICA DE TRABAJO (VERBOSE) 🔥
-# ==========================================
+def find_active_configmap(profile, pod_name):
+    try:
+        res = run_command(f"minikube -p {profile} kubectl -- get pod {pod_name} -o json", silent=True)
+        pod_data = json.loads(res)
+        if 'spec' in pod_data and 'volumes' in pod_data['spec']:
+            for vol in pod_data['spec']['volumes']:
+                if 'configMap' in vol:
+                    cm_name = vol['configMap']['name']
+                    if "kube" not in cm_name and ("web" in cm_name or "html" in cm_name or "custom" in cm_name):
+                        return cm_name
+    except: pass
+    return "custom-web-content"
 
-def update_web(oid, prof, content, is_restore=False):
-    t_type = "backup" if is_restore else "web"
-    t_stat = "restoring" if is_restore else "web_updating"
-    log(f"🔧 ACTUALIZANDO CONTENIDO WEB (Cliente {oid})...", C_GREEN)
-    report_progress(oid, t_type, t_stat, 20, "Aplicando HTML...")
+# ==============================================================================
+# 🚀 ACCIONES
+# ==============================================================================
+
+# 1. EDITAR WEB
+def update_web_content(oid, profile, html_content, is_restore_process=False):
+    t_type = "backup" if is_restore_process else "web"
+    t_stat = "restoring" if is_restore_process else "web_updating"
+    log(f"🔧 PROCESANDO WEB Cliente {oid}...", C_GREEN)
+    
+    report_progress(oid, t_type, t_stat, 10, "Buscando Pod...")
+    if is_restore_process: time.sleep(1)
     
     try:
-        web = wait_pods(prof, "web", 5)
-        if not web: raise Exception("No hay pod web activo")
+        pod = find_web_pod(profile)
+        if not pod: raise Exception("Pod Web no encontrado (¿apagado?)")
+        target_cm = find_active_configmap(profile, pod)
         
-        # Guardar local
-        tf = f"/tmp/idx_{oid}.html"
-        with open(tf, "w", encoding="utf-8") as f: f.write(content)
+        temp_file = os.path.join(WORKER_DIR, f"temp_web_{oid}.html")
+        with codecs.open(temp_file, "w", "utf-8") as f: f.write(html_content)
+            
+        report_progress(oid, t_type, t_stat, 40, f"Actualizando {target_cm}...")
+        run_command(f"minikube -p {profile} kubectl -- delete cm {target_cm} --ignore-not-found", silent=False)
+        res = run_command(f"minikube -p {profile} kubectl -- create cm {target_cm} --from-file=index.html={temp_file}", silent=False)
         
-        log(f"📦 Inyectando HTML en {web[0]}...", C_CYAN)
-        run_command(f"minikube -p {prof} kubectl -- cp {tf} {web[0]}:/usr/share/nginx/html/index.html", silent=False)
+        if "created" not in res: raise Exception("Fallo ConfigMap")
+
+        report_progress(oid, t_type, t_stat, 70, "Reiniciando...")
+        run_command(f"minikube -p {profile} kubectl -- delete pod {pod} --wait=false", silent=False)
+        if os.path.exists(temp_file): os.remove(temp_file)
+        time.sleep(3)
         
-        try: os.remove(tf)
-        except: pass
+        report_progress(oid, t_type, "completed" if is_restore_process else "web_completed", 100, "Online")
+        log("✅ WEB ACTUALIZADA", C_GREEN)
         
-        report_progress(oid, t_type, "web_completed" if not is_restore else "completed", 100, "Online")
-        log("✅ WEB ACTUALIZADA CORRECTAMENTE", C_GREEN)
     except Exception as e:
-        log(f"❌ Error Web: {e}", C_RED)
+        log(f"❌ Error: {e}", C_RED)
         report_progress(oid, t_type, "error", 0, str(e))
 
-def do_backup(oid, prof, name):
-    log(f"📦 INICIANDO COPIA DE SEGURIDAD FULL: {name}", C_GREEN)
+# 2. BACKUP
+def create_backup(oid, profile, backup_name, backup_type="full"):
+    log(f"📦 BACKUP [{backup_type}]: {backup_name}", C_GREEN)
     report_progress(oid, "backup", "creating", 10, "Iniciando...")
-    
-    ts = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
-    final_tar = os.path.join(BUZON, f"backup_v{oid}_full_{name}_{ts}.tar.gz")
+    temp_dir = os.path.join(BUZON, f"temp_bk_{oid}")
+    if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
+    os.makedirs(temp_dir)
     
     try:
-        web = wait_pods(prof, "web", 5)
-        if web:
-            report_progress(oid, "backup", "creating", 40, "Empaquetando recursos...")
-            log(f"📡 Extrayendo archivos desde el Pod...", C_CYAN)
+        pod = find_web_pod(profile)
+        if pod:
+            report_progress(oid, "backup", "creating", 30, "Leyendo...")
+            html = run_command(f"minikube -p {profile} kubectl -- exec {pod} -- cat /usr/share/nginx/html/index.html", silent=True)
+            if not html or "No such file" in html: html = run_command(f"minikube -p {profile} kubectl -- exec {pod} -- cat /var/www/html/index.html", silent=True)
             
-            # Pipe: tar remoto -> gzip local
-            cmd = f"minikube -p {prof} kubectl -- exec {web[0]} -- tar cf - -C /usr/share/nginx/html . | gzip > {final_tar}"
-            run_command(cmd, silent=False)
-            
-            report_progress(oid, "backup", "completed", 100, "Completado")
-            report_backups(oid)
-            log(f"✅ BACKUP FINALIZADO: {os.path.basename(final_tar)}", C_GREEN)
+            with open(os.path.join(temp_dir, "index.html"), "w") as f: f.write(html if html and "No such file" not in html else "")
         else:
-            raise Exception("Imposible hacer backup: Pod Web no encontrado")
+            with open(os.path.join(temp_dir, "index.html"), "w") as f: f.write("")
+        
+        report_progress(oid, "backup", "creating", 70, "Guardando...")
+        ts = datetime.datetime.now().strftime('%Y%m%d%H%M%S')
+        safe_name = "".join(x for x in backup_name if x.isalnum())
+        fname = f"backup_v{oid}_{backup_type.lower()}_{safe_name}_{ts}.tar.gz"
+        
+        with tarfile.open(os.path.join(BUZON, fname), "w:gz") as tar: tar.add(temp_dir, arcname="data")
+        report_progress(oid, "backup", "completed", 100, "OK")
+        report_backups_list(oid)
+        log(f"💾 Guardado: {fname}", C_GREEN)
     except Exception as e:
-        log(f"❌ Error Backup: {e}", C_RED)
-        report_progress(oid, "backup", "error", 0, str(e))
+        log(f"❌ Error: {e}", C_RED); report_progress(oid, "backup", "error", 0, str(e))
+    finally:
+        if os.path.exists(temp_dir): shutil.rmtree(temp_dir)
 
-def do_restore(oid, prof, fn):
-    log(f"♻️ INICIANDO RESTAURACIÓN: {fn}", C_GREEN)
-    report_progress(oid, "backup", "restoring", 10, "Preparando...")
-    
-    tar_path = os.path.join(BUZON, fn)
-    if not os.path.exists(tar_path):
-        log(f"❌ El archivo {fn} no existe en el buzón", C_RED)
-        return
-
+# 3. RESTORE
+def restore_backup(oid, profile, filename):
+    log(f"♻️ RESTAURANDO: {filename}", C_GREEN)
+    report_progress(oid, "backup", "restoring", 5, "Iniciando...")
+    path = os.path.join(BUZON, filename)
+    if not os.path.exists(path): return
+    ext_dir = os.path.join(BUZON, f"rest_{oid}")
+    if os.path.exists(ext_dir): shutil.rmtree(ext_dir)
     try:
-        web = wait_pods(prof, "web", 5)
-        if web:
-            report_progress(oid, "backup", "restoring", 40, "Borrando actual...")
-            # Limpiar destino
-            run_command(f"minikube -p {prof} kubectl -- exec {web[0]} -- sh -c 'rm -rf /usr/share/nginx/html/*'", silent=False)
-            
-            report_progress(oid, "backup", "restoring", 60, "Inyectando backup...")
-            # Copiar y descomprimir
-            run_command(f"minikube -p {prof} kubectl -- cp {tar_path} {web[0]}:/tmp/restore.tar.gz", silent=False)
-            run_command(f"minikube -p {prof} kubectl -- exec {web[0]} -- tar xzf /tmp/restore.tar.gz -C /usr/share/nginx/html/", silent=False)
-            
-            report_progress(oid, "backup", "completed", 100, "Éxito")
-            log("✅ RESTAURACIÓN COMPLETADA", C_GREEN)
-        else:
-            raise Exception("Pod Web no activo para restaurar")
-    except Exception as e:
-        log(f"❌ Error Restore: {e}", C_RED)
-        report_progress(oid, "backup", "error", 0, str(e))
+        with tarfile.open(path, "r:gz") as tar: tar.extractall(ext_dir)
+        found = None
+        for r, d, f in os.walk(ext_dir):
+            if "index.html" in f: found = os.path.join(r, "index.html"); break
+        if found:
+            with codecs.open(found, 'r', 'utf-8') as f: update_web_content(oid, profile, f.read(), is_restore_process=True)
+    except Exception as e: report_progress(oid, "backup", "error", 0, str(e))
+    finally:
+        if os.path.exists(ext_dir): shutil.rmtree(ext_dir)
 
-# --- BUCLES ---
-def task_loop():
+# 4. DELETE
+def delete_backup(oid, fname):
+    try:
+        if os.path.exists(os.path.join(BUZON, fname)): os.remove(os.path.join(BUZON, fname))
+        report_backups_list(oid)
+    except: pass
+
+# 5. DESTROY
+def destroy_k8s_resources(oid, profile):
+    log(f"☢️ DESTRUYENDO: CLIENTE {oid}", C_RED)
+    try:
+        run_command(f"minikube delete -p {profile}")
+        run_command(f'docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D kylo_main_db -e "UPDATE orders SET status=\'cancelled\' WHERE id={oid}"', silent=False)
+        log(f"⚰️ ELIMINADO", C_RED)
+    except: pass
+
+# 6. 🔥 CONTROL DE ENERGÍA (NUEVO)
+def handle_power(oid, profile, action):
+    action = action.upper()
+    log(f"🔌 ENERGÍA: {action} Cliente {oid}", C_YELLOW)
+    
+    try:
+        if action == "STOP":
+            report_progress(oid, "power", "stopping", 20, "Deteniendo servicios...")
+            # Escalar a 0 réplicas (apagar)
+            run_command(f"minikube -p {profile} kubectl -- scale deployment --all --replicas=0")
+            
+            # Actualizar DB a 'stopped' para que el Dashboard lo sepa
+            log("💤 Marcando como STOPPED en DB...", C_GREY)
+            run_command(f'docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D kylo_main_db -e "UPDATE orders SET status=\'stopped\' WHERE id={oid}"')
+            
+            report_progress(oid, "power", "stopped", 100, "Hibernando")
+            log(f"🛑 CLIENTE {oid} DETENIDO", C_RED)
+
+        elif action == "START":
+            report_progress(oid, "power", "starting", 20, "Iniciando servicios...")
+            # Escalar a 1 réplica (encender)
+            run_command(f"minikube -p {profile} kubectl -- scale deployment --all --replicas=1")
+            
+            # Actualizar DB a 'active'
+            log("⚡ Marcando como ACTIVE en DB...", C_GREY)
+            run_command(f'docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D kylo_main_db -e "UPDATE orders SET status=\'active\' WHERE id={oid}"')
+            
+            time.sleep(5) # Esperar arranque
+            report_progress(oid, "power", "started", 100, "Online")
+            log(f"🟢 CLIENTE {oid} INICIADO", C_GREEN)
+
+        elif action == "RESTART":
+            report_progress(oid, "power", "restarting", 20, "Reiniciando pods...")
+            # Rollout restart (Reinicio suave)
+            run_command(f"minikube -p {profile} kubectl -- rollout restart deployment")
+            
+            report_progress(oid, "power", "restarted", 100, "Reiniciado")
+            log(f"🔄 CLIENTE {oid} REINICIADO", C_CYAN)
+
+    except Exception as e:
+        log(f"❌ Error Energía: {e}", C_RED)
+        report_progress(oid, "power", "error", 0, str(e))
+
+# ==============================================================================
+# 🔄 WORKERS
+# ==============================================================================
+def process_task_queue():
+    log("📥 Cola lista.", C_GREEN)
     while not shutdown_event.is_set():
         for f in glob.glob(os.path.join(BUZON, "accion_*.json")):
             try:
-                log(f"📨 ORDEN DETECTADA: {os.path.basename(f)}", C_YELLOW)
                 with open(f) as fh: d = json.load(fh)
                 os.remove(f)
-                oid = d.get('id_cliente'); act = str(d.get('action') or d.get('accion')).upper(); prof = f"sylo-cliente-{oid}"
-                t = threading.Thread(target=process, args=(oid, prof, act, d))
-                t.start()
-            except: pass
+                
+                oid, act, prof = d.get('id_cliente'), str(d.get('action')).upper(), f"sylo-cliente-{d.get('id_cliente')}"
+                log(f"📨 Orden: {act} -> {oid}", C_YELLOW)
+                
+                if act == "BACKUP": threading.Thread(target=create_backup, args=(oid, prof, d.get('backup_name'), d.get('backup_type', 'full'))).start()
+                elif act == "RESTORE_BACKUP": threading.Thread(target=restore_backup, args=(oid, prof, d.get('filename_to_restore'))).start()
+                elif act == "UPDATE_WEB": threading.Thread(target=update_web_content, args=(oid, prof, d.get('html_content'))).start()
+                elif act == "DELETE_BACKUP": threading.Thread(target=delete_backup, args=(oid, d.get('filename_to_delete'))).start()
+                elif act == "DESTROY_K8S": threading.Thread(target=destroy_k8s_resources, args=(oid, prof)).start()
+                
+                # 🔥 NUEVOS COMANDOS DE ENERGÍA
+                elif act in ["STOP", "START", "RESTART"]:
+                    threading.Thread(target=handle_power, args=(oid, prof, act)).start()
+                
+            except Exception as e: log(f"⚠️ Error: {e}", C_RED)
         time.sleep(0.5)
 
-def process(oid, prof, act, d):
-    if act == "BACKUP": do_backup(oid, prof, d.get('backup_name'))
-    elif act == "RESTORE_BACKUP": do_restore(oid, prof, d.get('filename_to_restore'))
-    elif act == "UPDATE_WEB": update_web(oid, prof, d.get('html_content'))
-    elif act == "DELETE_BACKUP": 
-        p = os.path.join(BUZON, d.get('filename_to_delete'))
-        if os.path.exists(p): os.remove(p); report_backups(oid)
-
-def metrics_loop():
+def process_metrics():
+    log("📊 Métricas activas.", C_GREEN)
     while not shutdown_event.is_set():
         try:
-            out = run_command("docker ps --format '{{.Names}}'", silent=True)
-            for l in out.splitlines():
-                if "sylo-cliente-" in l:
-                    oid = l.replace("sylo-cliente-", "")
+            raw = run_command("docker ps --format '{{.Names}}'", silent=True)
+            for line in raw.splitlines():
+                if "sylo-cliente-" in line:
+                    oid = line.replace("sylo-cliente-", "")
+                    stats = run_command(f"docker stats {line} --no-stream --format '{{{{.CPUPerc}}}},{{{{.MemPerc}}}}'", silent=True)
+                    c,r = 0,0
+                    if "," in stats:
+                        try: c=float(stats.split(',')[0].replace('%','')); r=float(stats.split(',')[1].replace('%',''))
+                        except: pass
                     
-                    # DOMINIO REAL DESDE DB
-                    sub = run_command(f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D kylo_main_db -e "SELECT subdomain FROM order_specs WHERE order_id={oid}"', silent=True).strip()
-                    url = f"http://{sub}.sylobi.org" if sub and "NULL" not in sub else f"http://cliente{oid}.sylobi.org"
+                    db_cmd = f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D kylo_main_db -e "SELECT subdomain FROM order_specs WHERE order_id={oid}"'
+                    sub = run_command(db_cmd, silent=True).strip()
+                    url = f"http://{sub}.sylobi.org" if sub and sub!="NULL" and len(sub)>0 else "..."
                     
-                    # Reportar a API
-                    requests.post(f"{API_URL}/reportar/metricas", json={
-                        "id_cliente": int(oid), 
-                        "metrics": {"cpu":12,"ram":25}, 
-                        "ssh_cmd": "root@sylo", 
-                        "web_url": url
-                    }, timeout=1)
-                    report_backups(oid)
+                    requests.post(f"{API_URL}/reportar/metricas", json={"id_cliente":int(oid), "metrics":{"cpu":c,"ram":r}, "ssh_cmd": "root@sylo", "web_url": url}, timeout=1)
+                    report_backups_list(oid)
         except: pass
         time.sleep(2)
 
 if __name__ == "__main__":
-    signal.signal(signal.SIGTERM, signal_handler)
-    log("===============================================", C_GREEN)
-    log("=== OPERATOR V43 (LOUD + REAL DOMAINS)      ===", C_GREEN)
-    log("===============================================", C_GREEN)
-    t1 = threading.Thread(target=task_loop, daemon=True)
-    t2 = threading.Thread(target=metrics_loop, daemon=True)
+    signal.signal(signal.SIGTERM, signal_handler); signal.signal(signal.SIGINT, signal_handler)
+    if not os.path.exists(BUZON): os.makedirs(BUZON)
+    log("=== OPERATOR V51 (POWER CONTROL) ===", C_GREEN)
+    t1=threading.Thread(target=process_task_queue, daemon=True); t2=threading.Thread(target=process_metrics, daemon=True)
     t1.start(); t2.start()
     while True: time.sleep(1)

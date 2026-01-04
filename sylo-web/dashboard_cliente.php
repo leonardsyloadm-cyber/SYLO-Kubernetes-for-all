@@ -1,9 +1,9 @@
 <?php
 // =================================================================================
-// 🛡️ SYLO DASHBOARD CLIENTE - V15 (VISUAL SYNC FIX)
+// 🛡️ SYLO DASHBOARD - V39 (NUCLEAR DELETE BUTTON ADDED)
 // =================================================================================
 session_start();
-define('API_URL_BASE', 'http://host.docker.internal:8001/api/clientes');
+define('API_URL_BASE', 'http://172.17.0.1:8001/api/clientes'); // IP LINUX
 
 // AUTH & DB
 if (isset($_GET['action']) && $_GET['action'] == 'logout') { session_destroy(); header("Location: index.php"); exit; }
@@ -15,8 +15,52 @@ $password_db = getenv('DB_PASS') ?: "sylo_app_pass";
 $dbname = getenv('DB_NAME') ?: "kylo_main_db";
 try { $conn = new PDO("mysql:host=$servername;dbname=$dbname", $username_db, $password_db); } catch(PDOException $e) { die("Error DB"); }
 
-$buzon_path = "../buzon-pedidos"; 
 $user_id = $_SESSION['user_id'];
+
+// --- ACTIONS (POST) ---
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] != 'update_profile') {
+    $oid = $_POST['order_id'];
+    $act = $_POST['action'];
+    
+    $data = [
+        "id_cliente" => (int)$oid,
+        "accion" => $act,
+        "backup_type" => "full",
+        "backup_name" => "Backup",
+        "filename_to_restore" => "",
+        "filename_to_delete" => "",
+        "html_content" => ""
+    ];
+
+    if ($act == 'backup') {
+        $data['backup_type'] = $_POST['backup_type'] ?? 'full';
+        $data['backup_name'] = $_POST['backup_name'] ?? 'Manual';
+    }
+    if ($act == 'restore_backup') $data['filename_to_restore'] = $_POST['filename'];
+    if ($act == 'delete_backup') $data['filename_to_delete'] = $_POST['filename'];
+    if ($act == 'update_web') $data['html_content'] = $_POST['html_content'];
+    
+    // 🔥 NUEVA ACCIÓN: DESTROY K8S
+    if ($act == 'destroy_k8s') {
+        // No necesitamos parámetros extra, solo la acción
+    }
+
+    $ctx = stream_context_create(['http' => ['header'=>"Content-type: application/json\r\n",'method'=>'POST','content'=>json_encode($data),'timeout'=>2]]);
+    @file_get_contents(API_URL_BASE . "/accion", false, $ctx);
+    
+    if(isset($_GET['ajax'])) { echo json_encode(['status' => 'ok']); exit; }
+    header("Location: dashboard_cliente.php?id=$oid"); exit;
+}
+
+// --- AJAX DATA (GET) ---
+if (isset($_GET['ajax_data'])) {
+    header('Content-Type: application/json');
+    $oid = $_GET['id'];
+    $ctx = stream_context_create(['http'=> ['timeout' => 1]]);
+    $json = @file_get_contents(API_URL_BASE . "/estado/$oid", false, $ctx);
+    echo $json ?: json_encode(['error' => 'API Offline', 'metrics' => ['cpu'=>0,'ram'=>0]]); 
+    exit;
+}
 
 // UPDATE PROFILE
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] == 'update_profile') {
@@ -31,8 +75,7 @@ function calculateWeeklyPrice($r) {
     $p=match($r['plan_name']??''){'Bronce'=>5,'Plata'=>15,'Oro'=>30,default=>0}; 
     if(($r['plan_name']??'')=='Personalizado'){
         $p=(intval($r['custom_cpu']??0)*5)+(intval($r['custom_ram']??0)*5); 
-        if(!empty($r['db_enabled']))$p+=10; 
-        if(!empty($r['web_enabled']))$p+=10;
+        if(!empty($r['db_enabled']))$p+=10; if(!empty($r['web_enabled']))$p+=10;
     } 
     return $p/4; 
 }
@@ -40,8 +83,7 @@ function getBackupLimit($r) {
     $m=match($r['plan_name']??''){'Bronce'=>5,'Plata'=>15,'Oro'=>30,default=>0}; 
     if(($r['plan_name']??'')=='Personalizado'){
         $m=(intval($r['custom_cpu']??0)*5)+(intval($r['custom_ram']??0)*5); 
-        if(!empty($r['db_enabled']))$m+=10; 
-        if(!empty($r['web_enabled']))$m+=10;
+        if(!empty($r['db_enabled']))$m+=10; if(!empty($r['web_enabled']))$m+=10;
     } 
     return (($r['plan_name']??'')=='Oro'||$m>=30)?5:((($r['plan_name']??'')=='Plata'||$m>=15)?3:2); 
 }
@@ -58,87 +100,6 @@ function getOSNamePretty($os) {
     if (strpos($os, 'alpine') !== false) return 'Alpine Linux';
     if (strpos($os, 'redhat') !== false) return 'Red Hat Enterprise';
     return 'Ubuntu Server';
-}
-
-// --- AJAX API ---
-if (isset($_GET['ajax_data']) && isset($_GET['id'])) {
-    header('Content-Type: application/json');
-    $oid = $_GET['id'];
-    $stmt = $conn->prepare("SELECT status FROM orders WHERE id=?"); $stmt->execute([$oid]); $st = $stmt->fetch(PDO::FETCH_ASSOC);
-    if(!$st || $st['status'] == 'cancelled') { echo json_encode(['terminated' => true]); exit; }
-    
-    $api_url = API_URL_BASE . "/estado/$oid";
-    $ctx = stream_context_create(['http'=> ['timeout' => 2]]);
-    $api_json = @file_get_contents($api_url, false, $ctx);
-    
-    $res = [
-        'metrics' => ['cpu' => 0, 'ram' => 0],
-        'ssh_cmd' => 'Conectando...',
-        'ssh_pass' => '...',
-        'web_url' => null,
-        'backups_list' => [],
-        'backup_progress' => null,
-        'web_progress' => null,
-        'chat_reply' => null
-    ];
-
-    if ($api_json) {
-        $d = json_decode($api_json, true);
-        if ($d) $res = array_merge($res, $d);
-    }
-    
-    $chat_file = "$buzon_path/chat_response_$oid.json";
-    if(file_exists($chat_file)) {
-        $cd = json_decode(file_get_contents($chat_file), true);
-        if($cd && isset($cd['reply'])) { $res['chat_reply'] = $cd['reply']; @unlink($chat_file); }
-    }
-    echo json_encode($res); exit;
-}
-
-// --- ACTIONS ---
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] != 'update_profile') {
-    $oid = $_POST['order_id']; $act = $_POST['action'];
-    
-    $payload_api = [
-        "id_cliente" => (int)$oid,
-        "accion" => $act,
-        "backup_type" => "full",
-        "backup_name" => "Backup",
-        "filename_to_restore" => "",
-        "filename_to_delete" => "",
-        "html_content" => ""
-    ];
-
-    if($act == 'send_chat') {
-        $msg = $_POST['message'];
-        $chat_payload = ["id_cliente" => (int)$oid, "mensaje" => $msg];
-        $opts = ['http' => ['header' => "Content-type: application/json\r\n", 'method' => 'POST', 'content' => json_encode($chat_payload)]];
-        @file_get_contents(API_URL_BASE . "/chat", false, stream_context_create($opts));
-        if(isset($_GET['ajax_action'])) { echo json_encode(['status'=>'ok']); exit; }
-        exit; 
-    }
-
-    if($act == 'backup') {
-        $payload_api['backup_type'] = $_POST['backup_type'] ?? 'full';
-        $payload_api['backup_name'] = $_POST['backup_name'] ?? 'Manual';
-    }
-    if($act == 'restore_backup') $payload_api['filename_to_restore'] = $_POST['filename'];
-    if($act == 'delete_backup') $payload_api['filename_to_delete'] = $_POST['filename'];
-
-    if($act == 'update_web' || ($act == 'upload_web' && isset($_FILES['html_file']))) {
-        $html = ($act == 'upload_web') ? file_get_contents($_FILES['html_file']['tmp_name']) : $_POST['html_content'];
-        $payload_api['html_content'] = $html;
-        if($act=='upload_web') { $payload_api['accion'] = "update_web"; }
-    }
-    
-    if ($act != 'send_chat') {
-        $url = API_URL_BASE . "/accion";
-        $options = ['http' => ['header' => "Content-type: application/json\r\n", 'method' => 'POST', 'content' => json_encode($payload_api)]];
-        @file_get_contents($url, false, stream_context_create($options));
-    }
-    
-    if(isset($_GET['ajax_action'])) { header('Content-Type: application/json'); echo json_encode(['status'=>'ok']); exit; }
-    header("Location: dashboard_cliente.php?id=$oid"); exit;
 }
 
 // --- INIT DATA ---
@@ -172,9 +133,7 @@ if($clusters) {
             $creds['ssh_cmd'] = $d['ssh_cmd'] ?? 'Esperando...';
             $creds['ssh_pass'] = $d['ssh_pass'] ?? '...';
             $web_url = $d['web_url'] ?? null;
-            if(isset($d['html_source']) && !empty($d['html_source'])) {
-                $html_code = $d['html_source'];
-            }
+            if(isset($d['html_source']) && !empty($d['html_source'])) { $html_code = $d['html_source']; }
         }
     }
 }
@@ -238,6 +197,7 @@ if($clusters) {
         .log-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
         .log-table td { padding: 10px; border-bottom: 1px solid #334155; color: #e2e8f0; }
         .log-table tr:hover td { color: white; background: rgba(255,255,255,0.05); }
+        #web-loader-fill { transition: width 0.3s ease-out; }
     </style>
 </head>
 <body>
@@ -354,12 +314,12 @@ if($clusters) {
                 
                 <?php if($has_web): ?>
                     <label class="small text-light-muted mb-2 d-block">Despliegue Web</label>
-                    <a href="#" target="_blank" id="btn-ver-web" class="btn btn-primary w-100 mb-2 fw-bold position-relative overflow-hidden <?=$web_url?'':'disabled'?>">
-                        <div id="web-loader-fill" style="position:absolute;top:0;left:0;height:100%;width:0%;background:rgba(255,255,255,0.2);transition:width 0.5s;"></div>
-                        <span id="web-btn-text"><i class="bi bi-box-arrow-up-right me-2"></i><?=$web_url?'Ver Sitio Web':'Esperando Web...'?></span>
+                    <a href="<?= $web_url ? htmlspecialchars($web_url) : 'javascript:void(0);' ?>" target="<?= $web_url ? '_blank' : '_self' ?>" id="btn-ver-web" class="btn btn-primary w-100 mb-2 fw-bold position-relative overflow-hidden <?= $web_url ? '' : 'disabled' ?>">
+                        <div id="web-loader-fill" style="position:absolute;top:0;left:0;height:100%;width:0%;background:rgba(255,255,255,0.2);"></div>
+                        <span id="web-btn-text"><i class="bi bi-box-arrow-up-right me-2"></i><?= $web_url ? 'Ver Sitio Web' : 'Cargando...' ?></span>
                     </a>
                     <div class="d-flex gap-2 mb-4">
-                        <button class="btn btn-dark border border-secondary flex-fill text-light-muted" onclick="showEditor()"><i class="bi bi-code-slash"></i> Editar</button>
+                        <button class="btn btn-dark border border-secondary flex-fill text-light-muted" onclick="openEditor()"><i class="bi bi-code-slash"></i> Editar</button>
                         <button class="btn btn-dark border border-secondary flex-fill text-light-muted" data-bs-toggle="modal" data-bs-target="#uploadModal"><i class="bi bi-upload"></i> Subir</button>
                     </div>
                 <?php endif; ?>
@@ -386,18 +346,18 @@ if($clusters) {
                     
                     <div id="delete-ui" style="display:none" class="mt-3"><div class="progress" style="height:4px"><div id="delete-bar" class="progress-bar bg-danger" style="width:0%"></div></div><small class="text-danger d-block mt-1">Eliminando...</small></div>
 
-                    <div id="restore-ui" style="display:none" class="mt-3">
-                        <div class="progress" style="height:4px">
-                            <div id="restore-bar" class="progress-bar bg-primary" style="width:0%"></div>
-                        </div>
-                        <small id="restore-text" class="text-primary d-block mt-1">Restaurando...</small>
-                    </div>
-
                     <div id="backups-list-container" class="mt-3"></div>
                 </div>
                 
                 <div class="mt-4 pt-3 border-top border-secondary border-opacity-25 text-center">
-                    <button class="btn btn-link text-danger btn-sm text-decoration-none opacity-50 hover-opacity-100" onclick="confirmTerminate()">Eliminar Servicio</button>
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-outline-danger btn-sm" onclick="destroyK8s()">
+                            <i class="bi bi-radioactive me-2"></i>Destruir Kubernetes
+                        </button>
+                        <button class="btn btn-link text-danger btn-sm text-decoration-none opacity-50 hover-opacity-100" onclick="confirmTerminate()">
+                            Eliminar Servicio
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -440,6 +400,7 @@ if($clusters) {
     const oid = <?=$current['id']??0?>; 
     const planCpus = <?=$plan_cpus?>; 
     const backupLimit = <?=$backup_limit?>;
+    let isManualLoading = false; 
     
     function showToast(msg, type='info') {
         const icon = type==='success'?'check-circle':(type==='error'?'exclamation-triangle':'info-circle');
@@ -492,7 +453,8 @@ if($clusters) {
     });
     
     document.getElementById('editorModal').addEventListener('shown.bs.modal', function () { aceEditor.resize(); });
-    function showEditor() { editorModal.show(); }
+    function openEditor() { editorModal.show(); }
+    function showBackupModal() { backupModal.show(); }
     function copyAllCreds() { navigator.clipboard.writeText(document.getElementById('all-creds-box').innerText); showToast("Copiado!", "success"); }
     
     function confirmTerminate() {
@@ -504,32 +466,73 @@ if($clusters) {
         } else alert("Cancelado.");
     }
 
-    function showBackupModal() {
-        const [current, limit] = document.getElementById('backup-count').innerText.split('/').map(Number);
-        document.getElementById('limit-alert').style.display = (current >= limit) ? 'block' : 'none';
-        document.getElementById('normal-alert').style.display = (current >= limit) ? 'none' : 'block';
-        document.getElementById('btn-start-backup').disabled = (current >= limit);
-        backupModal.show();
+    // 🔥 NUEVA FUNCIÓN DESTROY K8S
+    function destroyK8s() {
+        if (prompt("☢️ ¿ESTÁS SEGURO?\nEsto borrará todos los Pods y datos de Kubernetes.\n\nEscribe: BORRAR") === "BORRAR") {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.innerHTML = `<input type="hidden" name="action" value="destroy_k8s"><input type="hidden" name="order_id" value="${oid}">`;
+            document.body.appendChild(form);
+            form.submit();
+            showToast("Destruyendo recursos...", "error");
+        }
     }
 
     function doBackup() {
-        const type = document.querySelector('input[name="backup_type"]:checked').value;
-        const name = document.getElementById('backup_name_input').value || "Backup";
-        backupModal.hide(); document.getElementById('backup_name_input').value = ""; 
-        document.getElementById('backup-ui').style.display='block';
-        document.getElementById('backups-list-container').style.display='none';
-        document.getElementById('backup-bar').style.width='5%';
-        fetch('dashboard_cliente.php?ajax_action=1', {method:'POST', body:new URLSearchParams({action:'backup', order_id:oid, backup_type:type, backup_name:name})}); 
-        showToast(`Iniciando Backup...`, "info");
+        const nameInput = document.getElementById('backup_name_input');
+        const name = nameInput.value || "Backup";
+        
+        // RECUPERAR EL TIPO CORRECTO
+        const typeInput = document.querySelector('input[name="backup_type"]:checked');
+        const type = typeInput ? typeInput.value : 'full';
+
+        const modalEl = document.getElementById('backupTypeModal');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        modal.hide();
+        nameInput.value = ""; 
+
+        document.getElementById('backup-ui').style.display = 'block';
+        document.getElementById('backups-list-container').style.display = 'none';
+        document.getElementById('backup-bar').style.width = '5%';
+        
+        fetch('dashboard_cliente.php?ajax_action=1', {
+            method: 'POST', 
+            body: new URLSearchParams({
+                action: 'backup', 
+                order_id: oid, 
+                backup_type: type, 
+                backup_name: name
+            })
+        }); 
+        
+        showToast(`Iniciando Backup (${type.toUpperCase()})...`, "info");
     }
     
+    function setBtnState(loading, text, percent) {
+        const btn = document.getElementById('btn-ver-web');
+        const fill = document.getElementById('web-loader-fill');
+        const txt = document.getElementById('web-btn-text');
+        if(!btn) return;
+
+        if(loading) {
+            btn.classList.add('disabled');
+            btn.href = "javascript:void(0);";
+            if(percent) fill.style.width = percent + '%';
+            txt.innerHTML = `<i class="bi bi-arrow-repeat spin me-2"></i>${text}`;
+        } else {
+            btn.classList.remove('disabled');
+            fill.style.width = '0%';
+            txt.innerHTML = `<i class="bi bi-box-arrow-up-right me-2"></i>Ver Sitio Web`;
+        }
+    }
+
     function restoreBackup(file, name) {
         if(prompt(`⚠️ RESTAURAR "${name}"?\nEscribe: RESTAURAR`) === "RESTAURAR") {
-            document.getElementById('backups-list-container').style.display = 'none';
-            document.getElementById('restore-ui').style.display = 'block';
-            document.getElementById('restore-bar').style.width = '10%';
+            isManualLoading = true;
+            setBtnState(true, 'Restaurando...', 5);
             fetch('dashboard_cliente.php?ajax_action=1', {method:'POST', body:new URLSearchParams({action:'restore_backup', order_id:oid, filename:file})});
             showToast(`Restaurando...`, "warning");
+            setTimeout(() => { isManualLoading = false; }, 4000);
         } else alert("Cancelado.");
     }
 
@@ -552,10 +555,12 @@ if($clusters) {
     
     function saveWeb() { 
         const wbtn = document.getElementById('btn-ver-web');
-        if(wbtn) { wbtn.classList.add('disabled'); document.getElementById('web-loader-fill').style.width = '5%'; document.getElementById('web-btn-text').innerHTML = '<i class="bi bi-arrow-repeat spin me-2"></i>Iniciando...'; }
+        isManualLoading = true;
+        setBtnState(true, 'Iniciando...', 5);
         editorModal.hide(); 
         fetch('dashboard_cliente.php?ajax_action=1', {method:'POST', body:new URLSearchParams({action:'update_web', order_id:oid, html_content:aceEditor.getValue()})});
         showToast("Publicando web...", "info");
+        setTimeout(() => { isManualLoading = false; }, 4000);
     }
 
     document.getElementById('uploadForm').addEventListener('submit', function(e) { 
@@ -563,11 +568,12 @@ if($clusters) {
         const file = this.querySelector('input[type="file"]').files[0];
         if (file) { const reader = new FileReader(); reader.onload = function(e) { aceEditor.setValue(e.target.result); }; reader.readAsText(file); }
         uploadModal.hide(); 
-        const wbtn = document.getElementById('btn-ver-web'); 
-        if(wbtn) { wbtn.classList.add('disabled'); document.getElementById('web-loader-fill').style.width = '5%'; document.getElementById('web-btn-text').innerHTML = '<i class="bi bi-arrow-repeat spin me-2"></i>Iniciando...'; }
+        isManualLoading = true;
+        setBtnState(true, 'Subiendo...', 5);
         const formData = new FormData(this); formData.append('order_id', oid); formData.append('action', 'upload_web');
         fetch('dashboard_cliente.php?ajax_action=1', { method: 'POST', body: formData });
         showToast("Archivo subido", "success");
+        setTimeout(() => { isManualLoading = false; }, 4000);
     });
 
     function loadData() {
@@ -589,33 +595,62 @@ if($clusters) {
             
             const cmd = document.getElementById('disp-ssh-cmd'); if(cmd) cmd.innerText = d.ssh_cmd || '...';
             const pass = document.getElementById('disp-ssh-pass'); if(pass) pass.innerText = d.ssh_pass || '...';
-            const wurl = document.getElementById('disp-web-url'); const btnw = document.getElementById('btn-ver-web');
-            try { if(d.web_url) { if(wurl) { wurl.innerText = d.web_url; wurl.href = d.web_url; } if(btnw) { btnw.href = d.web_url; btnw.classList.remove('disabled'); if(btnw.querySelector('span')) btnw.querySelector('span').innerHTML = '<i class="bi bi-box-arrow-up-right me-2"></i>Ver Sitio Web'; } } else { if(wurl) wurl.innerText = "Esperando IP..."; } } catch(e) {}
+            
+            const wUrl = d.web_url;
+            try { if(wUrl) { 
+                const dispUrl = document.getElementById('disp-web-url');
+                if(dispUrl) { dispUrl.innerText = wUrl; dispUrl.href = wUrl; } 
+            } else { 
+                const dispUrl = document.getElementById('disp-web-url');
+                if(dispUrl) dispUrl.innerText = "Esperando IP..."; 
+            } } catch(e) {}
             
             const bUi = document.getElementById('backup-ui'); const bBar = document.getElementById('backup-bar');
             const dUi = document.getElementById('delete-ui'); const dBar = document.getElementById('delete-bar');
-            const rUi = document.getElementById('restore-ui'); const rBar = document.getElementById('restore-bar');
             const list = document.getElementById('backups-list-container');
 
-            try {
-                if(d.backup_progress && d.backup_progress.status !== 'completed') {
-                    if(d.backup_progress.status === 'creating') {
-                        if(bUi) bUi.style.display='block'; if(dUi) dUi.style.display='none'; if(rUi) rUi.style.display='none'; if(list) list.style.display='none'; 
-                        if(bBar) bBar.style.width=d.backup_progress.progress+'%'; 
-                    } else if(d.backup_progress.status === 'deleting') {
-                        if(bUi) bUi.style.display='none'; if(dUi) dUi.style.display='block'; if(rUi) rUi.style.display='none'; if(list) list.style.display='none';
-                        if(dBar) dBar.style.width=d.backup_progress.progress+'%'; 
-                    } else if(d.backup_progress.status === 'restoring') {
-                        if(bUi) bUi.style.display='none'; if(dUi) dUi.style.display='none'; if(rUi) rUi.style.display='block'; if(list) list.style.display='none';
-                        if(rBar) rBar.style.width=d.backup_progress.progress+'%';
-                        const rText = document.getElementById('restore-text'); if(rText && d.backup_progress.msg) rText.innerText = d.backup_progress.msg;
+            const pw = d.web_progress;
+            const pb = d.backup_progress;
+
+            if ((pw && pw.status === 'web_updating') || (pb && pb.status === 'restoring')) {
+                isManualLoading = false; 
+                const p = pw || pb;
+                setBtnState(true, p.msg, p.progress);
+            }
+            else if ((pw && pw.status === 'web_completed') || (pb && pb.status === 'completed' && document.getElementById('web-btn-text').innerText.includes('Restaurando'))) {
+                 isManualLoading = false;
+                 setBtnState(false);
+                 if(wUrl) {
+                    const btn = document.getElementById('btn-ver-web');
+                    btn.href = wUrl;
+                    btn.target = "_blank";
+                 }
+            }
+            else {
+                if (!isManualLoading) {
+                    const btn = document.getElementById('btn-ver-web');
+                    if(wUrl && wUrl.length > 5 && btn.classList.contains('disabled')) {
+                        setBtnState(false);
+                        btn.href = wUrl;
+                        btn.target = "_blank";
                     }
-                } else {
-                    if(bUi) bUi.style.display='none'; if(dUi) dUi.style.display='none'; if(rUi) rUi.style.display='none'; if(list) list.style.display='block';
+                }
+            }
+
+            try {
+                if(pb && pb.status === 'creating') {
+                    if(bUi) bUi.style.display='block'; if(dUi) dUi.style.display='none'; if(list) list.style.display='none'; 
+                    if(bBar) bBar.style.width=pb.progress+'%'; 
+                } else if(pb && pb.status === 'deleting') {
+                    if(bUi) bUi.style.display='none'; if(dUi) dUi.style.display='block'; if(list) list.style.display='none';
+                    if(dBar) dBar.style.width=pb.progress+'%'; 
+                } else if (!pb || pb.status === 'completed' || pb.status === 'error') {
+                    if(bUi) bUi.style.display='none'; if(dUi) dUi.style.display='none'; if(list) list.style.display='block';
+                    
                     document.getElementById('backup-count').innerText = `${d.backups_list.length}/${backupLimit}`;
                     let html = '';
                     [...d.backups_list].reverse().forEach(b => {
-                        let typeClass = b.type == 'full' ? 'bg-primary' : (b.type == 'diff' ? 'bg-warning text-dark' : 'bg-info text-dark');
+                        let typeClass = b.type == 'FULL' ? 'bg-primary' : (b.type == 'DIFF' ? 'bg-warning text-dark' : 'bg-info text-dark');
                         html += `<div class="backup-item d-flex justify-content-between align-items-center mb-2 p-2 rounded" style="background:rgba(255,255,255,0.05)"><div class="text-white"><span class="fw-bold">${b.name.replace(/'/g, "")}</span> <span class="badge ${typeClass} ms-2">${b.type.toUpperCase()}</span><div class="small text-light-muted">${b.date}</div></div><div class="d-flex gap-2"><button onclick="restoreBackup('${b.file}', '${b.name.replace(/'/g, "")}')" class="btn btn-sm btn-outline-success"><i class="bi bi-arrow-counterclockwise"></i></button><button onclick="deleteBackup('${b.file}', '${b.type}', '${b.name.replace(/'/g, "")}')" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button></div></div>`;
                     });
                     list.innerHTML = html || '<small class="text-light-muted d-block text-center py-2">Sin copias disponibles.</small>';
@@ -627,11 +662,6 @@ if($clusters) {
                 if (chatBubble && d.chat_status) chatText.innerText = d.chat_status;
                 if(d.chat_reply) { if(chatBubble) chatBubble.remove(); const body = document.getElementById('chatBody'); body.innerHTML += `<div class="chat-msg support">${d.chat_reply}</div>`; body.scrollTop = body.scrollHeight; showToast("Mensaje de soporte recibido", "info"); }
             } catch(e) {}
-            
-            try { if(btnw && d.web_progress) {
-                const loader = document.getElementById('web-loader-fill'); const txt = document.getElementById('web-btn-text');
-                if(d.web_progress.progress < 100) { btnw.classList.add('disabled'); if(loader) loader.style.width = d.web_progress.progress + '%'; if(txt) txt.innerHTML = `<i class="bi bi-arrow-repeat spin me-2"></i>${d.web_progress.msg}`; } else { btnw.classList.remove('disabled'); if(loader) loader.style.width = '0%'; if(txt) txt.innerHTML = '<i class="bi bi-box-arrow-up-right me-2"></i>Ver Sitio Web'; }
-            }} catch(e) {}
 
         }).catch(err => { console.log("Esperando datos...", err); });
     }

@@ -1,160 +1,103 @@
 <?php
-// --- MODO DEBUG ---
+// =================================================================================
+// 🏛️ SYLO WEB V112 - FINAL RESTORED (LEGACY CARDS + FIXED CALC + YOUR LEGAL TEXT)
+// =================================================================================
+
 ini_set('display_errors', 1);
 error_reporting(E_ALL);
-
 session_start();
 
-// --- CONFIGURACIÓN API (IP REAL) ---
 define('API_URL', 'http://host.docker.internal:8001/api/clientes');
 
-// --- 1. CONEXIÓN DB ---
-$servername = getenv('DB_HOST') ?: "kylo-main-db";
-$username_db = getenv('DB_USER') ?: "sylo_app";
-$password_db = getenv('DB_PASS') ?: "sylo_app_pass";
-$dbname = getenv('DB_NAME') ?: "kylo_main_db";
+// --- 1. DB ---
+$db_host = getenv('DB_HOST') ?: "kylo-main-db";
+$db_user = getenv('DB_USER') ?: "sylo_app";
+$db_pass = getenv('DB_PASS') ?: "sylo_app_pass";
+$db_name = getenv('DB_NAME') ?: "kylo_main_db";
 
 try {
-    $conn = new PDO("mysql:host=$servername;dbname=$dbname", $username_db, $password_db);
+    $conn = new PDO("mysql:host=$db_host;dbname=$db_name", $db_user, $db_pass);
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-} catch(PDOException $e) {
-    if($_SERVER['REQUEST_METHOD'] == 'POST') die(json_encode(["status"=>"error", "mensaje"=>"Error Conexión DB"]));
-}
+} catch(PDOException $e) { if($_SERVER['REQUEST_METHOD']=='POST') die(json_encode(["status"=>"error"])); }
 
-// --- CHECK: CLÚSTERES ACTIVOS ---
+// --- CHECK USER ---
 $has_clusters = false;
 if (isset($_SESSION['user_id'])) {
-    $stmt = $conn->prepare("SELECT COUNT(*) FROM orders WHERE user_id = ? AND status IN ('active', 'suspended', 'creating')");
+    $stmt = $conn->prepare("SELECT COUNT(*) FROM orders WHERE user_id = ? AND status IN ('active', 'suspended', 'creating', 'pending')");
     $stmt->execute([$_SESSION['user_id']]);
     if ($stmt->fetchColumn() > 0) $has_clusters = true;
 }
 
-// --- 2. CHECK STATUS (VIA API) ---
+// --- 2. STATUS CHECK ---
 if (isset($_GET['check_status'])) {
     header('Content-Type: application/json');
-    if (!isset($_SESSION['user_id'])) { echo json_encode(["status"=>"error"]); exit; }
-    
     $id = filter_var($_GET['check_status'], FILTER_VALIDATE_INT);
     $ch = curl_init(API_URL . "/estado/" . $id);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 2);
-    $response = curl_exec($ch);
-    $http_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $res = curl_exec($ch);
+    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
     curl_close($ch);
-
-    if ($http_code === 200 && $response) echo $response;
-    else echo json_encode(["percent" => 0, "message" => "Sincronizando...", "status" => "pending"]);
+    if ($code === 200 && $res) echo $res;
+    else echo json_encode(["percent" => 10, "message" => "Conectando al Núcleo...", "status" => "pending"]);
     exit;
 }
 
-// --- 3. PROCESAR ACCIONES (POST) ---
+// --- 3. POST HANDLER ---
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $input = json_decode(file_get_contents('php://input'), true);
     $action = $input['action'] ?? '';
     header('Content-Type: application/json');
 
-    // REGISTRO
     if ($action === 'register') {
-        $user = htmlspecialchars($input['username']);
-        $pass = $input['password'];
-        $email = filter_var($input['email'], FILTER_VALIDATE_EMAIL);
-        $name = htmlspecialchars($input['full_name']);
-        
         try {
-            $hash = password_hash($pass, PASSWORD_BCRYPT);
-            $sql = "INSERT INTO users (username, full_name, email, password_hash, role) VALUES (?, ?, ?, ?, 'client')";
+            if ($input['password'] !== $input['password_confirm']) throw new Exception("Pass mismatch");
+            $user = htmlspecialchars($input['username']);
+            $email = filter_var($input['email'], FILTER_VALIDATE_EMAIL);
+            $pass = password_hash($input['password'], PASSWORD_BCRYPT);
+            $tipo = $input['tipo_usuario'];
+            $fn = ($tipo === 'autonomo') ? $input['full_name'] : $input['contact_name'];
+            $dn = ($tipo === 'autonomo') ? $input['dni'] : $input['cif'];
+            $cn = ($tipo === 'empresa') ? $input['company_name'] : null;
+            $te = ($tipo === 'empresa') ? $input['tipo_empresa'] : null;
+            $sql = "INSERT INTO users (username, full_name, email, password_hash, role, tipo_usuario, dni, telefono, company_name, tipo_empresa, calle, created_at) VALUES (?, ?, ?, ?, 'client', ?, ?, ?, ?, ?, ?, NOW())";
             $stmt = $conn->prepare($sql);
-            $stmt->execute([$user, $name, $email, $hash]);
-            $_SESSION['user_id'] = $conn->lastInsertId();
-            $_SESSION['username'] = $user; $_SESSION['company'] = $input['company_name'] ?? 'Particular';
+            $stmt->execute([$user, $fn, $email, $pass, $tipo, $dn, $input['telefono'], $cn, $te, $input['calle']]);
+            $_SESSION['user_id'] = $conn->lastInsertId(); $_SESSION['username'] = $user; $_SESSION['company'] = $cn ?: 'Particular';
             echo json_encode(["status"=>"success"]);
-        } catch (PDOException $e) { echo json_encode(["status"=>"error","mensaje"=>"Error SQL: ".$e->getMessage()]); }
+        } catch (Exception $e) { echo json_encode(["status"=>"error", "mensaje"=>$e->getMessage()]); }
         exit;
     }
-
-    // LOGIN
     if ($action === 'login') {
-        $eu = $input['email_user'];
         $stmt = $conn->prepare("SELECT * FROM users WHERE email = ? OR username = ?");
-        $stmt->execute([$eu, $eu]);
+        $stmt->execute([$input['email_user'], $input['email_user']]);
         $u = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($u && password_verify($input['password'], $u['password_hash'])) {
             $_SESSION['user_id'] = $u['id']; $_SESSION['username'] = $u['username']; $_SESSION['company'] = $u['company_name'];
             echo json_encode(["status"=>"success"]);
-        } else { echo json_encode(["status"=>"error","mensaje"=>"Credenciales inválidas."]); }
+        } else echo json_encode(["status"=>"error", "mensaje"=>"Credenciales inválidas"]);
         exit;
     }
-
-    // LOGOUT
     if ($action === 'logout') { session_destroy(); echo json_encode(["status"=>"success"]); exit; }
-
-    // COMPRAR
     if ($action === 'comprar') {
-        if (!isset($_SESSION['user_id'])) { echo json_encode(["status"=>"auth_required","mensaje"=>"Inicia sesión."]); exit; }
-        
-        $plan_name = htmlspecialchars($input['plan']);
-        $specs = $input['specs']; 
-
+        if (!isset($_SESSION['user_id'])) exit(json_encode(["status"=>"auth_required"]));
+        $plan = htmlspecialchars($input['plan']); $s = $input['specs']; 
         try {
-            // 1. DB LOCAL
-            $stmt = $conn->prepare("SELECT id FROM plans WHERE name = :name");
-            $stmt->execute(['name' => $plan_name]);
-            $pid = $stmt->fetchColumn() ?: 1; 
-
-            $stmt = $conn->prepare("INSERT INTO orders (user_id, plan_id, status) VALUES (:uid, :pid, 'pending')");
-            $stmt->execute(['uid' => $_SESSION['user_id'], 'pid' => $pid]);
-            $order_id = $conn->lastInsertId();
-
-            $sqlSpecs = "INSERT INTO order_specs 
-                (order_id, cpu_cores, ram_gb, storage_gb, db_enabled, db_type, web_enabled, web_type, 
-                 cluster_alias, subdomain, ssh_user, os_image, db_custom_name, web_custom_name) 
-                VALUES (:oid, :cpu, :ram, :hdd, :db, :dbt, :web, :webt, :alias, :sub, :ssh, :os, :dbname, :webname)";
+            $stmt = $conn->prepare("INSERT INTO orders (user_id, plan_id, status) VALUES (?, 1, 'pending')");
+            $stmt->execute([$_SESSION['user_id']]);
+            $oid = $conn->lastInsertId();
+            $sqlS = "INSERT INTO order_specs (order_id, cpu_cores, ram_gb, storage_gb, db_enabled, db_type, web_enabled, web_type, cluster_alias, subdomain, ssh_user, os_image, db_custom_name, web_custom_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            $stmtS = $conn->prepare($sqlS);
+            $stmtS->execute([$oid, $s['cpu'], $s['ram'], $s['storage'], $s['db_enabled']?1:0, $s['db_type'], $s['web_enabled']?1:0, $s['web_type'], $s['cluster_alias'], $s['subdomain'], $s['ssh_user'], $s['os_image'], $s['db_custom_name'], $s['web_custom_name']]);
             
-            $stmtS = $conn->prepare($sqlSpecs);
-            $stmtS->execute([
-                'oid' => $order_id,
-                'cpu' => $specs['cpu'], 
-                'ram' => $specs['ram'], 
-                'hdd' => $specs['storage'],
-                'db'  => $specs['db_enabled'] ? 1 : 0, 
-                'dbt' => $specs['db_type'],
-                'web' => $specs['web_enabled'] ? 1 : 0, 
-                'webt'=> $specs['web_type'],
-                'alias'=> $specs['cluster_alias'],
-                'sub'  => $specs['subdomain'],
-                'ssh'  => $specs['ssh_user'],
-                'os'   => $specs['os_image'],
-                'dbname' => $specs['db_custom_name'],
-                'webname' => $specs['web_custom_name']
-            ]);
-            
-            // 2. ORDEN A LA API
-            $api_payload = [
-                "id_cliente" => (int)$order_id,
-                "plan" => $plan_name,
-                "cliente_nombre" => $_SESSION['username'],
-                "specs" => $specs,
-                "id_usuario_real" => (string)$_SESSION['user_id']
-            ];
-
+            $payload = ["id_cliente" => (int)$oid, "plan" => $plan, "cliente_nombre" => $_SESSION['username'], "specs" => $s, "id_usuario_real" => (string)$_SESSION['user_id']];
             $ch = curl_init(API_URL . "/crear");
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($api_payload));
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true); curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
             curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 5); 
-            
-            $res = curl_exec($ch);
-            $http = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-            curl_close($ch);
-
-            if ($http === 200) echo json_encode(["status"=>"success","order_id"=>$order_id]);
-            else {
-                $conn->exec("DELETE FROM orders WHERE id=$order_id");
-                echo json_encode(["status"=>"error", "mensaje"=>"Error Sylo API: $http"]);
-            }
-
-        } catch (Exception $e) { echo json_encode(["status"=>"error","mensaje"=>"Error interno: " . $e->getMessage()]); }
+            curl_setopt($ch, CURLOPT_TIMEOUT, 1); curl_exec($ch); curl_close($ch);
+            echo json_encode(["status"=>"success", "order_id"=>$oid]);
+        } catch (Exception $e) { echo json_encode(["status"=>"error", "mensaje"=>$e->getMessage()]); }
         exit;
     }
 }
@@ -165,542 +108,311 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYLO | Cloud Infrastructure</title>
+    <title>SYLO | Cloud Engineering</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     
     <style>
-        :root { --sylo-blue: #0f172a; --sylo-accent: #3b82f6; --sylo-light: #f8fafc; }
-        body { font-family: 'Inter', sans-serif; background-color: var(--sylo-light); color: #334155; }
-        .navbar { background: rgba(255, 255, 255, 0.9); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(0,0,0,0.05); }
-        .navbar-brand { font-weight: 800; color: var(--sylo-blue) !important; letter-spacing: -0.5px; }
-        .nav-link { font-weight: 600; color: #64748b !important; margin: 0 10px; transition: color 0.3s; }
-        .nav-link:hover { color: var(--sylo-accent) !important; }
-        .hero { background: radial-gradient(circle at top right, #1e293b, #0f172a); color: white; padding: 120px 0 100px; position: relative; overflow: hidden; }
-        .hero::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 100px; background: linear-gradient(to top, var(--sylo-light), transparent); }
-        .tech-card { background: white; border-radius: 12px; padding: 20px; text-align: center; border: 1px solid #e2e8f0; transition: all 0.3s ease; }
-        .tech-card:hover { transform: translateY(-5px); box-shadow: 0 10px 20px rgba(59, 130, 246, 0.1); border-color: var(--sylo-accent); }
-        .tech-icon { font-size: 2.5rem; margin-bottom: 10px; color: #475569; }
-        .team-card { background: white; border-radius: 16px; overflow: hidden; border: none; box-shadow: 0 4px 6px rgba(0,0,0,0.05); transition: transform 0.3s; }
-        .team-card:hover { transform: translateY(-5px); }
-        .team-img { height: 120px; width: 120px; object-fit: cover; border-radius: 50%; margin: -60px auto 0; border: 4px solid white; background: #eee; }
-        .team-header { height: 100px; background: linear-gradient(45deg, var(--sylo-accent), #60a5fa); }
-        .card-price { border: none; border-radius: 20px; background: white; box-shadow: 0 10px 30px rgba(0,0,0,0.05); transition: all 0.3s; overflow: hidden; }
-        .card-price:hover { transform: scale(1.02); box-shadow: 0 20px 40px rgba(0,0,0,0.1); }
-        .card-custom { background: linear-gradient(135deg, #ffffff 0%, #f0f9ff 100%); border: 2px solid var(--sylo-accent); }
-        .price-tag { font-size: 2.5rem; font-weight: 800; color: var(--sylo-blue); }
-        .terminal-window { background: #1e1e1e; border-radius: 8px; box-shadow: 0 20px 50px rgba(0,0,0,0.3); font-family: 'Courier New', monospace; overflow: hidden; }
-        .terminal-header { background: #2d2d2d; padding: 10px 15px; display: flex; gap: 8px; }
-        .dot { width: 12px; height: 12px; border-radius: 50%; }
-        .terminal-body { padding: 20px; color: #4ade80; min-height: 200px; }
-        .progress { height: 8px; background: #333; margin-top: 15px; border-radius: 4px; }
-        .progress-bar { transition: width 0.5s ease; background-color: #10b981; }
+        :root { --sylo-bg: #f8fafc; --sylo-text: #334155; --sylo-card: #ffffff; --sylo-accent: #2563eb; --input-bg: #f1f5f9; }
+        [data-theme="dark"] { --sylo-bg: #0f172a; --sylo-text: #f1f5f9; --sylo-card: #1e293b; --sylo-accent: #3b82f6; --input-bg: #334155; }
         
-        .btn-console { background: linear-gradient(45deg, #10b981, #3b82f6); color: white; border: none; font-weight: bold; padding: 5px 15px; }
-        .btn-console:hover { transform: scale(1.05); color: white; box-shadow: 0 0 10px rgba(59, 130, 246, 0.5); }
+        body { font-family: 'Inter', sans-serif; background-color: var(--sylo-bg); color: var(--sylo-text); transition: 0.3s; }
+        .navbar { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(0,0,0,0.05); }
+        [data-theme="dark"] .navbar { background: rgba(15, 23, 42, 0.95); border-bottom: 1px solid rgba(255,255,255,0.1); }
+        [data-theme="dark"] .navbar-brand, [data-theme="dark"] .nav-link { color: white !important; }
+        
+        /* THEME ELEMENTS */
+        .info-card, .bg-white { background-color: var(--sylo-card) !important; color: var(--sylo-text); }
+        [data-theme="dark"] .text-muted { color: #94a3b8 !important; }
+        [data-theme="dark"] .bg-light { background-color: #1e293b !important; border-color: #334155; }
+        [data-theme="dark"] .form-control, [data-theme="dark"] .form-select { background-color: var(--input-bg); border-color: #475569; color: white; }
+        [data-theme="dark"] .modal-content { background-color: var(--sylo-card); color: white; }
+        
+        .hero { padding: 140px 0 100px; background: linear-gradient(180deg, var(--sylo-bg) 0%, var(--sylo-card) 100%); }
+        
+        /* CALCULATOR */
+        .calc-box { background: #1e293b; border-radius: 24px; padding: 40px; color: white; border: 1px solid #334155; }
+        .price-display { font-size: 3.5rem; font-weight: 800; color: var(--sylo-accent); }
+        
+        /* SLIDERS AZULES FUERTES (FIXED) */
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 20px; width: 20px; border-radius: 50%; background: #3b82f6; cursor: pointer; margin-top: -8px; box-shadow: 0 0 10px #3b82f6; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #475569; border-radius: 2px; }
+        input[type=range]:focus::-webkit-slider-runnable-track { background: #3b82f6; }
+
+        /* 3D CARDS */
+        .card-stack-container { perspective: 1500px; height: 600px; cursor: pointer; position: relative; margin-bottom: 30px; }
+        .card-face { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; transition: transform 0.8s; border-radius: 24px; }
+        .card-stack-container.active .card-face { transform: rotateY(180deg); }
+        .face-front, .face-back { position: absolute; width: 100%; height: 100%; top:0; left:0; backface-visibility: hidden; border-radius: 24px; padding: 30px; display: flex; flex-direction: column; justify-content: space-between; background: var(--sylo-card); border: 1px solid #e2e8f0; box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
+        .face-front { z-index: 2; transform: rotateY(0deg); pointer-events: auto; }
+        .face-back { z-index: 1; transform: rotateY(180deg); background: var(--sylo-bg); border-color: var(--sylo-accent); pointer-events: none; }
+        .card-stack-container.active .face-front { pointer-events: none; }
+        .card-stack-container.active .face-back { pointer-events: auto; }
+        
+        /* UI HELPERS */
+        .bench-bar { height: 35px; border-radius: 8px; display: flex; align-items: center; padding: 0 15px; color: white; margin-bottom: 8px; transition: width 1s; }
+        .b-sylo { background: linear-gradient(90deg, #2563eb, #3b82f6); }
+        .b-aws { background: #64748b; }
+        .success-box { background: black; color: white; border-radius: 8px; padding: 20px; font-family: 'JetBrains Mono', monospace; text-align: left; }
+        .status-dot { width: 10px; height: 10px; background-color: #22c55e; border-radius: 50%; display: inline-block; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% {box-shadow:0 0 0 0 rgba(34,197,94,0.7);} 70% {box-shadow:0 0 0 6px rgba(34,197,94,0);} 100% {box-shadow:0 0 0 0 rgba(34,197,94,0);} }
+        
+        .modal-content { border:none; border-radius: 16px; }
+        .avatar { width: 100px; height: 100px; border-radius: 50%; object-fit: cover; margin-bottom: 15px; }
+        .k8s-specs li { display: flex; justify-content: space-between; border-bottom: 1px dashed #cbd5e1; padding: 8px 0; font-size: 0.9rem; }
     </style>
 </head>
 <body>
 
     <nav class="navbar navbar-expand-lg fixed-top">
         <div class="container">
-            <a class="navbar-brand" href="#"><i class="fas fa-layer-group me-2 text-primary"></i>SYLO</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#mainNav">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="mainNav">
-                <ul class="navbar-nav ms-auto align-items-center">
-                    <li class="nav-item"><a class="nav-link" href="#tecnologias">Tecnologías</a></li>
-                    <li class="nav-item"><a class="nav-link" href="#team">Equipo & Datacenter</a></li>
+            <a class="navbar-brand fw-bold text-primary" href="#"><i class="fas fa-cube me-2"></i>SYLO</a>
+            <div class="collapse navbar-collapse justify-content-center" id="mainNav">
+                <ul class="navbar-nav">
+                    <li class="nav-item"><a class="nav-link" href="#empresa">Empresa</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#bench">Rendimiento</a></li>
+                    <li class="nav-item"><a class="nav-link" href="#calculadora">Calculadora</a></li>
                     <li class="nav-item"><a class="nav-link" href="#pricing">Planes</a></li>
-                    
-                    <li class="nav-item ms-4 ps-4 border-start d-flex gap-2">
-                        <?php if ($has_clusters): ?>
-                            <a href="dashboard_cliente.php" class="btn btn-console rounded-pill shadow-sm">
-                                <i class="fas fa-terminal me-2"></i>MIS KUBERNETES
-                            </a>
-                        <?php endif; ?>
-
-                        <?php if (isset($_SESSION['user_id'])): ?>
-                            <div class="dropdown">
-                                <button class="btn btn-dark btn-sm dropdown-toggle rounded-pill px-3" data-bs-toggle="dropdown">
-                                    <i class="fas fa-user-astronaut me-2"></i><?php echo $_SESSION['username']; ?>
-                                </button>
-                                <ul class="dropdown-menu dropdown-menu-end shadow border-0 mt-2">
-                                    <li class="px-3 py-2 text-muted small text-uppercase fw-bold"><?php echo $_SESSION['company'] ?: 'Particular'; ?></li>
-                                    <li><hr class="dropdown-divider"></li>
-                                    <li><a class="dropdown-item text-danger" href="#" onclick="logout()">Desconectar</a></li>
-                                </ul>
-                            </div>
-                        <?php else: ?>
-                            <button class="btn btn-primary btn-sm rounded-pill px-4 fw-bold shadow-sm" onclick="authModal.show()">Acceso Cliente</button>
-                        <?php endif; ?>
-                    </li>
                 </ul>
+            </div>
+            <div class="d-flex align-items-center gap-3">
+                <button class="btn btn-link nav-link p-0" onclick="toggleTheme()"><i class="fas fa-moon fa-lg"></i></button>
+                <div class="d-none d-md-flex align-items-center cursor-pointer" onclick="new bootstrap.Modal('#statusModal').show()">
+                    <div class="status-dot me-2"></div><span class="small fw-bold text-success">Status</span>
+                </div>
+                <?php if (isset($_SESSION['user_id'])): ?>
+                    <a href="dashboard_cliente.php" class="btn btn-outline-primary btn-sm rounded-pill px-3 fw-bold">CONSOLA</a>
+                    <button class="btn btn-link text-danger btn-sm" onclick="logout()"><i class="fas fa-sign-out-alt"></i></button>
+                <?php else: ?>
+                    <button class="btn btn-primary btn-sm rounded-pill px-4 fw-bold" onclick="openM('authModal')">CLIENTE</button>
+                <?php endif; ?>
             </div>
         </div>
     </nav>
 
-    <section class="hero text-center d-flex align-items-center">
+    <section class="hero text-center">
         <div class="container">
-            <span class="badge bg-white text-primary mb-3 px-3 py-2 rounded-pill fw-bold shadow-sm">🚀 Nueva Arquitectura v2.0 Live</span>
-            <h1 class="display-3 fw-bold mb-4">La Nube Privada<br><span class="text-gradient">Sin Complicaciones</span></h1>
-            <p class="lead text-white-50 mb-5 w-75 mx-auto">Orquestación automática de Kubernetes, Bases de Datos y Servidores Web.<br>Diseñado por ingenieros, para desarrolladores.</p>
-            <div class="d-flex justify-content-center gap-3">
-                <a href="#pricing" class="btn btn-primary btn-lg rounded-pill px-5 fw-bold shadow-lg">Ver Planes</a>
-                <a href="#tecnologias" class="btn btn-outline-light btn-lg rounded-pill px-5 fw-bold">Cómo Funciona</a>
-            </div>
+            <span class="badge bg-primary mb-3 px-3 py-1 rounded-pill">V112 Stable</span>
+            <h1 class="display-3 fw-bold mb-4">Infraestructura <span class="text-primary">Ryzen™</span></h1>
+            <p class="lead mb-5">Orquestación Kubernetes V21 desde Alicante, España.</p>
         </div>
     </section>
 
-    <section id="tecnologias" class="py-5">
-        <div class="container">
-            <div class="text-center mb-5"><h6 class="text-primary fw-bold text-uppercase">Nuestro Stack</h6><h2 class="fw-bold">Potenciado por Gigantes</h2></div>
-            <div class="row g-4 justify-content-center">
-                <div class="col-6 col-md-3 col-lg-2"><div class="tech-card"><i class="fab fa-aws tech-icon text-warning"></i><h6 class="fw-bold mb-0">AWS Cloud</h6></div></div>
-                <div class="col-6 col-md-3 col-lg-2"><div class="tech-card"><i class="fab fa-docker tech-icon text-primary"></i><h6 class="fw-bold mb-0">Docker</h6></div></div>
-                <div class="col-6 col-md-3 col-lg-2"><div class="tech-card"><i class="fas fa-cubes tech-icon text-info"></i><h6 class="fw-bold mb-0">Kubernetes</h6></div></div>
-                <div class="col-6 col-md-3 col-lg-2"><div class="tech-card"><i class="fas fa-code-branch tech-icon text-success"></i><h6 class="fw-bold mb-0">OpenTofu</h6></div></div>
-                <div class="col-6 col-md-3 col-lg-2"><div class="tech-card"><i class="fab fa-python tech-icon text-warning"></i><h6 class="fw-bold mb-0">Python</h6></div></div>
-                <div class="col-6 col-md-3 col-lg-2"><div class="tech-card"><i class="fas fa-server tech-icon text-dark"></i><h6 class="fw-bold mb-0">Nginx/Apache</h6></div></div>
-            </div>
-        </div>
-    </section>
+    <section id="empresa" class="py-5 bg-white"><div class="container"><div class="row align-items-center mb-5"><div class="col-lg-6"><h6 class="text-primary fw-bold">NUESTRA MISIÓN</h6><h2 class="fw-bold mb-4">Ingeniería Real</h2><p class="text-muted">Sylo nació en Alicante para eliminar la complejidad. Usamos hardware Threadripper y NVMe Gen5 real.</p><div class="mt-4"><a href="https://github.com/leonardsyloadm-cyber/SYLO-Kubernetes-for-all" target="_blank" class="btn btn-outline-dark rounded-pill px-4"><i class="fab fa-github me-2"></i>GitHub</a></div></div><div class="col-lg-6"><div class="row g-4"><div class="col-6 text-center"><div class="p-4 rounded bg-light border"><img src="https://ui-avatars.com/api/?name=Ivan+Arlanzon&background=0f172a&color=fff&size=100" class="avatar"><h5 class="fw-bold">Ivan A.</h5><span class="badge bg-primary">CEO</span></div></div><div class="col-6 text-center"><div class="p-4 rounded bg-light border"><img src="https://ui-avatars.com/api/?name=Leonard+Baicu&background=2563eb&color=fff&size=100" class="avatar"><h5 class="fw-bold">Leonard B.</h5><span class="badge bg-success">CTO</span></div></div></div></div></div></div></section>
 
-    <section id="team" class="py-5 bg-white">
-        <div class="container">
-            <div class="row align-items-center">
-                <div class="col-lg-5 mb-5 mb-lg-0">
-                    <h6 class="text-primary fw-bold text-uppercase">Infraestructura Física</h6>
-                    <h2 class="fw-bold mb-4">El Corazón de Sylo</h2>
-                    <p class="text-muted mb-4">Nuestros "Datacenters" no son simples ordenadores. Son nodos de alto rendimiento optimizados para la virtualización extrema.</p>
-                    <div class="d-flex align-items-start mb-3"><div class="me-3 text-primary"><i class="fas fa-hdd fa-2x"></i></div><div><h6 class="fw-bold">Almacenamiento NVMe</h6><p class="small text-muted">Velocidad de escritura instantánea para tus bases de datos.</p></div></div>
-                    <div class="d-flex align-items-start mb-3"><div class="me-3 text-primary"><i class="fas fa-network-wired fa-2x"></i></div><div><h6 class="fw-bold">Red 10Gbps</h6><p class="small text-muted">Baja latencia entre nodos maestros y esclavos.</p></div></div>
-                    <div class="d-flex align-items-start"><div class="me-3 text-primary"><i class="fas fa-shield-alt fa-2x"></i></div><div><h6 class="fw-bold">Seguridad Perimetral</h6><p class="small text-muted">Firewalls físicos y lógicos protegiendo cada bit.</p></div></div>
-                </div>
-                <div class="col-lg-6 offset-lg-1">
-                    <div class="row g-4">
-                        <div class="col-md-6"><div class="team-card text-center pb-4"><div class="team-header"></div><img src="https://ui-avatars.com/api/?name=Ivan+Arlanzon&background=0D8ABC&color=fff&size=128" class="team-img shadow"><h5 class="fw-bold mt-3">Ivan Arlanzon</h5><span class="badge-sylo">CEO & Arquitecto Cloud</span><p class="small text-muted px-3 mt-3">Visionario de la infraestructura automatizada. Diseñó el núcleo del orquestador Sylo.</p></div></div>
-                        <div class="col-md-6 mt-md-5"><div class="team-card text-center pb-4"><div class="team-header" style="background: linear-gradient(45deg, #10b981, #3b82f6);"></div><img src="https://ui-avatars.com/api/?name=Leonard+Baicu&background=10b981&color=fff&size=128" class="team-img shadow"><h5 class="fw-bold mt-3">Leonard Baicu</h5><span class="badge-sylo">CTO & DevOps Lead</span><p class="small text-muted px-3 mt-3">Maestro de Kubernetes y OpenTofu. Asegura que cada despliegue sea atómico.</p></div></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
+    <section id="bench" class="py-5 bg-light"><div class="container"><div class="row align-items-center"><div class="col-lg-5"><h2 class="fw-bold mb-3">Rendimiento Bruto</h2><p>Cinebench R23 Single Core.</p><div class="d-flex justify-content-between small fw-bold mt-4"><span>SYLO Ryzen</span><span class="text-primary">1,950 pts</span></div><div class="bench-bar b-sylo" style="width:100%"></div><div class="d-flex justify-content-between small fw-bold mt-3"><span>AWS c6a</span><span>1,420 pts</span></div><div class="bench-bar b-aws" style="width:72%"></div></div><div class="col-lg-6 offset-lg-1"><div class="row g-3"><div class="col-6"><div class="p-4 border rounded-4 text-center bg-white"><i class="fas fa-hdd fa-2x text-danger mb-2"></i><h5 class="fw-bold">NVMe Gen5</h5><small>7,500 MB/s</small></div></div><div class="col-6"><div class="p-4 border rounded-4 text-center bg-white"><i class="fas fa-memory fa-2x text-success mb-2"></i><h5 class="fw-bold">DDR5 ECC</h5><small>Error Correction</small></div></div></div></div></div></div></section>
 
-    <section id="pricing" class="py-5 bg-light">
-        <div class="container">
-            <div class="text-center mb-5"><h6 class="text-primary fw-bold text-uppercase">Catálogo de Servicios</h6><h2 class="fw-bold">Escalabilidad Instantánea</h2></div>
-            <div class="row g-4 justify-content-center">
-                <div class="col-xl-3 col-md-6">
-                    <div class="card card-price h-100 p-4">
-                        <h5 class="fw-bold text-muted">Bronce</h5>
-                        <div class="price-tag my-3">5€<span class="fs-6 text-muted fw-normal">/mes</span></div>
-                        <ul class="list-unstyled mb-4 small text-secondary">
-                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>1 Nodo K8s (Alpine)</li>
-                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>1 vCPU / 1 GB RAM</li> 
-                            <li class="mb-2 text-muted"><i class="fas fa-check text-success me-2"></i>Acceso SSH</li>
-                            <li class="mb-2 text-muted"><i class="fas fa-times me-2"></i>Sin Web ni DB</li>
-                        </ul>
-                        <button onclick="prepararPedido('Bronce')" class="btn btn-outline-dark w-100 rounded-pill fw-bold">Elegir Bronce</button>
-                    </div>
-                </div>
-                <div class="col-xl-3 col-md-6">
-                    <div class="card card-price h-100 p-4 border-primary">
-                        <div class="d-flex justify-content-between align-items-center"><h5 class="fw-bold text-primary">Plata</h5><span class="badge bg-primary rounded-pill">DB</span></div>
-                        <div class="price-tag my-3">15€<span class="fs-6 text-muted fw-normal">/mes</span></div>
-                        <ul class="list-unstyled mb-4 small text-secondary">
-                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>MySQL Cluster HA</li>
-                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>2 vCPU / 2 GB RAM</li> 
-                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Ubuntu o Alpine</li>
-                            <li class="mb-2 text-muted"><i class="fas fa-times me-2"></i>Sin Web</li>
-                        </ul>
-                        <button onclick="prepararPedido('Plata')" class="btn btn-primary w-100 rounded-pill fw-bold shadow-sm">Elegir Plata</button>
-                    </div>
-                </div>
-                <div class="col-xl-3 col-md-6">
-                    <div class="card card-price h-100 p-4">
-                        <h5 class="fw-bold" style="color: #d4af37;">Oro</h5>
-                        <div class="price-tag my-3">30€<span class="fs-6 text-muted fw-normal">/mes</span></div>
-                        <ul class="list-unstyled mb-4 small text-secondary">
-                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i><strong>Full Stack</strong></li>
-                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>3 vCPU / 3 GB RAM</li> 
-                            <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Alpine/Ubuntu/RedHat</li>
-                            <li class="mb-2"><i class="fas fa-globe text-success me-2"></i>Dominio Público</li>
-                        </ul>
-                        <button onclick="prepararPedido('Oro')" class="btn btn-dark w-100 rounded-pill fw-bold">Elegir Oro</button>
-                    </div>
-                </div>
-                <div class="col-xl-3 col-md-6">
-                    <div class="card card-price card-custom h-100 p-4">
-                        <div class="d-flex justify-content-between align-items-center"><h5 class="fw-bold text-primary">A Medida</h5><i class="fas fa-sliders-h text-primary"></i></div>
-                        <div class="price-tag my-3 fs-2">Flexible</div>
-                        <p class="text-muted small mb-4">Diseña tu infraestructura componente a componente.</p>
-                        <ul class="list-unstyled mb-4 small text-secondary">
-                            <li class="mb-2"><i class="fas fa-check text-primary me-2"></i>CPU/RAM Variable</li>
-                            <li class="mb-2"><i class="fas fa-check text-primary me-2"></i>Multi-Engine DB</li>
-                        </ul>
-                        <button onclick="prepararPedido('Personalizado')" class="btn btn-outline-primary w-100 rounded-pill fw-bold">Configurar</button>
-                    </div>
+    <section id="calculadora" class="container py-5 my-5"><div class="calc-box shadow-lg"><div class="row g-5"><div class="col-lg-6"><h4 class="text-white mb-4"><i class="fas fa-calculator me-2 text-primary"></i>Configurador</h4><select class="form-select w-50 bg-dark text-white border-secondary mb-4" id="calc-preset" onchange="applyPreset()"><option value="custom">-- A Medida --</option><option value="bronce">Plan Bronce</option><option value="plata">Plan Plata</option><option value="oro">Plan Oro</option></select>
+        <label class="small text-white-50 fw-bold">vCPU (5€): <span id="c-cpu">1</span></label><input type="range" class="form-range mb-4" min="1" max="16" value="1" id="in-cpu" oninput="userMovedSlider()">
+        <label class="small text-white-50 fw-bold">RAM (5€): <span id="c-ram">1</span> GB</label><input type="range" class="form-range mb-4" min="1" max="32" value="1" id="in-ram" oninput="userMovedSlider()">
+        <div class="row g-2"><div class="col-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="check-calc-db" onchange="userMovedSlider()"><label class="text-white small">DB (+5€)</label></div></div><div class="col-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="check-calc-web" onchange="userMovedSlider()"><label class="text-white small">Web (+5€)</label></div></div></div>
+    </div><div class="col-lg-6"><div class="bg-white p-5 rounded-4 h-100 d-flex flex-column justify-content-center text-dark"><h5 class="fw-bold mb-3">Estimación</h5><div class="d-flex justify-content-between"><span class="fw-bold text-primary">SYLO</span><span class="price-display" id="out-sylo">0€</span></div><div class="progress mb-3" style="height:20px"><div id="pb-sylo" class="progress-bar bg-primary" style="width:0%"></div></div><div class="d-flex justify-content-between small text-muted"><span>AWS</span><span id="out-aws">0€</span></div><div class="progress mb-2" style="height:6px"><div id="pb-aws" class="progress-bar bg-secondary" style="width:100%"></div></div><div class="d-flex justify-content-between small text-muted"><span>Azure</span><span id="out-azure">0€</span></div><div class="progress mb-3" style="height:6px"><div id="pb-azure" class="progress-bar bg-secondary" style="width:100%"></div></div><div class="text-center mt-3"><span class="badge bg-success border border-success text-success bg-opacity-10 px-3 py-2">AHORRO: <span id="out-save">0%</span></span></div></div></div></div></div></section>
+
+    <section id="pricing" class="py-5 bg-white"><div class="container"><div class="text-center mb-5"><h6 class="text-primary fw-bold">PLANES V21</h6><h2 class="fw-bold">Escala con Confianza</h2></div><div class="row g-4 justify-content-center">
+        <div class="col-xl-3 col-md-6"><div class="card-stack-container" onclick="toggleCard(this)"><div class="card-face"><div class="face-front"><div><h5 class="fw-bold text-muted">Bronce</h5><div class="display-4 fw-bold text-primary my-2">5€</div><ul class="list-unstyled small text-muted"><li>1 vCPU / 1 GB RAM</li><li>Alpine Only</li><li class="text-danger">Sin DB / Web</li></ul></div><button onclick="event.stopPropagation();prepararPedido('Bronce')" class="btn btn-outline-dark w-100 rounded-pill btn-select">Elegir</button></div><div class="face-back"><div><h6 class="fw-bold text-primary mb-3">Especificaciones</h6><ul class="list-unstyled k8s-specs text-muted"><li><span>CPU/RAM:</span> <strong>1 Core / 1 GB</strong></li><li><span>OS:</span> <strong>Alpine (Fijo)</strong></li><li><span>SSH:</span> <strong>Puerto 22</strong></li><li><span>Extras:</span> <strong>Ninguno</strong></li></ul><div class="mt-3"><p class="small fw-bold mb-1">Ideal para:</p><p class="small text-muted">Bastion Host, VPN, Pruebas CLI.</p></div></div><button onclick="event.stopPropagation();prepararPedido('Bronce')" class="btn btn-outline-warning w-100 rounded-pill btn-select">Elegir</button></div></div></div></div>
+        <div class="col-xl-3 col-md-6"><div class="card-stack-container" onclick="toggleCard(this)"><div class="card-face"><div class="face-front" style="border-color:#2563eb"><div><h5 class="fw-bold text-primary">Plata</h5><div class="display-4 fw-bold text-primary my-2">15€</div><ul class="list-unstyled small text-muted"><li>MySQL Cluster</li><li>2 vCPU / 2 GB RAM</li><li class="text-danger">Sin Web</li></ul></div><button onclick="event.stopPropagation();prepararPedido('Plata')" class="btn btn-primary w-100 rounded-pill btn-select">Elegir</button></div><div class="face-back"><div><h6 class="fw-bold text-primary mb-3">Backend DB</h6><ul class="list-unstyled k8s-specs text-muted"><li><span>CPU/RAM:</span> <strong>2 Cores / 2 GB</strong></li><li><span>OS:</span> <strong>Alpine / Ubuntu</strong></li><li><span>DB:</span> <strong>MySQL 8</strong></li><li><span>Storage:</span> <strong>Persistente</strong></li></ul><div class="mt-3"><p class="small fw-bold mb-1">Ideal para:</p><p class="small text-muted">Microservicios, Bases de datos internas.</p></div></div><button onclick="event.stopPropagation();prepararPedido('Plata')" class="btn btn-primary w-100 rounded-pill btn-select">Elegir</button></div></div></div></div>
+        <div class="col-xl-3 col-md-6"><div class="card-stack-container" onclick="toggleCard(this)"><div class="card-face"><div class="face-front" style="border-color:#f59e0b"><div><h5 class="fw-bold text-warning">Oro</h5><div class="display-4 fw-bold text-primary my-2">30€</div><ul class="list-unstyled small text-muted"><li>Full Stack</li><li>3 vCPU / 3 GB RAM</li><li>Dominio .cloud</li></ul></div><button onclick="event.stopPropagation();prepararPedido('Oro')" class="btn btn-warning w-100 rounded-pill btn-select text-white">Elegir</button></div><div class="face-back"><div><h6 class="fw-bold text-warning mb-3">Producción</h6><ul class="list-unstyled k8s-specs text-muted"><li><span>CPU/RAM:</span> <strong>3 Cores / 3 GB</strong></li><li><span>OS:</span> <strong>Alp/Ubu/RHEL</strong></li><li><span>Stack:</span> <strong>Nginx + MySQL</strong></li><li><span>Dom:</span> <strong>Incluido</strong></li></ul><div class="mt-3"><p class="small fw-bold mb-1">Ideal para:</p><p class="small text-muted">Apps en Producción, E-commerce.</p></div></div><button onclick="event.stopPropagation();prepararPedido('Oro')" class="btn btn-warning w-100 rounded-pill btn-select text-white">Elegir</button></div></div></div></div>
+        <div class="col-xl-3 col-md-6"><div class="card-stack-container" onclick="toggleCard(this)"><div class="card-face"><div class="face-front card-custom"><div><h5 class="fw-bold text-primary">A Medida</h5><div class="display-4 fw-bold text-primary my-2">Flex</div><ul class="list-unstyled small text-muted"><li>Hardware Ryzen</li><li>Topología Mixta</li></ul></div><button onclick="event.stopPropagation();prepararPedido('Personalizado')" class="btn btn-outline-primary w-100 rounded-pill btn-select">Configurar</button></div><div class="face-back"><div><h6 class="fw-bold text-primary mb-3">Arquitectura</h6><ul class="list-unstyled k8s-specs text-muted"><li><span>CPU:</span> <strong>1-32 Cores</strong></li><li><span>RAM:</span> <strong>1-64 GB</strong></li><li><span>OS:</span> <strong>Cualquiera</strong></li><li><span>Red:</span> <strong>Custom CNI</strong></li></ul><div class="mt-3"><p class="small fw-bold mb-1">Ideal para:</p><p class="small text-muted">Big Data, IA, Proyectos complejos.</p></div></div><button onclick="event.stopPropagation();prepararPedido('Personalizado')" class="btn btn-outline-primary w-100 rounded-pill btn-select">Configurar</button></div></div></div></div>
+    </div></div></section>
+
+    <section class="py-5 bg-white border-top"><div class="container text-center"><h3 class="fw-bold">Sylo Academy</h3><p class="text-muted mb-4">Documentación técnica oficial.</p><a href="https://www.notion.so/SYLO-Kubernetes-For-All-1f5bfdf3150380328e1efc4fe8e181f9?source=copy_link" target="_blank" class="btn btn-dark rounded-pill px-5 fw-bold"><i class="fas fa-book me-2"></i>Leer Docs</a></div></section>
+
+    <footer class="py-5 bg-light border-top mt-5"><div class="container text-center"><h5 class="fw-bold text-primary mb-3">SYLO CORP S.L.</h5><div class="mb-4"><a href="mailto:arlanzonivan@gmail.com" class="text-muted mx-2 text-decoration-none">arlanzonivan@gmail.com</a><a href="mailto:leob@gmail.com" class="text-muted mx-2 text-decoration-none">leob@gmail.com</a></div><button class="btn btn-link text-muted small" onclick="openLegal()">TÉRMINOS Y CONDICIONES</button></div></footer>
+
+    <div class="offcanvas offcanvas-end" tabindex="-1" id="legalCanvas"><div class="offcanvas-header p-4 border-bottom"><h4 class="offcanvas-title fw-bold text-primary">Contrato de Servicios</h4><button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button></div><div class="offcanvas-body p-5 legal-content">
+        <h5>1. Identidad y Objeto</h5><p>SYLO CORP S.L. es una Sociedad Limitada registrada en Alicante (CIF B-12345678). El presente contrato regula el uso de la plataforma Oktopus™ V21. Al contratar, acepta estas condiciones sin reservas.</p>
+        <h5>2. Hardware Ryzen Garantizado</h5><p>Garantizamos el uso exclusivo de procesadores AMD Ryzen™ Threadripper™ de última generación. Los recursos contratados (vCPU) corresponden a hilos de ejecución físicos y no virtuales. No realizamos "overselling" agresivo.</p>
+        <h5>3. Política de Uso Aceptable (AUP) - Kubernetes</h5><p>Queda terminantemente prohibido el uso para: Minería de criptomonedas, ataques DDoS, intrusiones en redes ajenas, y alojamiento de contenido ilegal. La detección resultará en la terminación inmediata.</p>
+        <h5>4. Privacidad y Protección de Datos</h5><p>En cumplimiento con el RGPD (UE 2016/679): Sus datos se almacenan cifrados en reposo (AES-256) en Alicante. No realizamos inspección profunda de paquetes (DPI).</p>
+        <h5>5. Acuerdo de Nivel de Servicio (SLA)</h5><p>Garantizamos un 99.9% de disponibilidad mensual. En caso de incumplimiento, se compensará con créditos de servicio.</p>
+        <h5>6. Pagos y Suspensión</h5><p>El servicio es prepago. El impago resultará en la suspensión del servicio a las 48 horas y el borrado de datos a los 15 días.</p>
+        <h5>7. Responsabilidad</h5><p>Sylo no será responsable de pérdidas de datos derivadas de una mala configuración por parte del usuario o vulnerabilidades en su software.</p>
+        <h5>8. Jurisdicción</h5><p>Las partes se someten a los juzgados de Alicante, España.</p>
+    </div></div>
+
+    <div class="modal fade" id="configModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content shadow-lg border-0 p-3">
+        <div class="modal-header border-0"><h5 class="fw-bold">Configurar <span id="m_plan" class="text-primary"></span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+        <div class="modal-body p-5">
+            <div class="row mb-3"><div class="col-6"><label class="form-label fw-bold small">Alias Cluster</label><input id="cfg-alias" class="form-control rounded-pill bg-light border-0"></div><div class="col-6"><label class="form-label fw-bold small">Usuario SSH</label><input id="cfg-ssh-user" class="form-control rounded-pill bg-light border-0" value="admin_sylo"></div></div>
+            <div class="mb-3"><label class="form-label fw-bold small">SO</label><select id="cfg-os" class="form-select rounded-pill bg-light border-0"></select></div>
+
+            <div id="grp-hardware" class="mb-3 p-3 bg-light rounded-3" style="display:none;">
+                <h6 class="text-primary fw-bold mb-3"><i class="fas fa-microchip me-2"></i>Recursos Personalizados</h6>
+                <div class="row">
+                    <div class="col-6"><label class="small fw-bold">vCPU: <span id="lbl-cpu"></span></label><input type="range" id="mod-cpu" min="1" max="16" oninput="updateModalHard()"></div>
+                    <div class="col-6"><label class="small fw-bold">RAM: <span id="lbl-ram"></span> GB</label><input type="range" id="mod-ram" min="1" max="32" oninput="updateModalHard()"></div>
                 </div>
             </div>
-        </div>
-    </section>
 
-    <div class="modal fade" id="configModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
-            <div class="modal-content border-0 shadow-lg">
-                <div class="modal-header bg-light border-0">
-                    <h5 class="modal-title fw-bold"><i class="fas fa-sliders-h me-2 text-primary"></i>Configurar <span id="modal-plan-name"></span></h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body p-5">
-                    
-                    <h6 class="text-uppercase text-muted fw-bold small mb-4">Identidad del Cluster</h6>
-                    <div class="row mb-4">
-                         <div class="col-md-6 mb-3">
-                            <label class="form-label fw-bold">Nombre del Cluster (Alias)</label>
-                            <input type="text" id="cfg-alias" class="form-control rounded-pill bg-light border-0" placeholder="Ej: Mi Tienda Online">
-                        </div>
-                        
-                        <div class="col-md-6 mb-3" id="grp-subdomain">
-                            <label class="form-label fw-bold">Subdominio (*.sylobi.org)</label>
-                            <div class="input-group">
-                                <input type="text" id="cfg-subdomain" class="form-control rounded-start-pill bg-light border-0" placeholder="ej: mi-tienda" pattern="[a-z0-9-]+">
-                                <span class="input-group-text rounded-end-pill border-0 bg-white fw-bold">.sylobi.org</span>
-                            </div>
-                        </div>
-                        
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">Usuario SSH Admin</label>
-                            <input type="text" id="cfg-ssh-user" class="form-control rounded-pill bg-light border-0" value="admin_sylo">
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label fw-bold">Sistema Operativo</label>
-                            <select id="cfg-os" class="form-select rounded-pill bg-light border-0">
-                                <option value="alpine">Alpine Linux (Ligero)</option>
-                                <option value="ubuntu">Ubuntu Server (Estándar)</option>
-                                <option value="redhat">RedHat UBI (Enterprise)</option>
-                            </select>
-                        </div>
-                    </div>
-                    
-                    <div id="section-names" style="display:none;">
-                        <h6 class="text-uppercase text-muted fw-bold small mb-4">Nombres de Servicios</h6>
-                        <div class="row mb-4">
-                             <div class="col-md-6" id="grp-db-name">
-                                <label class="form-label fw-bold">Nombre Base de Datos</label>
-                                <input type="text" id="cfg-db-name" class="form-control rounded-pill bg-light border-0" value="sylo_db">
-                            </div>
-                             <div class="col-md-6" id="grp-web-name">
-                                <label class="form-label fw-bold">Nombre Servicio Web</label>
-                                <input type="text" id="cfg-web-name" class="form-control rounded-pill bg-light border-0" value="Sylo Web Cluster">
-                            </div>
-                        </div>
-                    </div>
-
-                    <hr class="my-4">
-
-                    <div id="section-resources">
-                        <h6 class="text-uppercase text-muted fw-bold small mb-4">Recursos de Hardware</h6>
-                        <div class="row mb-5">
-                            <div class="col-md-4">
-                                <label class="form-label fw-bold">vCPU <span class="badge bg-dark ms-2" id="val-cpu">2</span></label>
-                                <input type="range" class="form-range" min="1" max="6" value="2" id="range-cpu" oninput="updateVal('cpu')">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label fw-bold">RAM (GB) <span class="badge bg-dark ms-2" id="val-ram">4</span></label>
-                                <input type="range" class="form-range" min="1" max="12" value="4" id="range-ram" oninput="updateVal('ram')">
-                            </div>
-                            <div class="col-md-4">
-                                <label class="form-label fw-bold">Almacenamiento</label>
-                                <select class="form-select border-0 bg-light fw-bold" id="sel-storage">
-                                    <option value="5">5 GB NVMe</option>
-                                    <option value="25" selected>25 GB NVMe</option>
-                                    <option value="50">50 GB NVMe</option>
-                                    <option value="100">100 GB NVMe</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div id="section-software">
-                            <h6 class="text-uppercase text-muted fw-bold small mb-3">Software Stack</h6>
-                            <div class="card border-0 bg-light mb-3">
-                                <div class="card-body d-flex align-items-center justify-content-between">
-                                    <div class="form-check form-switch">
-                                        <input class="form-check-input" type="checkbox" id="check-db" onchange="toggleInputs()">
-                                        <label class="form-check-label fw-bold ms-2" for="check-db">Base de Datos</label>
-                                    </div>
-                                    <div id="db-options">
-                                        <select class="form-select form-select-sm border-0 shadow-sm" id="sel-db-type">
-                                            <option value="mysql">MySQL 8.0</option>
-                                            <option value="postgresql">PostgreSQL 14</option>
-                                            <option value="mongodb">MongoDB Enterprise</option>
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="card border-0 bg-light">
-                                <div class="card-body d-flex align-items-center justify-content-between">
-                                    <div class="form-check form-switch">
-                                        <input class="form-check-input" type="checkbox" id="check-web" onchange="toggleInputs()" checked>
-                                        <label class="form-check-label fw-bold ms-2" for="check-web">Servidor Web</label>
-                                    </div>
-                                    <div id="web-options">
-                                        <select class="form-select form-select-sm border-0 shadow-sm" id="sel-web-type">
-                                            <option value="nginx">Nginx</option>
-                                            <option value="apache">Apache HTTPD</option>
-                                        </select>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="modal-footer border-0 pt-0 px-5 pb-4">
-                    <button class="btn btn-primary w-100 rounded-pill py-2 fw-bold shadow" onclick="lanzarPedido()">DESPLEGAR AHORA</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="progressModal" data-bs-backdrop="static"><div class="modal-dialog modal-dialog-centered"><div class="modal-content terminal-window border-0"><div class="terminal-header"><div class="dot bg-danger"></div><div class="dot bg-warning"></div><div class="dot bg-success"></div></div><div class="terminal-body text-center"><div class="spinner-border text-success mb-3" role="status"></div><h5 id="progress-text" class="mb-3">Conectando con Sylo Brain...</h5><small id="prog-num" class="text-muted d-block mb-3">0%</small><div class="progress"><div id="prog-bar" class="progress-bar bg-success" style="width:0%"></div></div></div></div></div></div>
-
-    <div class="modal fade" id="successModal"><div class="modal-dialog modal-lg modal-dialog-centered"><div class="modal-content terminal-window border-0"><div class="terminal-header"><span class="text-white small ms-2">root@sylo-cloud:~# result.log</span></div><div class="terminal-body text-start position-relative"><button class="btn btn-sm btn-outline-light position-absolute top-0 end-0 m-3" onclick="copiarDatos()"><i class="fas fa-copy"></i></button><div class="mb-3 text-muted">Despliegue finalizado con éxito. Credenciales generadas:</div><div id="ssh-details" style="white-space: pre-wrap;"><span class="text-warning">$</span> <span id="ssh-cmd"></span><br><br><span class="text-info">OUTPUT:</span><br><span id="ssh-pass"></span></div><div class="mt-4 text-center"><a href="dashboard_cliente.php" class="btn btn-primary btn-sm rounded-pill">IR A MI CONSOLA</a></div></div></div></div></div>
-
-    <div class="modal fade" id="authModal"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow-lg p-4">
-        <ul class="nav nav-pills nav-fill mb-4 p-1 bg-light rounded-pill"><li class="nav-item"><a class="nav-link active rounded-pill" data-bs-toggle="tab" href="#login-pane">Login</a></li><li class="nav-item"><a class="nav-link rounded-pill" data-bs-toggle="tab" href="#reg-pane">Registro</a></li></ul>
-        <div class="tab-content">
-            <div class="tab-pane fade show active" id="login-pane">
-                <input id="login_email" class="form-control mb-3 rounded-pill bg-light border-0 px-3" placeholder="Email" required>
-                <input type="password" id="login_pass" class="form-control mb-3 rounded-pill bg-light border-0 px-3" placeholder="Pass" required>
-                <button class="btn btn-primary w-100 rounded-pill fw-bold" onclick="handleLogin()">Entrar</button>
+            <div class="d-flex gap-3 mb-2">
+                <div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="mod-check-db" onchange="toggleModalSoft()"><label class="small fw-bold ms-1">Base de Datos</label></div>
+                <div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="mod-check-web" onchange="toggleModalSoft()"><label class="small fw-bold ms-1">Servidor Web</label></div>
             </div>
             
-            <div class="tab-pane fade" id="reg-pane">
-                <input id="reg_user" class="form-control mb-2 rounded-pill bg-light border-0" placeholder="Nombre de Usuario">
-                <input id="reg_name" class="form-control mb-2 rounded-pill bg-light border-0" placeholder="Nombre Completo">
-                <input id="reg_email" class="form-control mb-2 rounded-pill bg-light border-0" placeholder="Email">
-                <input id="reg_pass" type="password" class="form-control mb-3 rounded-pill bg-light border-0" placeholder="Contraseña">
-                <button class="btn btn-success w-100 rounded-pill fw-bold mt-3" onclick="handleRegister()">Crear Cuenta</button>
+            <div id="mod-db-opts" style="display:none;" class="p-3 border rounded-3 mb-2">
+                <label class="small fw-bold">Motor DB</label>
+                <select id="mod-db-type" class="form-select rounded-pill bg-white border-0 mb-2"><option value="mysql">MySQL 8.0</option><option value="postgresql">PostgreSQL 14</option><option value="mongodb">MongoDB</option></select>
+                <input id="mod-db-name" class="form-control rounded-pill bg-white border-0" value="sylo_db" placeholder="Nombre DB">
             </div>
+            <div id="mod-web-opts" style="display:none;" class="p-3 border rounded-3">
+                <label class="small fw-bold">Servidor Web</label>
+                <select id="mod-web-type" class="form-select rounded-pill bg-white border-0 mb-2"><option value="nginx">Nginx</option><option value="apache">Apache</option></select>
+                <input id="mod-web-name" class="form-control rounded-pill bg-white border-0 mb-2" value="sylo_web" placeholder="Nombre App">
+                <div class="input-group rounded-pill overflow-hidden"><input id="mod-sub" class="form-control border-0" placeholder="mi-app"><span class="input-group-text border-0 bg-white small">.sylobi.org</span></div>
+            </div>
+
+            <div class="mt-4"><button class="btn btn-primary w-100 rounded-pill fw-bold py-2 shadow-sm" onclick="lanzar()">DESPLEGAR AHORA</button></div>
         </div>
-        <div id="authMessage" class="mt-3 text-center small text-danger fw-bold"></div>
     </div></div></div>
+
+    <div class="modal fade" id="statusModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content p-4 border-0 shadow-lg"><h5 class="fw-bold mb-4">Estado del Sistema <span class="status-dot ms-2"></span></h5><div class="d-flex justify-content-between border-bottom py-2"><span>API Gateway (Alicante)</span><span class="badge bg-success">Online</span></div><div class="d-flex justify-content-between border-bottom py-2"><span>NVMe Array</span><span class="badge bg-success">Online</span></div><div class="d-flex justify-content-between border-bottom py-2"><span>Oktopus V21</span><span class="badge bg-success">Active</span></div></div></div></div>
+    <div class="modal fade" id="progressModal" data-bs-backdrop="static"><div class="modal-dialog modal-dialog-centered"><div class="modal-content terminal-window border-0"><div class="terminal-body text-center"><div class="spinner-border text-success mb-3" role="status"></div><h5 id="progress-text" class="mb-3">Iniciando...</h5><div class="progress"><div id="prog-bar" class="progress-bar bg-success" style="width:0%"></div></div></div></div></div></div>
+    <div class="modal fade" id="successModal"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 p-4" style="background:white; border-radius:15px;"><h2 class="text-success fw-bold mb-3">✅ ÉXITO</h2><div class="success-box"><span class="text-muted"># RESUMEN</span><br>Plan: <span id="s-plan" class="text-warning"></span><br>OS: <span id="s-os" class="text-info"></span><br>CPU: <span id="s-cpu"></span> vCore | RAM: <span id="s-ram"></span> GB<div class="mt-3 border-top border-secondary pt-2">CMD: <span id="s-cmd" class="text-white"></span><br>PASS: <span id="s-pass" class="text-white"></span></div></div><div class="text-center"><a href="dashboard_cliente.php" class="btn btn-primary rounded-pill px-5 fw-bold">IR A LA CONSOLA</a></div></div></div></div>
+    <div class="modal fade" id="authModal"><div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content border-0 shadow-lg p-4"><ul class="nav nav-pills nav-fill mb-4 p-1 bg-light rounded-pill"><li class="nav-item"><a class="nav-link active rounded-pill" data-bs-toggle="tab" href="#login-pane">Login</a></li><li class="nav-item"><a class="nav-link rounded-pill" data-bs-toggle="tab" href="#reg-pane">Registro</a></li></ul><div class="tab-content"><div class="tab-pane fade show active" id="login-pane"><input id="log_email" class="form-control mb-3" placeholder="Usuario/Email"><input type="password" id="log_pass" class="form-control mb-3" placeholder="Contraseña"><button class="btn btn-primary w-100 rounded-pill fw-bold" onclick="handleLogin()">Entrar</button></div><div class="tab-pane fade" id="reg-pane"><div class="text-center mb-3"><div class="btn-group w-50"><input type="radio" class="btn-check" name="t_u" id="t_a" value="autonomo" checked onchange="toggleReg()"><label class="btn btn-outline-primary" for="t_a">Autónomo</label><input type="radio" class="btn-check" name="t_u" id="t_e" value="empresa" onchange="toggleReg()"><label class="btn btn-outline-primary" for="t_e">Empresa</label></div></div><div class="row g-2"><div class="col-6"><input id="reg_u" class="form-control mb-2" placeholder="Usuario"></div><div class="col-6"><input id="reg_e" class="form-control mb-2" placeholder="Email"></div><div class="col-6"><input type="password" id="reg_p1" class="form-control mb-2" placeholder="Contraseña"></div><div class="col-6"><input type="password" id="reg_p2" class="form-control mb-2" placeholder="Repetir"></div></div><div id="fields-auto" class="mt-2"><input id="reg_fn" class="form-control mb-2" placeholder="Nombre Completo"><input id="reg_dni_a" class="form-control mb-2" placeholder="DNI"></div><div id="fields-emp" class="mt-2" style="display:none"><div class="row g-2"><div class="col-6"><input id="reg_contact" class="form-control mb-2" placeholder="Persona Contacto"></div><div class="col-6"><input id="reg_cif" class="form-control mb-2" placeholder="CIF"></div></div><select id="reg_tipo_emp" class="form-select mb-2" onchange="checkOther()"><option value="SL">S.L.</option><option value="SA">S.A.</option><option value="Cooperativa">Cooperativa</option><option value="Otro">Otro</option></select><input id="reg_rs" class="form-control mb-2" placeholder="Razón Social" style="display:none"></div><div class="row g-2 mt-1"><div class="col-6"><input id="reg_tel" class="form-control mb-2" placeholder="Teléfono"></div><div class="col-6"><input id="reg_cal" class="form-control mb-2" placeholder="Dirección"></div></div><div class="form-check mt-3"><input type="checkbox" id="reg_terms" class="form-check-input"><label class="form-check-label small">Acepto los <a href="#" onclick="viewTermsFromReg()">Términos</a>.</label></div><button class="btn btn-success w-100 rounded-pill fw-bold mt-3" onclick="handleRegister()">Crear Cuenta</button></div></div></div></div></div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        const isLogged = <?php echo isset($_SESSION['user_id']) ? 'true' : 'false'; ?>;
-        const authModal = new bootstrap.Modal('#authModal'), configModal = new bootstrap.Modal('#configModal'), progressModal = new bootstrap.Modal('#progressModal'), successModal = new bootstrap.Modal('#successModal');
-        let currentPlan = '';
+        const isLogged = <?=isset($_SESSION['user_id'])?'true':'false'?>;
+        function openM(id){const el=document.getElementById(id);if(el)new bootstrap.Modal(el).show();}
+        function hideM(id){const el=document.getElementById(id);const m=bootstrap.Modal.getInstance(el);if(m)m.hide();}
+        function openAuth(){openM('authModal');}
+        function openLegal(){new bootstrap.Offcanvas(document.getElementById('legalCanvas')).show();}
+        function viewTermsFromReg(){hideM('authModal');openLegal();}
+        function toggleTheme(){document.body.dataset.theme=document.body.dataset.theme==='dark'?'':'dark';}
+        function toggleCard(el){document.querySelectorAll('.card-stack-container').forEach(c=>c!==el&&c.classList.remove('active'));el.classList.toggle('active');}
+        function toggleReg(){const e=document.getElementById('t_e').checked;document.getElementById('fields-emp').style.display=e?'block':'none';document.getElementById('fields-auto').style.display=e?'none':'block';}
+        function checkOther(){document.getElementById('reg_rs').style.display=(document.getElementById('reg_tipo_emp').value==='Otro')?'block':'none';}
 
-        function updateVal(id) { document.getElementById('val-'+id).innerText = document.getElementById('range-'+id).value; }
-
-        function prepararPedido(planName) {
-            if (!isLogged) { authModal.show(); return; }
-            currentPlan = planName;
-            document.getElementById('modal-plan-name').innerText = planName;
+        // --- CALCULADORA (FIXED: UPDATE ON INPUT) ---
+        document.addEventListener('DOMContentLoaded', () => { 
+            ['in-cpu','in-ram','check-calc-db','check-calc-web','sel-calc-db','sel-calc-web'].forEach(id=>document.getElementById(id)?.addEventListener('input', () => {
+                document.getElementById('calc-preset').value='custom'; // Forzar custom al mover
+                updCalc(); 
+            }));
+            updCalc(); // Init
+        });
+        
+        function applyPreset() {
+            const p=document.getElementById('calc-preset').value, c=document.getElementById('in-cpu'), r=document.getElementById('in-ram'), d=document.getElementById('check-calc-db'), w=document.getElementById('check-calc-web');
+            if(p==='bronce'){c.value=1;r.value=1;d.checked=false;w.checked=false;} 
+            else if(p==='plata'){c.value=2;r.value=2;d.checked=true;w.checked=false;} 
+            else if(p==='oro'){c.value=3;r.value=3;d.checked=true;w.checked=true;}
+            updCalc();
+        }
+        function updCalc() {
+            let c=parseInt(document.getElementById('in-cpu').value), r=parseInt(document.getElementById('in-ram').value);
+            document.getElementById('c-cpu').innerText=c; document.getElementById('c-ram').innerText=r;
             
-            // ELEMENTOS UI
-            const rangeCpu = document.getElementById('range-cpu');
-            const rangeRam = document.getElementById('range-ram');
-            const selStorage = document.getElementById('sel-storage');
-            const secResources = document.getElementById('section-resources');
-            const secSoftware = document.getElementById('section-software');
-            const secNames = document.getElementById('section-names');
+            let d_c=document.getElementById('check-calc-db').checked?5:0;
+            let w_c=document.getElementById('check-calc-web').checked?5:0;
             
-            const selOS = document.getElementById('cfg-os');
-            const grpDB = document.getElementById('grp-db-name');
-            const grpWeb = document.getElementById('grp-web-name');
-            const grpSubdomain = document.getElementById('grp-subdomain');
-
-            // 1. RESET (Habilitamos todo por defecto)
-            secResources.style.opacity = "1";
-            secResources.style.pointerEvents = "auto";
-            secSoftware.style.display = "block";
-            secNames.style.display = "none";
-            grpDB.style.display = "none";
-            grpWeb.style.display = "none";
-            grpSubdomain.style.display = 'none'; // Por defecto oculto en Bronce/Plata
+            // Logic for disabling selects in calc
+            document.getElementById('sel-calc-db').disabled=!document.getElementById('check-calc-db').checked;
+            document.getElementById('sel-calc-web').disabled=!document.getElementById('check-calc-web').checked;
             
-            // OS Reset
-            selOS.disabled = false;
-            Array.from(selOS.options).forEach(o => o.disabled = false);
-            
-            // Toggles Reset
-            document.getElementById('check-db').disabled = false;
-            document.getElementById('check-web').disabled = false;
-
-            // ==========================================
-            // LOGICA SEGUN PLAN
-            // ==========================================
-            if (planName === 'Bronce') {
-                // SOLO SSH, SOLO ALPINE
-                rangeCpu.value = 1; rangeRam.value = 1; selStorage.value = "5";
-                secResources.style.opacity = "0.5"; secResources.style.pointerEvents = "none";
-                
-                selOS.value = "alpine"; selOS.disabled = true;
-                
-                // Forzamos apagado de DB y Web
-                document.getElementById('check-db').checked = false;
-                document.getElementById('check-web').checked = false;
-                secSoftware.style.display = 'none'; // No configurable
-            } 
-            else if (planName === 'Plata') {
-                // DB OBLIGATORIA (MySQL), NO WEB, ALPINE O UBUNTU
-                rangeCpu.value = 2; rangeRam.value = 2; selStorage.value = "25";
-                secResources.style.opacity = "0.5"; secResources.style.pointerEvents = "none";
-                
-                secNames.style.display = "block";
-                grpDB.style.display = "block"; // Nombre DB visible
-                grpWeb.style.display = "none";
-                
-                selOS.value = "ubuntu";
-                selOS.querySelector('option[value="redhat"]').disabled = true; // Bloqueado RedHat
-                
-                // Forzamos DB ON y Web OFF
-                document.getElementById('check-db').checked = true;
-                document.getElementById('check-web').checked = false;
-                secSoftware.style.display = 'none'; // No se puede cambiar
-            }
-            else if (planName === 'Oro') {
-                // TODO INCLUIDO (Web + DB), TODO OS PERMITIDO
-                rangeCpu.value = 3; rangeRam.value = 3; selStorage.value = "50";
-                secResources.style.opacity = "0.5"; secResources.style.pointerEvents = "none";
-                
-                secNames.style.display = "block";
-                grpDB.style.display = "block";
-                grpWeb.style.display = "block";
-                grpSubdomain.style.display = 'block'; // DOMINIO VISIBLE
-                
-                selOS.value = "ubuntu";
-                
-                // Forzamos DB y Web ON
-                document.getElementById('check-db').checked = true;
-                document.getElementById('check-web').checked = true;
-                secSoftware.style.display = 'none'; // No se puede quitar nada
-            }
-            else if (planName === 'Personalizado') {
-                // TODO LIBRE
-                secNames.style.display = "block";
-                grpSubdomain.style.display = 'block'; // DOMINIO VISIBLE
-                toggleInputs();
-            }
-
-            updateVal('cpu'); updateVal('ram');
-            configModal.show();
+            renderP((c*5)+(r*5)+d_c+w_c+5);
+        }
+        function renderP(val){ 
+            document.getElementById('out-sylo').innerText=val+"€"; 
+            let aws=Math.round((val*3.5)+40), az=Math.round((val*3.2)+30), sv=Math.round(((aws-val)/aws)*100); if(sv>99)sv=99;
+            document.getElementById('out-aws').innerText=aws+"€"; document.getElementById('out-azure').innerText=az+"€"; document.getElementById('out-save').innerText=sv+"%"; document.getElementById('pb-sylo').style.width=sv+"%"; document.getElementById('pb-aws').style.width="100%"; document.getElementById('pb-azure').style.width=(az/aws*100)+"%";
         }
 
-        function toggleInputs() {
-            if (currentPlan !== 'Personalizado') return;
-            const hasDB = document.getElementById('check-db').checked;
-            const hasWeb = document.getElementById('check-web').checked;
-            document.getElementById('grp-db-name').style.display = hasDB ? 'block' : 'none';
-            document.getElementById('grp-web-name').style.display = hasWeb ? 'block' : 'none';
+        // --- DEPLOY LOGIC ---
+        let curPlan='';
+        function prepararPedido(plan) {
+            if(!isLogged) { openAuth(); return; }
+            curPlan = plan;
+            document.getElementById('m_plan').innerText = plan;
+            
+            const selOS = document.getElementById('cfg-os'), mCpu = document.getElementById('mod-cpu'), mRam = document.getElementById('mod-ram'), dbT = document.getElementById('mod-db-type'), webT = document.getElementById('mod-web-type'), cDb = document.getElementById('mod-check-db'), cWeb = document.getElementById('mod-check-web');
+            const grpHard = document.getElementById('grp-hardware');
+
+            selOS.innerHTML = "";
+            if(plan==='Bronce'){ 
+                selOS.innerHTML="<option value='alpine'>Alpine</option>"; selOS.disabled=true; 
+                grpHard.style.display="none"; // OCULTAR SLIDERS EN FIJOS
+                mCpu.value=1; mRam.value=1; 
+                cDb.checked=false; cWeb.checked=false; cDb.disabled=true; cWeb.disabled=true; 
+            }
+            else if(plan==='Plata'){ 
+                selOS.innerHTML="<option value='ubuntu'>Ubuntu</option><option value='alpine'>Alpine</option>"; selOS.disabled=false; 
+                grpHard.style.display="none";
+                mCpu.value=2; mRam.value=2; 
+                cDb.checked=true; cWeb.checked=false; cDb.disabled=true; cWeb.disabled=true; dbT.disabled=true; 
+            }
+            else if(plan==='Oro'){ 
+                selOS.innerHTML="<option value='ubuntu'>Ubuntu</option><option value='alpine'>Alpine</option><option value='redhat'>RedHat</option>"; selOS.disabled=false; 
+                grpHard.style.display="none";
+                mCpu.value=3; mRam.value=3; 
+                cDb.checked=true; cWeb.checked=true; cDb.disabled=true; cWeb.disabled=true; dbT.disabled=true; webT.disabled=true; 
+            }
+            else { // Custom
+                selOS.innerHTML="<option value='ubuntu'>Ubuntu</option><option value='alpine'>Alpine</option><option value='redhat'>RedHat</option>"; selOS.disabled=false; 
+                grpHard.style.display="block"; // MOSTRAR SLIDERS SOLO EN CUSTOM
+                mCpu.value = document.getElementById('in-cpu').value; mRam.value = document.getElementById('in-ram').value; 
+                cDb.disabled=false; cWeb.disabled=false;
+                cDb.checked = document.getElementById('check-calc-db').checked;
+                cWeb.checked = document.getElementById('check-calc-web').checked;
+                dbT.disabled=false; webT.disabled=false;
+            }
+            updateModalHard(); toggleModalSoft();
+            openM('configModal');
         }
 
-        async function lanzarPedido() {
-            const alias = document.getElementById('cfg-alias').value;
-            let sub = document.getElementById('cfg-subdomain').value;
-            
-            // Si es Bronce o Plata, el dominio está oculto, generamos uno dummy para que no falle validación
-            if (document.getElementById('grp-subdomain').style.display === 'none') {
-                sub = "interno-" + Math.floor(Math.random() * 100000);
-            }
+        function updateModalHard(){ document.getElementById('lbl-cpu').innerText=document.getElementById('mod-cpu').value; document.getElementById('lbl-ram').innerText=document.getElementById('mod-ram').value; }
+        function toggleModalSoft(){ document.getElementById('mod-db-opts').style.display=document.getElementById('mod-check-db').checked?'block':'none'; document.getElementById('mod-web-opts').style.display=document.getElementById('mod-check-web').checked?'block':'none'; }
 
-            if(!alias || !sub) { alert("Alias y Subdominio obligatorios"); return; }
-
-            // Recopilar datos
+        async function lanzar() {
+            const alias = document.getElementById('cfg-alias').value; if(!alias) { alert("Alias obligatorio"); return; }
             const specs = {
                 cluster_alias: alias,
-                subdomain: sub,
-                ssh_user: document.getElementById('cfg-ssh-user').value || "admin",
+                ssh_user: document.getElementById('cfg-ssh-user').value,
                 os_image: document.getElementById('cfg-os').value,
-                
-                // Nombres
-                db_custom_name: document.getElementById('cfg-db-name').value,
-                web_custom_name: document.getElementById('cfg-web-name').value,
-                
-                // Hardware
-                cpu: parseInt(document.getElementById('range-cpu').value),
-                ram: parseInt(document.getElementById('range-ram').value),
-                storage: parseInt(document.getElementById('sel-storage').value),
-                
-                // Software Toggles (Lógica ajustada)
-                db_enabled: currentPlan==='Plata'||currentPlan==='Oro'||(currentPlan==='Personalizado' && document.getElementById('check-db').checked),
-                web_enabled: currentPlan==='Oro'||(currentPlan==='Personalizado' && document.getElementById('check-web').checked),
-                
-                // Tipos (Leídos del select, aunque estén ocultos se leen los defaults)
-                db_type: document.getElementById('sel-db-type').value, // Plata usará el default (mysql)
-                web_type: document.getElementById('sel-web-type').value
+                cpu: parseInt(document.getElementById('mod-cpu').value),
+                ram: parseInt(document.getElementById('mod-ram').value),
+                storage: 25,
+                db_enabled: document.getElementById('mod-check-db').checked,
+                web_enabled: document.getElementById('mod-check-web').checked,
+                db_custom_name: document.getElementById('mod-db-name').value,
+                web_custom_name: document.getElementById('mod-web-name').value,
+                subdomain: document.getElementById('mod-sub').value || 'interno',
+                db_type: document.getElementById('mod-db-type').value,
+                web_type: document.getElementById('mod-web-type').value
             };
-
-            configModal.hide();
-            progressModal.show();
-
+            hideM('configModal'); openM('progressModal');
             try {
-                const res = await fetch('index.php', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ action: 'comprar', plan: currentPlan, specs: specs })
-                });
+                const res = await fetch('index.php', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:'comprar', plan:curPlan, specs:specs}) });
                 const j = await res.json();
-                if(j.status === 'success') startPolling(j.order_id);
-                else { alert(j.mensaje); progressModal.hide(); }
-            } catch(e) { alert("Error de red"); progressModal.hide(); }
+                if(j.status === 'success') startPolling(j.order_id, specs); else { hideM('progressModal'); alert(j.mensaje); }
+            } catch(e) { hideM('progressModal'); alert("Error"); }
         }
 
-        function startPolling(oid) {
-            const bar = document.getElementById('prog-bar'), 
-                  text = document.getElementById('progress-text'),
-                  num = document.getElementById('prog-num'),
-                  sshCmd = document.getElementById('ssh-cmd'),
-                  sshPass = document.getElementById('ssh-pass');
-
-            let int = setInterval(async () => {
-                try {
-                    const res = await fetch(`index.php?check_status=${oid}`);
-                    const s = await res.json();
-                    
-                    if (s.percent !== undefined) {
-                        bar.style.width = s.percent + "%";
-                        text.innerText = s.message;
-                        num.innerText = s.percent + "%";
-                    }
-
-                    if (s.status === 'completed' && s.ssh_cmd && s.ssh_pass) { 
-                        clearInterval(int); 
-                        progressModal.hide(); 
-                        sshCmd.innerText = s.ssh_cmd;
-                        sshPass.innerText = s.ssh_pass;
-                        successModal.show(); 
-                    } 
-                    
-                    if (s.status === 'error') { 
-                        clearInterval(int); 
-                        alert("Error crítico en el despliegue"); 
-                        progressModal.hide(); 
-                    }
-                } catch (e) {
-                    console.error("Error polling:", e);
+        function startPolling(oid, finalSpecs) {
+            let i = setInterval(async () => {
+                const r = await fetch(`index.php?check_status=${oid}`);
+                const s = await r.json();
+                document.getElementById('prog-bar').style.width = s.percent+"%";
+                document.getElementById('progress-text').innerText = s.message;
+                if(s.status === 'completed') {
+                    clearInterval(i); hideM('progressModal');
+                    document.getElementById('s-plan').innerText = curPlan;
+                    document.getElementById('s-os').innerText = finalSpecs.os_image;
+                    document.getElementById('s-cpu').innerText = finalSpecs.cpu;
+                    document.getElementById('s-ram').innerText = finalSpecs.ram;
+                    document.getElementById('s-cmd').innerText = s.ssh_cmd;
+                    document.getElementById('s-pass').innerText = s.ssh_pass;
+                    openM('successModal');
                 }
-            }, 1000);
+            }, 1500);
         }
 
-        // AUTH & UTILS
-        async function handleLogin() {
-            const r=await fetch('index.php',{method:'POST',body:JSON.stringify({action:'login',email_user:document.getElementById('login_email').value,password:document.getElementById('login_pass').value})});
-            const d=await r.json();
-            if(d.status==='success') location.reload(); else document.getElementById('authMessage').innerText=d.mensaje;
-        }
-        async function handleRegister() {
-            const r=await fetch('index.php',{method:'POST',body:JSON.stringify({action:'register', username:document.getElementById('reg_user').value, full_name:document.getElementById('reg_name').value, email:document.getElementById('reg_email').value, password:document.getElementById('reg_pass').value})});
-            const d=await r.json(); if(d.status==='success') location.reload(); else document.getElementById('authMessage').innerText=d.mensaje;
-        }
-        async function logout() { await fetch('index.php',{method:'POST',body:JSON.stringify({action:'logout'})}); location.reload(); }
-        function copiarDatos() { navigator.clipboard.writeText(document.getElementById('ssh-details').innerText); }
+        async function handleLogin() { const r=await fetch('index.php',{method:'POST',body:JSON.stringify({action:'login',email_user:document.getElementById('log_email').value,password:document.getElementById('log_pass').value})}); const d=await r.json(); if(d.status==='success') location.reload(); else alert(d.mensaje); }
+        async function handleRegister() { if(!document.getElementById('reg_terms').checked) return; const t = document.getElementById('t_a').checked ? 'autonomo' : 'empresa'; const d = { action:'register', username:document.getElementById('reg_u').value, email:document.getElementById('reg_e').value, password:document.getElementById('reg_p1').value, password_confirm:document.getElementById('reg_p2').value, telefono:document.getElementById('reg_tel').value, calle:document.getElementById('reg_cal').value, tipo_usuario:t }; if(t==='autonomo') { d.full_name=document.getElementById('reg_fn').value; d.dni=document.getElementById('reg_dni_a').value; } else { d.contact_name=document.getElementById('reg_contact').value; d.cif=document.getElementById('reg_cif').value; d.dni=d.cif; d.tipo_empresa=document.getElementById('reg_tipo_emp').value; if(d.tipo_empresa==='Otro') d.company_name=document.getElementById('reg_rs').value; } await fetch('index.php',{method:'POST',body:JSON.stringify(d)}); location.reload(); }
+        function logout() { fetch('index.php',{method:'POST',body:JSON.stringify({action:'logout'})}).then(()=>location.reload()); }
+        function copyData(){ navigator.clipboard.writeText(document.getElementById('ssh-details').innerText); }
     </script>
 </body>
 </html>

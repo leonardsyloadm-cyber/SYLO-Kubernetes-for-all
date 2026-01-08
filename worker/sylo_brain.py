@@ -13,248 +13,224 @@ WORKER_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(WORKER_DIR)
 BUZON = os.path.join(BASE_DIR, "buzon-pedidos")
 
-OLLAMA_URL = "http://localhost:11434/api/generate"
 MODEL_NAME = "qwen2.5:1.5b" 
 
-print(f"[BRAIN] 🧠 Sylo Brain v13 (Memory Core) Iniciado.")
+# LISTA DE POSIBLES DIRECCIONES
+POSSIBLE_URLS = [
+    "http://127.0.0.1:11434/api/generate",
+    "http://172.17.0.1:11434/api/generate",
+    "http://host.docker.internal:11434/api/generate", 
+    "http://0.0.0.0:11434/api/generate"
+]
 
-# ================= HERRAMIENTAS DE ESTADO =================
+OLLAMA_URL = None
 
+print(f"[BRAIN] 🧠 Sylo Brain v25 (GUARDIAN EDITION) Iniciado.")
+
+# ================= 🛡️ FILTRO DE SEGURIDAD (CENSURA) =================
+# Palabras que activan el bloqueo inmediato (sin preguntar a la IA)
+FORBIDDEN_TOPICS = [
+    "israel", "palestina", "guerra", "matar", "muerte", "violencia", 
+    "mujer", "feminismo", "machismo", "política", "religión", "dios",
+    "gobierno", "votar", "partido", "sexo", "porno", "droga", "armas",
+    "terrorismo", "hamas", "ucrania", "rusia", "opinas", "racismo",
+    "homofobia", "gay", "trans", "lgtb", "asesinato", "suicidio"
+]
+
+def is_safe(text):
+    t = text.lower()
+    for word in FORBIDDEN_TOPICS:
+        if word in t: return False
+    return True
+
+# ================= 🔌 AUTO-CONEXIÓN =================
+def find_ollama():
+    global OLLAMA_URL
+    print("[INIT] 🔍 Buscando a Ollama (timeout 5s)...")
+    test_payload = {"model": MODEL_NAME, "prompt": ".", "stream": False, "num_predict": 1}
+    
+    for url in POSSIBLE_URLS:
+        try:
+            print(f"       👉 {url} ...", end="")
+            r = requests.post(url, json=test_payload, timeout=5)
+            if r.status_code == 200:
+                print(" ✅ OK!")
+                OLLAMA_URL = url
+                return True
+            print(f" ❌ ({r.status_code})")
+        except:
+            print(" ❌")
+            
+    print("[FATAL] 🛑 Ollama no responde en ninguna IP.")
+    return False
+
+if not find_ollama(): print("[WARN] Reintentando en segundo plano...")
+
+# ================= 📚 LA BIBLIA DE SYLO (MANUAL AMPLIADO) =================
+SYLO_DOCS = """
+[MANUAL TÉCNICO OFICIAL SYLO]
+¡IMPORTANTE! Si la respuesta no está aquí, di: "No tengo esa información, contacta con soporte humano".
+
+1. CÓMO EDITAR LA WEB (SUBIR ARCHIVOS):
+   - Opción A (Fácil): En el Dashboard, pulsa el botón 'Editar' o 'Subir' dentro del bloque 'Despliegue Web'. Eso abre el Gestor de Archivos Web.
+   - Opción B (Pro): Usa un cliente FTP (como FileZilla). Los datos (Host, User, Pass) están en la tarjeta 'Accesos de Sistema'.
+   - Opción C (Experto): Vía terminal SSH (vim/nano).
+
+2. COPIAS DE SEGURIDAD (SNAPSHOTS):
+   - NO se hacen por comandos.
+   - SE HACEN: En el panel derecho, sección 'Snapshots', botón 'Crear Snapshot'.
+   - LÍMITES: Bronce (0), Plata (3), Oro (5).
+
+3. BASE DE DATOS:
+   - Planes Plata y Oro incluyen MySQL.
+   - Para ver la contraseña: Mira la tarjeta 'Accesos de Sistema' en el Dashboard.
+
+4. ESTADO DEL SERVIDOR:
+   - Si la CPU está al 100%, recomienda reiniciar usando el botón 'Reiniciar' en 'Control de Energía'.
+"""
+
+# ================= HERRAMIENTAS BASE =================
 def update_chat_status(oid, message):
-    status_file = os.path.join(BUZON, f"chat_status_{oid}.json")
     try:
-        with open(status_file, 'w') as f:
+        with open(os.path.join(BUZON, f"chat_status_{oid}.json"), 'w') as f:
             json.dump({"status": message}, f)
     except: pass
 
 def clear_chat_status(oid):
-    status_file = os.path.join(BUZON, f"chat_status_{oid}.json")
-    if os.path.exists(status_file):
-        try: os.remove(status_file)
-        except: pass
-
-# ================= HERRAMIENTAS DE MEMORIA (NUEVO) =================
-
-def get_memory_file(oid):
-    return os.path.join(BUZON, f"chat_memory_{oid}.json")
-
-def load_conversation_history(oid):
-    """Carga las últimas 5 interacciones para dar contexto"""
-    mem_file = get_memory_file(oid)
-    if os.path.exists(mem_file):
-        try:
-            with open(mem_file, 'r') as f:
-                return json.load(f)
-        except: return []
-    return []
-
-def save_conversation_history(oid, user_msg, ai_reply):
-    """Guarda la interacción en disco"""
-    mem_file = get_memory_file(oid)
-    history = load_conversation_history(oid)
-    
-    # Añadimos la nueva interacción
-    history.append({"u": user_msg, "a": ai_reply})
-    
-    # Mantenemos solo las últimas 6 interacciones para no saturar la CPU
-    if len(history) > 6:
-        history = history[-6:]
-        
     try:
-        with open(mem_file, 'w') as f:
-            json.dump(history, f)
+        p = os.path.join(BUZON, f"chat_status_{oid}.json")
+        if os.path.exists(p): os.remove(p)
     except: pass
 
-def format_history_for_prompt(history):
-    if not history: return "Sin historial previo."
-    txt = ""
-    for h in history:
-        txt += f"Usuario: {h['u']}\nSyloBot: {h['a']}\n"
-    return txt
+def get_memory_file(oid): return os.path.join(BUZON, f"chat_memory_{oid}.json")
 
-# ================= HERRAMIENTAS TÉCNICAS =================
+def load_conversation_history(oid):
+    try:
+        with open(get_memory_file(oid), 'r') as f: return json.load(f)
+    except: return []
+
+def save_conversation_history(oid, user_msg, ai_reply):
+    history = load_conversation_history(oid)
+    history.append({"u": user_msg, "a": ai_reply})
+    if len(history) > 3: history = history[-3:] 
+    try:
+        with open(get_memory_file(oid), 'w') as f: json.dump(history, f)
+    except: pass
+
+def format_history(history):
+    return "\n".join([f"U: {h['u']} | AI: {h['a']}" for h in history]) if history else "N/A"
 
 def clean_ssh_pass(raw_text):
-    if "Pass:" in raw_text:
-        match = re.search(r'Pass:\s*([^\s\[\]]+)', raw_text)
-        if match: return match.group(1)
-    return raw_text
+    match = re.search(r'Pass:\s*([^\s\[\]]+)', raw_text)
+    return match.group(1) if match else raw_text
 
-def get_time_greeting():
-    h = datetime.now().hour
-    if 6 <= h < 12: return "Buenos días"
-    elif 12 <= h < 20: return "Buenas tardes"
-    return "Buenas noches"
+# ================= COMUNICACIÓN IA =================
+def ask_ollama(user_msg, tech_data, plan_data, oid):
+    global OLLAMA_URL
+    if not OLLAMA_URL:
+        if not find_ollama(): return "⚠️ Error: Ollama desconectado."
 
-def ask_ollama(user_msg, tech_data, plan_data, limit_backups, oid):
     try:
-        update_chat_status(oid, "🧠 Recuperando memoria...")
-        
-        # 1. CARGAR MEMORIA
+        update_chat_status(oid, "🧠 Consultando manuales...")
         history = load_conversation_history(oid)
-        history_text = format_history_for_prompt(history)
         
-        update_chat_status(oid, "🔍 Analizando contexto visual...")
-
-        # ---------------------------------------------------------
-        # MAPA DE PRECISIÓN (MANTENIDO)
-        # ---------------------------------------------------------
-        ui_map = """
-        [MAPA EXACTO DEL DASHBOARD - ÚSALO PARA GUIAR AL USUARIO]
-        
-        1. ZONA IZQUIERDA (DATOS):
-           - "Accesos de Sistema": Es la tarjeta negra en el centro-izda. Contiene: IP, Usuario Root, Contraseña y Datos MySQL.
-           - "Métricas": Las gráficas de CPU y RAM están arriba a la izquierda.
-
-        2. ZONA DERECHA (ACCIONES):
-           - "Despliegue Web": Parte superior derecha.
-             * Botón "Ver Sitio Web" (Azul): Abre la web.
-             * Botón "Editar" (Gris): Abre el editor de código.
-             * Botón "Subir" (Gris): Para subir archivos .html.
-           
-           - "Control de Energía": Parte media derecha.
-             * Botón "Reiniciar" (Amarillo) / "Apagar" (Rojo) / "Encender" (Verde).
-
-           - "Snapshots" (Backups): Parte inferior derecha.
-             * Botón "Crear Snapshot": El único botón para hacer copias. NO dar comandos.
-             * Lista de copias: Justo debajo del botón.
-        """
-
-        knowledge_base = """
-        [PLANES SYLO]
-        - Bronce (5€): 1 Core, 1GB RAM. Sin Web/DB.
-        - Plata (15€): 2 Cores, 4GB RAM. Con MySQL.
-        - Oro (30€): 4 Cores, 8GB RAM. Full Stack.
-        """
-
-        real_time_status = f"""
-        [ESTADO ACTUAL DEL CLIENTE]
-        - Plan: {plan_data.get('name')}
-        - Web Activa: {'SÍ' if plan_data.get('has_web') else 'NO'}
-        - CPU Actual: {tech_data.get('metrics', {}).get('cpu')}%
-        - Backups: {tech_data.get('backups_count')}/{limit_backups}
-        """
-
-        # AÑADIMOS EL HISTORIAL AL PROMPT
         system_prompt = f"""
-        Eres SyloBot, el navegador de este Dashboard con MEMORIA.
+        INSTRUCCIONES SUPREMAS:
+        1. Eres SyloBot, un asistente TÉCNICO DE SERVIDORES.
+        2. USA SOLO LA DOCUMENTACIÓN DE ABAJO. NO INVENTES.
+        3. Si preguntan algo que no está en el manual, di: "Solo gestiono soporte técnico de Sylo."
+        4. Sé breve (máx 40 palabras).
+
+        {SYLO_DOCS}
         
-        {ui_map}
-        {knowledge_base}
-        {real_time_status}
-
-        [HISTORIAL DE CONVERSACIÓN RECIENTE (Contexto)]
-        {history_text}
-
-        REGLAS DE RESPUESTA:
-        1. Usa el HISTORIAL para entender el contexto (ej: si dicen "y cómo lo hago", refiérete a lo anterior).
-        2. Sé MUY CONCRETO con la ubicación de botones.
-        3. Si preguntan por contraseñas o IP: "Mira la tarjeta 'Accesos de Sistema' a tu izquierda".
-        4. Máximo 30 palabras.
+        ESTADO ACTUAL DEL CLIENTE:
+        - Plan: {plan_data.get('name')}
+        - Backups: {tech_data.get('backups_count', 0)}
         """
 
         payload = {
             "model": MODEL_NAME,
-            "prompt": f"{system_prompt}\n\nPREGUNTA ACTUAL: {user_msg}\n\nRESPUESTA:",
+            "prompt": f"{system_prompt}\n\nHISTORIAL:{format_history(history)}\n\nUSUARIO: {user_msg}\nRESPUESTA:",
             "stream": False,
             "keep_alive": "60m",
-            "options": {"temperature": 0.1, "num_ctx": 4096, "num_predict": 60}
+            "options": {"temperature": 0.0, "num_predict": 120} # Temp 0.0 para máxima precisión (cero creatividad)
         }
         
-        update_chat_status(oid, "✍️ Redactando respuesta...")
-        print(f"[AI] Procesando para #{oid} (Con memoria)...")
-        
-        r = requests.post(OLLAMA_URL, json=payload, timeout=90)
-        
-        clear_chat_status(oid)
+        r = requests.post(OLLAMA_URL, json=payload, timeout=180)
         
         if r.status_code == 200:
-            reply = r.json()['response'].strip().replace('"', '')
-            # 2. GUARDAR MEMORIA PARA LA PRÓXIMA
+            reply = r.json().get('response', '').strip().replace('"', '')
             save_conversation_history(oid, user_msg, reply)
             return reply
+        elif r.status_code == 404:
+            return f"⚠️ Error: Falta modelo {MODEL_NAME}."
             
-        return "⚠️ Cerebro saturado."
+        return f"⚠️ Error IA: {r.status_code}"
         
     except Exception as e:
-        print(f"Error AI: {e}")
-        clear_chat_status(oid)
-        return "⚠️ Error IA."
+        OLLAMA_URL = None 
+        return "⚠️ Error conexión. Reintentando..."
 
 # ================= CEREBRO PRINCIPAL =================
-
 def analyze_intent(text, technical_status, user_plan_context, oid):
-    text_clean = text.lower().strip()
-    
-    # DATOS
-    metrics = technical_status.get('metrics', {'cpu': 0, 'ram': 0})
-    raw_cmd = technical_status.get('ssh_cmd', 'No disponible')
-    raw_pass = technical_status.get('ssh_pass', 'No disponible')
-    ssh_pass = clean_ssh_pass(raw_pass)
+    t = text.lower().strip()
+
+    # 🚨 1. FILTRO DE SEGURIDAD (PRIORIDAD MÁXIMA)
+    if not is_safe(t):
+        return "🚫 Soy un asistente técnico. No respondo sobre política, religión o temas sociales."
+
+    # Datos
+    cpu = technical_status.get('metrics', {}).get('cpu', 0)
+    ram = technical_status.get('metrics', {}).get('ram', 0)
+    ssh_pass = clean_ssh_pass(technical_status.get('ssh_pass', '...'))
     web_url = technical_status.get('web_url', None)
-    backups_count = technical_status.get('backups_count', 0)
-    
-    plan_name = user_plan_context.get('name', 'Estándar')
-    has_db = user_plan_context.get('has_db', False)
-    has_web = user_plan_context.get('has_web', False)
-    db_type = user_plan_context.get('db_type', 'MySQL')
-    web_type = user_plan_context.get('web_type', 'Apache')
-    
-    limit_backups = 3
-    if plan_name == 'Oro': limit_backups = 5
-    elif plan_name == 'Plata': limit_backups = 4
-    elif plan_name == 'Personalizado': limit_backups = 5 if (has_db and has_web) else 3
+    bk_count = technical_status.get('backups_count', 0)
 
-    # --- CARRIL RÁPIDO ---
-    if text_clean == '1': return f"🔑 **SSH**\nCmd: `{raw_cmd}`\nUser: `root`\nPass: `{ssh_pass}`"
-    if text_clean == '2': return f"🌐 **Web**\nURL: {web_url}" if has_web else "❌ Sin web."
-    if text_clean == '3': return f"🗄️ **DB**\nHost: `mysql-master`\nPass: `{ssh_pass}`" if has_db else "❌ Sin DB."
-    if text_clean == '4': return f"💾 **Backups**\n{backups_count}/{limit_backups} usados."
-    if text_clean == '5': return f"📊 **Salud**\nCPU: {metrics.get('cpu')}% | RAM: {metrics.get('ram')}%"
+    # 2. INTENCIÓN COMPLEJA -> IA
+    # Añadimos palabras clave de edición web para que vaya a la IA con el nuevo manual
+    complex_triggers = ['como', 'cómo', 'que', 'qué', 'donde', 'puedo', 'ayuda', 'editar', 'subir', 'ficheros', 'archivos', 'web', 'ftp']
+    if any(q in t for q in complex_triggers):
+        return ask_ollama(text, technical_status, user_plan_context, oid)
 
-    if text_clean in ['hola', 'buenas', 'menu', 'ayuda', 'opciones']:
-        return (f"¡{get_time_greeting()}! 🤖\n"
-                "**MENÚ RÁPIDO**\n"
-                "1️⃣ SSH  |  2️⃣ Web\n"
-                "3️⃣ DB   |  4️⃣ Backups\n"
-                "5️⃣ Salud\n"
-                "💡 *O pregúntame algo.*")
+    # 3. ATAJOS RÁPIDOS
+    if any(w in t for w in ['metric', 'métrica', 'cpu', 'ram']):
+        return f"📊 **Estado**\nCPU: {cpu}% | RAM: {ram}%"
+    if any(w in t for w in ['ssh', 'acceder', 'pass']):
+        return f"🔑 **Acceso**\nPass: `{ssh_pass}`"
+    if any(w in t for w in ['backup', 'copia']):
+        return f"💾 **Backups**\n{bk_count} creados."
+    if any(w in t for w in ['hola', 'buenas']):
+        return "👋 Hola. Soy SyloBot, tu técnico."
 
-    if 'contraseña' in text_clean: return f"`{ssh_pass}`"
-    
-    # --- CARRIL IA (LENTO CON MEMORIA) ---
-    return ask_ollama(text, technical_status, user_plan_context, limit_backups, oid)
-
+    return ask_ollama(text, technical_status, user_plan_context, oid)
 
 # ================= BUCLE PRINCIPAL =================
 def main_loop():
+    print("[BRAIN] Escuchando...")
     while True:
         try:
             files = glob.glob(os.path.join(BUZON, "chat_request_*.json"))
             for req_file in files:
                 try:
                     filename = os.path.basename(req_file)
-                    oid = filename.split('_')[2].split('.')[0]
-                    with open(req_file, 'r') as f:
-                        data = json.load(f)
-                        user_msg = data.get('msg', '')
-                        plan_context = data.get('context_plan', {})
-                    
-                    print(f"[BRAIN] 📩 Cliente #{oid}: {user_msg}")
+                    try: oid = filename.split('_')[3]
+                    except: 
+                        match = re.search(r"req_(\d+)_", filename)
+                        oid = match.group(1) if match else None
+                    if not oid: os.remove(req_file); continue
+
+                    with open(req_file, 'r') as f: data = json.load(f)
+                    print(f"[BRAIN] 📩 Cliente #{oid}: {data.get('msg', '')}")
                     
                     tech_context = {}
-                    st_path = os.path.join(BUZON, f"status_{oid}.json")
-                    bk_path = os.path.join(BUZON, f"backups_list_{oid}.json")
-                    
-                    if os.path.exists(st_path):
-                        with open(st_path) as f: tech_context.update(json.load(f))
-                    if os.path.exists(bk_path):
-                        with open(bk_path) as f: tech_context['backups_count'] = len(json.load(f))
+                    try:
+                        with open(os.path.join(BUZON, f"status_{oid}.json")) as f: tech_context.update(json.load(f))
+                        with open(os.path.join(BUZON, f"backups_list_{oid}.json")) as f: tech_context['backups_count'] = len(json.load(f))
+                    except: pass
 
-                    reply = analyze_intent(user_msg, tech_context, plan_context, oid)
+                    reply = analyze_intent(data.get('msg', ''), tech_context, data.get('context_plan', {}), oid)
                     
-                    resp_file = os.path.join(BUZON, f"chat_response_{oid}.json")
-                    with open(resp_file, 'w') as f:
+                    with open(os.path.join(BUZON, f"chat_response_{oid}.json"), 'w') as f:
                         json.dump({"reply": reply, "timestamp": time.time()}, f)
                     
                     print(f"[BRAIN] 📤 Respondido.")
@@ -262,15 +238,11 @@ def main_loop():
                     clear_chat_status(oid)
 
                 except Exception as e:
-                    try: 
-                        os.remove(req_file)
-                        clear_chat_status(oid)
+                    print(f"[ERROR] {e}"); 
+                    try: os.remove(req_file); clear_chat_status(oid)
                     except: pass
             time.sleep(0.5)
-        except KeyboardInterrupt: break
-        except Exception as e: 
-            print(f"[BRAIN] Fatal: {e}")
-            time.sleep(1)
+        except Exception: time.sleep(1)
 
 if __name__ == "__main__":
     main_loop()

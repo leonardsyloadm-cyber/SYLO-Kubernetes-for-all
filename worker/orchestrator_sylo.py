@@ -14,7 +14,7 @@ try: import requests
 except: pass
 
 # ==========================================
-# ORQUESTADOR SYLO V21 (Lógica de Negocio Estricta)
+# ORQUESTADOR SYLO V22 (FINAL STATUS FIX)
 # ==========================================
 
 WORKER_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -49,10 +49,12 @@ def signal_handler(signum, frame):
     shutdown_event.set()
     sys.exit(0)
 
-def report_progress(oid, percent, msg):
+# 🔥 FIX IMPORTANTE: AHORA ACEPTA EL ARGUMENTO 'status' (Por defecto 'creating')
+def report_progress(oid, percent, msg, status="creating"):
     if shutdown_event.is_set(): return
     file_path = os.path.join(BUZON, f"status_{oid}.json")
-    data = {"percent": percent, "message": msg, "status": "creating"}
+    # Usamos el status que nos pasen, si no, usa 'creating' para bloquear al Operator
+    data = {"percent": percent, "message": msg, "status": status}
     try:
         with open(file_path, 'w') as f: json.dump(data, f)
         os.chmod(file_path, 0o666)
@@ -273,7 +275,7 @@ def process_order(json_file):
         # --- PLAN BRONCE ---
         # Temática: Siempre Alpine, Solo SSH. Ignoramos lo que venga en el JSON de Web/DB.
         if plan_raw == "Bronce":
-            report_progress(oid, 10, "Iniciando Plan Bronce (Forzando Alpine)...")
+            report_progress(oid, 10, "Iniciando Plan Bronce (Alpine Terminal)...")
             # Argumentos: ID, User, OS(Forzado), DB(Ignorado), Web(Ignorado), Subdomain
             args = [oid, ssh_user, "alpine", "no-db", "no-web", subdomain]
             success = run_bash_script(SCRIPT_BRONCE, args, env_vars)
@@ -342,7 +344,10 @@ def process_order(json_file):
                 push_final_credentials(oid, cluster_profile, subdomain, ip_cluster, os_final)
             
             update_db_state(oid, "active")
-            report_progress(oid, 100, "Despliegue finalizado.")
+            
+            # 🔥 AQUÍ ESTÁ EL CAMBIO CLAVE: Cambiamos a 'completed' para liberar al Operator
+            report_progress(oid, 100, "Despliegue finalizado.", status="completed")
+            
             log(f"✨ ID {oid} LISTO Y SEGURO.", Colors.GREEN)
         else:
             update_db_state(oid, "error")
@@ -361,7 +366,7 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
     
-    log(f"=== ORQUESTADOR SYLO V21 (LOGIC TIER ENFORCEMENT) ===", Colors.BLUE)
+    log(f"=== ORQUESTADOR SYLO V22 (FINAL STATUS FIX) ===", Colors.BLUE)
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         while not shutdown_event.is_set():
             files = glob.glob(os.path.join(BUZON, "orden_*.json"))

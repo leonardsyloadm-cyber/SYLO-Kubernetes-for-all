@@ -1,102 +1,109 @@
 ===================================================
-🚀 GUÍA DE INSTALACIÓN SYLO - V3.0 (ENTERPRISE SECURE)
+🚀 GUÍA DE INSTALACIÓN SYLO - V4.0 (AI + ENTERPRISE)
 ===================================================
 
-¡Hola Leo! Esta versión incluye la nueva arquitectura de SEGURIDAD (Calico)
-y persistencia de datos. Ahora vendemos Nube Privada REAL.
+¡Hola Leo! Esta versión incluye la arquitectura de SEGURIDAD (Calico)
+y el nuevo CEREBRO DE IA (Ollama + Sylo Brain) para el soporte técnico.
 
 REQUISITOS PREVIOS:
 - Docker Desktop instalado y corriendo.
 - Python 3 instalado.
 - Minikube instalado.
 - OpenTofu (tofu) instalado.
-- Kubectl instalado (viene con Docker/Minikube).
+- Kubectl instalado.
+- OLLAMA instalado (Linux: curl -fsSL https://ollama.com/install.sh | sh)
 
 ---------------------------------------------------
-PASO 0: LIMPIEZA DE RED (MODO UNIVERSAL)
+PASO 0: LIMPIEZA DE RED (IPS INMORTALES)
 ---------------------------------------------------
-Estas IPs son inmortales. No las cambies aunque cambies de WiFi.
+Configura estas IPs en el código para que Docker y Localhost se entiendan:
 
-1. worker/operator_sylo.py      -> API_URL = "http://127.0.0.1:8001/api/clientes"
-2. worker/orchestrator_sylo.py  -> API_URL = "http://127.0.0.1:8001/api/clientes"
-3. Cerebro/api_sylo.py          -> host="0.0.0.0"
-4. sylo-web/index.php           -> define('API_URL', 'http://host.docker.internal:8001/api/clientes');
+1. sylo-web/index.php             -> API_URL = "http://172.17.0.1:8001/api/clientes"
+2. worker/sylo_brain.py           -> OLLAMA_URL = "http://172.17.0.1:11434/api/generate"
+3. dashboard_cliente.php          -> API_URL_BASE = "http://172.17.0.1:8001/api/clientes"
+
+*(Nota: 172.17.0.1 es la IP del Host desde Docker. Si falla, prueba host.docker.internal)*
 
 ---------------------------------------------------
-PASO 1: PREPARAR LAS LIBRERÍAS
+PASO 1: PREPARAR OLLAMA (SOLO UNA VEZ)
 ---------------------------------------------------
-1. Abre una terminal en la carpeta raíz del proyecto.
-2. Activa el entorno virtual:
+Para que la IA funcione con Docker, hay que abrirla al mundo.
+
+1. Edita el servicio de Ollama:
+   $ sudo systemctl edit ollama.service
+
+2. Pega ESTO (sin almohadillas #) en el hueco libre:
+   [Service]
+   Environment="OLLAMA_HOST=0.0.0.0"
+
+3. Guarda (Ctrl+O) y Sal (Ctrl+X).
+
+4. Aplica cambios y descarga el modelo:
+   $ sudo systemctl daemon-reload
+   $ sudo systemctl restart ollama
+   $ ollama pull qwen2.5:1.5b
+
+---------------------------------------------------
+PASO 2: INSTALAR LIBRERÍAS PYTHON
+---------------------------------------------------
+1. Abre una terminal en la raíz del proyecto.
+2. Activa entorno:
    $ source venv/bin/activate
-
-3. Instala/Actualiza las librerías necesarias:
+3. Instala todo:
    $ pip install fastapi uvicorn requests psutil mysql-connector-python
 
 ---------------------------------------------------
-PASO 2: ARRANCAR INFRAESTRUCTURA BASE (WEB + MYSQL)
+PASO 3: ARRANCAR INFRAESTRUCTURA BASE
 ---------------------------------------------------
 1. En la raíz del proyecto:
    $ docker-compose up -d --build
 
-2. Si la web no conecta con la API tras cambiar de WiFi:
+2. (Opcional) Si la web no conecta tras cambiar de WiFi:
    $ docker restart sylo-web
 
 ---------------------------------------------------
-PASO 3: ARRANCAR EL CEREBRO (API)
+PASO 4: ARRANCAR LA API (EL NÚCLEO)
 ---------------------------------------------------
-Este es el backend que gestiona la lógica.
-
-1. Abre una TERMINAL 1 (API):
+1. Abre TERMINAL 1 (API):
    $ source venv/bin/activate
    $ python3 Cerebro/api_sylo.py
 
-   (Debe decir: "API Restaurada y Lista" en el puerto 8001).
+   (Debe decir: "API Restaurada y Lista" en puerto 8001).
 
 ---------------------------------------------------
-PASO 4: ARRANCAR EL ORQUESTADOR (EL CAPATAZ)
+PASO 5: ARRANCAR SYLO BRAIN (LA IA)
 ---------------------------------------------------
-Este script escucha los pedidos y despliega los Kubernetes BLINDADOS.
+Este script conecta el chat de la web con Ollama y la base de conocimientos.
 
-1. Abre una TERMINAL 2 (Orquestador):
+1. Abre TERMINAL 2 (Cerebro):
+   $ source venv/bin/activate
+   $ python3 worker/sylo_brain.py
+
+   (Debe decir: "Sylo Brain v20... Iniciado").
+
+---------------------------------------------------
+PASO 6: ARRANCAR EL ORQUESTADOR (EL CAPATAZ)
+---------------------------------------------------
+Despliega los Kubernetes, Calico y reglas de negocio.
+
+1. Abre TERMINAL 3 (Orquestador):
    $ source venv/bin/activate
    $ sudo python3 worker/orchestrator_sylo.py
 
-   IMPORTANTE: Ahora los despliegues tardan un poco más porque instalan 
-   Calico (Seguridad) y Metrics Server (Gráficas). ¡Paciencia!
-
 ---------------------------------------------------
-PASO 5: EL OPERADOR (MANTENIMIENTO - OPCIONAL)
+PASO 7: EL OPERADOR (MANTENIMIENTO)
 ---------------------------------------------------
-Si tienes el script de auto-curación (operator_sylo.py), lánzalo aquí.
+Script V46 que gestiona estados y limpieza.
 
-1. Abre una TERMINAL 3:
+1. Abre TERMINAL 4 (Operador):
    $ source venv/bin/activate
    $ sudo python3 worker/operator_sylo.py
 
 ---------------------------------------------------
-PASO 6: VERIFICACIÓN DE SEGURIDAD (¡NUEVO!)
+PASO 8: VERIFICACIÓN FINAL
 ---------------------------------------------------
-Para confirmar que un cliente es seguro, usa estos comandos.
-(Ejemplo para el cliente con ID 17):
+1. 🌍 WEB CLIENTE: http://localhost:8000/index.php
+2. 🤖 CHAT IA: Entra al Dashboard, escribe "hola" y verifica que responde.
+   (Si responde rápido, es Python. Si tarda un poco y explica cosas, es Ollama).
 
-1. Ver que la "Policía" (Calico) está patrullando:
-   $ minikube -p sylo-cliente-17 kubectl -- get pods -n kube-system
-
-   *Debes ver 'calico-node' y 'calico-kube-controllers' en Running.
-
-2. Ver si el muro funciona (Desde un Pod Hacker):
-   $ minikube -p sylo-cliente-17 kubectl -- run hacker --image=alpine --restart=Never -- /bin/sh -c "sleep 3600"
-   $ minikube -p sylo-cliente-17 kubectl -- exec -it hacker -- apk add curl
-   $ minikube -p sylo-cliente-17 kubectl -- exec -it hacker -- curl -v telnet://<IP_DB>:3306
-
-   *Si se queda en "Trying..." -> ES SEGURO.
-   *Si dice "Connected" -> PELIGRO (Revisar scripts).
-
----------------------------------------------------
-RESUMEN DE PANTALLAS
----------------------------------------------------
-- 🌍 WEB CLIENTE: http://localhost:8000/index.php
-- 🎛️ DASHBOARD: http://localhost:8000/dashboard_cliente.php
-- 🧠 API DOCS: http://localhost:8001/docs
-
-¡Nube Sylo Enterprise Lista! ☁️👮‍♂️🚀
+¡Sistema Completo Sylo Enterprise Listo! ☁️👮‍♂️🧠

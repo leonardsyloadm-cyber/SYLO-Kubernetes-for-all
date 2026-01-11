@@ -1,420 +1,671 @@
 <?php
 // =================================================================================
-// 🏛️ SYLO WEB V115 - FINAL STABLE (CALCULATOR V99 LOGIC RESTORED + ALL FIXES)
+// 🛡️ SYLO DASHBOARD - V39 (NUCLEAR DELETE BUTTON ADDED)
 // =================================================================================
-
-ini_set('display_errors', 1);
-error_reporting(E_ALL);
 session_start();
+define('API_URL_BASE', 'http://172.17.0.1:8001/api/clientes'); // IP LINUX
 
-define('API_URL', 'http://host.docker.internal:8001/api/clientes');
+// AUTH & DB
+if (isset($_GET['action']) && $_GET['action'] == 'logout') { session_destroy(); header("Location: index.php"); exit; }
+if (!isset($_SESSION['user_id'])) { header("Location: index.php"); exit; }
 
-// --- 1. DB ---
-$db_host = getenv('DB_HOST') ?: "kylo-main-db";
-$db_user = getenv('DB_USER') ?: "sylo_app";
-$db_pass = getenv('DB_PASS') ?: "sylo_app_pass";
-$db_name = getenv('DB_NAME') ?: "kylo_main_db";
+$servername = getenv('DB_HOST') ?: "kylo-main-db";
+$username_db = getenv('DB_USER') ?: "sylo_app";
+$password_db = getenv('DB_PASS') ?: "sylo_app_pass";
+$dbname = getenv('DB_NAME') ?: "kylo_main_db";
+try { $conn = new PDO("mysql:host=$servername;dbname=$dbname", $username_db, $password_db); } catch(PDOException $e) { die("Error DB"); }
 
-try {
-    $conn = new PDO("mysql:host=$db_host;dbname=$db_name", $db_user, $db_pass);
-    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-} catch(PDOException $e) { if($_SERVER['REQUEST_METHOD']=='POST') die(json_encode(["status"=>"error"])); }
+$user_id = $_SESSION['user_id'];
 
-// --- CHECK USER ---
-$has_clusters = false;
-if (isset($_SESSION['user_id'])) {
-    $stmt = $conn->prepare("SELECT COUNT(*) FROM orders WHERE user_id = ? AND status IN ('active', 'suspended', 'creating', 'pending')");
-    $stmt->execute([$_SESSION['user_id']]);
-    if ($stmt->fetchColumn() > 0) $has_clusters = true;
+// --- ACTIONS (POST) ---
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] != 'update_profile') {
+    $oid = $_POST['order_id'];
+    $act = $_POST['action'];
+    
+    $data = [
+        "id_cliente" => (int)$oid,
+        "accion" => $act,
+        "backup_type" => "full",
+        "backup_name" => "Backup",
+        "filename_to_restore" => "",
+        "filename_to_delete" => "",
+        "html_content" => ""
+    ];
+
+    if ($act == 'backup') {
+        $data['backup_type'] = $_POST['backup_type'] ?? 'full';
+        $data['backup_name'] = $_POST['backup_name'] ?? 'Manual';
+    }
+    if ($act == 'restore_backup') $data['filename_to_restore'] = $_POST['filename'];
+    if ($act == 'delete_backup') $data['filename_to_delete'] = $_POST['filename'];
+    if ($act == 'update_web') $data['html_content'] = $_POST['html_content'];
+    
+    // 🔥 NUEVA ACCIÓN: DESTROY K8S
+    if ($act == 'destroy_k8s') {
+        // No necesitamos parámetros extra, solo la acción
+    }
+
+    $ctx = stream_context_create(['http' => ['header'=>"Content-type: application/json\r\n",'method'=>'POST','content'=>json_encode($data),'timeout'=>2]]);
+    @file_get_contents(API_URL_BASE . "/accion", false, $ctx);
+    
+    if(isset($_GET['ajax'])) { echo json_encode(['status' => 'ok']); exit; }
+    header("Location: dashboard_cliente.php?id=$oid"); exit;
 }
 
-// --- 2. STATUS CHECK ---
-if (isset($_GET['check_status'])) {
+// --- AJAX DATA (GET) ---
+if (isset($_GET['ajax_data'])) {
     header('Content-Type: application/json');
-    $id = filter_var($_GET['check_status'], FILTER_VALIDATE_INT);
-    $ch = curl_init(API_URL . "/estado/" . $id);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 2);
-    $res = curl_exec($ch);
-    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    if ($code === 200 && $res) echo $res;
-    else echo json_encode(["percent" => 10, "message" => "Conectando al Núcleo...", "status" => "pending"]);
+    $oid = $_GET['id'];
+    $ctx = stream_context_create(['http'=> ['timeout' => 1]]);
+    $json = @file_get_contents(API_URL_BASE . "/estado/$oid", false, $ctx);
+    echo $json ?: json_encode(['error' => 'API Offline', 'metrics' => ['cpu'=>0,'ram'=>0]]); 
     exit;
 }
 
-// --- 3. POST HANDLER ---
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $input = json_decode(file_get_contents('php://input'), true);
-    $action = $input['action'] ?? '';
-    header('Content-Type: application/json');
+// UPDATE PROFILE
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] == 'update_profile') {
+    $sql = "UPDATE users SET full_name=?, email=?, dni=?, telefono=?, company_name=?, calle=? WHERE id=?";
+    $conn->prepare($sql)->execute([$_POST['full_name'], $_POST['email'], $_POST['dni'], $_POST['telefono'], $_POST['company_name'], $_POST['calle'], $user_id]);
+    header("Location: dashboard_cliente.php"); exit;
+}
+$stmt = $conn->prepare("SELECT * FROM users WHERE id = ?"); $stmt->execute([$user_id]); $user_info = $stmt->fetch(PDO::FETCH_ASSOC);
 
-    if ($action === 'register') {
-        try {
-            if ($input['password'] !== $input['password_confirm']) throw new Exception("Pass mismatch");
-            $user = htmlspecialchars($input['username']);
-            $email = filter_var($input['email'], FILTER_VALIDATE_EMAIL);
-            $pass = password_hash($input['password'], PASSWORD_BCRYPT);
-            $tipo = $input['tipo_usuario'];
-            $fn = ($tipo === 'autonomo') ? $input['full_name'] : $input['contact_name'];
-            $dn = ($tipo === 'autonomo') ? $input['dni'] : $input['cif'];
-            $cn = ($tipo === 'empresa') ? $input['company_name'] : null;
-            $te = ($tipo === 'empresa') ? $input['tipo_empresa'] : null;
-            $sql = "INSERT INTO users (username, full_name, email, password_hash, role, tipo_usuario, dni, telefono, company_name, tipo_empresa, calle, created_at) VALUES (?, ?, ?, ?, 'client', ?, ?, ?, ?, ?, ?, NOW())";
-            $stmt = $conn->prepare($sql);
-            $stmt->execute([$user, $fn, $email, $pass, $tipo, $dn, $input['telefono'], $cn, $te, $input['calle']]);
-            $_SESSION['user_id'] = $conn->lastInsertId(); $_SESSION['username'] = $user; $_SESSION['company'] = $cn ?: 'Particular';
-            echo json_encode(["status"=>"success"]);
-        } catch (Exception $e) { echo json_encode(["status"=>"error", "mensaje"=>$e->getMessage()]); }
-        exit;
-    }
-    if ($action === 'login') {
-        $stmt = $conn->prepare("SELECT * FROM users WHERE email = ? OR username = ?");
-        $stmt->execute([$input['email_user'], $input['email_user']]);
-        $u = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($u && password_verify($input['password'], $u['password_hash'])) {
-            $_SESSION['user_id'] = $u['id']; $_SESSION['username'] = $u['username']; $_SESSION['company'] = $u['company_name'];
-            echo json_encode(["status"=>"success"]);
-        } else echo json_encode(["status"=>"error", "mensaje"=>"Credenciales inválidas"]);
-        exit;
-    }
-    if ($action === 'logout') { session_destroy(); echo json_encode(["status"=>"success"]); exit; }
-    if ($action === 'comprar') {
-        if (!isset($_SESSION['user_id'])) exit(json_encode(["status"=>"auth_required"]));
-        $plan = htmlspecialchars($input['plan']); $s = $input['specs']; 
-        try {
-            $stmt = $conn->prepare("INSERT INTO orders (user_id, plan_id, status) VALUES (?, 1, 'pending')");
-            $stmt->execute([$_SESSION['user_id']]);
-            $oid = $conn->lastInsertId();
-            $sqlS = "INSERT INTO order_specs (order_id, cpu_cores, ram_gb, storage_gb, db_enabled, db_type, web_enabled, web_type, cluster_alias, subdomain, ssh_user, os_image, db_custom_name, web_custom_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-            $stmtS = $conn->prepare($sqlS);
-            $stmtS->execute([$oid, $s['cpu'], $s['ram'], $s['storage'], $s['db_enabled']?1:0, $s['db_type'], $s['web_enabled']?1:0, $s['web_type'], $s['cluster_alias'], $s['subdomain'], $s['ssh_user'], $s['os_image'], $s['db_custom_name'], $s['web_custom_name']]);
-            
-            $payload = ["id_cliente" => (int)$oid, "plan" => $plan, "cliente_nombre" => $_SESSION['username'], "specs" => $s, "id_usuario_real" => (string)$_SESSION['user_id']];
-            $ch = curl_init(API_URL . "/crear");
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true); curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 1); curl_exec($ch); curl_close($ch);
-            echo json_encode(["status"=>"success", "order_id"=>$oid]);
-        } catch (Exception $e) { echo json_encode(["status"=>"error", "mensaje"=>$e->getMessage()]); }
-        exit;
+// HELPERS
+function calculateWeeklyPrice($r) { 
+    $p=match($r['plan_name']??''){'Bronce'=>5,'Plata'=>15,'Oro'=>30,default=>0}; 
+    if(($r['plan_name']??'')=='Personalizado'){
+        $p=(intval($r['custom_cpu']??0)*5)+(intval($r['custom_ram']??0)*5); 
+        if(!empty($r['db_enabled']))$p+=10; if(!empty($r['web_enabled']))$p+=10;
+    } 
+    return $p/4; 
+}
+function getBackupLimit($r) { 
+    $m=match($r['plan_name']??''){'Bronce'=>5,'Plata'=>15,'Oro'=>30,default=>0}; 
+    if(($r['plan_name']??'')=='Personalizado'){
+        $m=(intval($r['custom_cpu']??0)*5)+(intval($r['custom_ram']??0)*5); 
+        if(!empty($r['db_enabled']))$m+=10; if(!empty($r['web_enabled']))$m+=10;
+    } 
+    return (($r['plan_name']??'')=='Oro'||$m>=30)?5:((($r['plan_name']??'')=='Plata'||$m>=15)?3:2); 
+}
+function getPlanStyle($n) { return match($n) { 'Bronce'=>'background:#CD7F32;color:#fff;box-shadow:0 0 10px rgba(205,127,50,0.4);', 'Plata'=>'background:#94a3b8;color:#fff;box-shadow:0 0 10px rgba(148,163,184,0.4);', 'Oro'=>'background:#FFD700;color:#000;font-weight:bold;box-shadow:0 0 15px rgba(255,215,0,0.6);', 'Personalizado'=>'background:linear-gradient(45deg,#CD7F32,#94a3b8,#FFD700);color:#fff;font-weight:bold;border:1px solid rgba(255,255,255,0.3);', default=>'background:#334155;color:#fff;' }; }
+function getSidebarStyle($n) { $c=match($n){'Bronce'=>'#CD7F32','Plata'=>'#94a3b8','Oro'=>'#FFD700','Personalizado'=>'#a855f7',default=>'#3b82f6'}; return "border-left:3px solid $c;background:linear-gradient(90deg,{$c}11,transparent);"; }
+function getOSIconHtml($os) {
+    $os = strtolower($os ?? 'ubuntu');
+    if (strpos($os, 'alpine') !== false) return '<i class="bi bi-snow2 text-info fs-4"></i>';
+    if (strpos($os, 'redhat') !== false) return '<i class="bi bi-motherboard text-danger fs-4"></i>'; 
+    return '<i class="bi bi-ubuntu text-warning fs-4"></i>';
+}
+function getOSNamePretty($os) {
+    $os = strtolower($os ?? 'ubuntu');
+    if (strpos($os, 'alpine') !== false) return 'Alpine Linux';
+    if (strpos($os, 'redhat') !== false) return 'Red Hat Enterprise';
+    return 'Ubuntu Server';
+}
+
+// --- INIT DATA ---
+$sql = "SELECT o.*, p.name as plan_name, p.cpu_cores as p_cpu, p.ram_gb as p_ram, os.cpu_cores as custom_cpu, os.ram_gb as custom_ram, os.db_enabled, os.web_enabled, os.os_image FROM orders o JOIN plans p ON o.plan_id=p.id LEFT JOIN order_specs os ON o.id = os.order_id WHERE user_id=? AND status!='cancelled' ORDER BY o.id DESC";
+$stmt = $conn->prepare($sql); $stmt->execute([$_SESSION['user_id']]); $clusters = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+$current = null; 
+$os_image = 'ubuntu'; 
+$total_weekly = 0; 
+$creds = ['ssh_cmd'=>'Esperando...', 'ssh_pass'=>'...'];
+$web_url = null;
+$html_code = "<!DOCTYPE html>\n<html>\n<body>\n<h1>Bienvenido a Sylo</h1>\n</body>\n</html>";
+
+foreach($clusters as $c) $total_weekly += calculateWeeklyPrice($c);
+
+if($clusters) {
+    $current = (isset($_GET['id'])) ? array_values(array_filter($clusters, fn($c)=>$c['id']==$_GET['id']))[0] ?? $clusters[0] : $clusters[0];
+    if ($current['plan_name'] == 'Personalizado') $plan_cpus = intval($current['custom_cpu'] ?? 1); else $plan_cpus = intval($current['p_cpu'] ?? 1); 
+    if ($plan_cpus < 1) $plan_cpus = 1;
+    $backup_limit = getBackupLimit($current);
+    $has_web = ($current['plan_name'] === 'Oro' || (!empty($current['web_enabled']) && $current['web_enabled'] == 1));
+    $has_db = ($current['plan_name'] === 'Oro' || (!empty($current['db_enabled']) && $current['db_enabled'] == 1));
+    $os_image = $current['os_image'] ?? 'ubuntu';
+    
+    $ctx = stream_context_create(['http'=> ['timeout' => 1]]);
+    $api_init = @file_get_contents(API_URL_BASE . "/estado/{$current['id']}", false, $ctx);
+    
+    if($api_init) { 
+        $d = json_decode($api_init, true); 
+        if($d) {
+            $creds['ssh_cmd'] = $d['ssh_cmd'] ?? 'Esperando...';
+            $creds['ssh_pass'] = $d['ssh_pass'] ?? '...';
+            $web_url = $d['web_url'] ?? null;
+            if(isset($d['html_source']) && !empty($d['html_source'])) { $html_code = $d['html_source']; }
+        }
     }
 }
 ?>
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SYLO | Cloud Engineering</title>
+    <meta charset="UTF-8"><title>Panel SYLO | <?php echo htmlspecialchars($user_info['full_name'] ?: $_SESSION['username']); ?></title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
-    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/ace.js"></script>
     <style>
-        :root { --sylo-bg: #f8fafc; --sylo-text: #334155; --sylo-card: #ffffff; --sylo-accent: #2563eb; --input-bg: #f1f5f9; }
-        [data-theme="dark"] { --sylo-bg: #0f172a; --sylo-text: #f1f5f9; --sylo-card: #1e293b; --sylo-accent: #3b82f6; --input-bg: #334155; }
-        
-        body { font-family: 'Inter', sans-serif; background-color: var(--sylo-bg); color: var(--sylo-text); transition: 0.3s; }
-        .navbar { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(0,0,0,0.05); }
-        [data-theme="dark"] .navbar { background: rgba(15, 23, 42, 0.95); border-bottom: 1px solid rgba(255,255,255,0.1); }
-        [data-theme="dark"] .navbar-brand, [data-theme="dark"] .nav-link { color: white !important; }
-        
-        /* THEME ELEMENTS */
-        .info-card, .bg-white { background-color: var(--sylo-card) !important; color: var(--sylo-text); }
-        [data-theme="dark"] .text-muted { color: #94a3b8 !important; }
-        [data-theme="dark"] .bg-light { background-color: #1e293b !important; border-color: #334155; }
-        [data-theme="dark"] .form-control, [data-theme="dark"] .form-select { background-color: var(--input-bg); border-color: #475569; color: white; }
-        [data-theme="dark"] .modal-content { background-color: var(--sylo-card); color: white; }
-        
-        .hero { padding: 140px 0 100px; background: linear-gradient(180deg, var(--sylo-bg) 0%, var(--sylo-card) 100%); }
-        
-        /* CALCULATOR */
-        .calc-box { background: #1e293b; border-radius: 24px; padding: 40px; color: white; border: 1px solid #334155; }
-        .price-display { font-size: 3.5rem; font-weight: 800; color: var(--sylo-accent); }
-        
-        /* SLIDERS AZULES FUERTES (FIXED) */
-        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
-        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 20px; width: 20px; border-radius: 50%; background: #3b82f6; cursor: pointer; margin-top: -8px; box-shadow: 0 0 10px #3b82f6; }
-        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #475569; border-radius: 2px; }
-        input[type=range]:focus::-webkit-slider-runnable-track { background: #3b82f6; }
-
-        /* 3D CARDS */
-        .card-stack-container { perspective: 1500px; height: 600px; cursor: pointer; position: relative; margin-bottom: 30px; }
-        .card-face { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; transition: transform 0.8s; border-radius: 24px; }
-        .card-stack-container.active .card-face { transform: rotateY(180deg); }
-        .face-front, .face-back { position: absolute; width: 100%; height: 100%; top:0; left:0; backface-visibility: hidden; border-radius: 24px; padding: 30px; display: flex; flex-direction: column; justify-content: space-between; background: var(--sylo-card); border: 1px solid #e2e8f0; box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
-        .face-front { z-index: 2; transform: rotateY(0deg); pointer-events: auto; }
-        .face-back { z-index: 1; transform: rotateY(180deg); background: var(--sylo-bg); border-color: var(--sylo-accent); pointer-events: none; }
-        .card-stack-container.active .face-front { pointer-events: none; }
-        .card-stack-container.active .face-back { pointer-events: auto; }
-        
-        /* UI HELPERS */
-        .bench-bar { height: 35px; border-radius: 8px; display: flex; align-items: center; padding: 0 15px; color: white; margin-bottom: 8px; transition: width 1s; }
-        .b-sylo { background: linear-gradient(90deg, #2563eb, #3b82f6); }
-        .b-aws { background: #64748b; }
-        .success-box { background: black; color: white; border-radius: 8px; padding: 20px; font-family: 'JetBrains Mono', monospace; text-align: left; }
-        .status-dot { width: 10px; height: 10px; background-color: #22c55e; border-radius: 50%; display: inline-block; animation: pulse 2s infinite; }
-        @keyframes pulse { 0% {box-shadow:0 0 0 0 rgba(34,197,94,0.7);} 70% {box-shadow:0 0 0 6px rgba(34,197,94,0);} 100% {box-shadow:0 0 0 0 rgba(34,197,94,0);} }
-        
-        .modal-content { border:none; border-radius: 16px; }
-        .avatar { width: 100px; height: 100px; border-radius: 50%; object-fit: cover; margin-bottom: 15px; }
-        .k8s-specs li { display: flex; justify-content: space-between; border-bottom: 1px dashed #cbd5e1; padding: 8px 0; font-size: 0.9rem; }
+        :root { --bg-dark: #020617; --bg-card: #0f172a; --text-main: #f8fafc; --text-light: #e2e8f0; --text-muted: #cbd5e1; --accent: #3b82f6; --accent-glow: rgba(59, 130, 246, 0.5); --border: #1e293b; --sidebar: #0f172a; }
+        body { font-family: 'Outfit', sans-serif; background-color: var(--bg-dark); color: var(--text-main); overflow-x: hidden; }
+        .sidebar { height: 100vh; background: var(--sidebar); border-right: 1px solid var(--border); padding-top: 25px; position: fixed; width: 260px; z-index: 1000; display: flex; flex-direction: column; }
+        .sidebar .brand { font-size: 1.5rem; color: #fff; padding-left: 1.5rem; margin-bottom: 2rem; display: flex; align-items: center; letter-spacing: 1px; text-shadow: 0 0 10px var(--accent-glow); }
+        .sidebar .nav-link { color: var(--text-muted); padding: 12px 24px; margin: 4px 16px; border-radius: 8px; transition: all 0.2s; font-weight: 500; display: flex; align-items: center; text-decoration: none; border: 1px solid transparent; }
+        .sidebar .nav-link:hover { color: #fff; background: rgba(255,255,255,0.05); transform: translateX(5px); }
+        .sidebar .nav-link.active { border-radius: 8px; color: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+        .main-content { margin-left: 260px; padding: 30px 40px; }
+        .card-clean { background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; padding: 1.5rem; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); position: relative; overflow: hidden; }
+        .metric-card { background: #1e293b; border-radius: 16px; padding: 20px; border: 1px solid var(--border); position: relative; overflow: hidden; transition: transform 0.2s; }
+        .metric-card:hover { transform: translateY(-2px); border-color: var(--accent); }
+        .metric-value { font-size: 2.5rem; font-weight: 700; line-height: 1; letter-spacing: -1px; }
+        .progress-thin { height: 6px; border-radius: 10px; background: #334155; margin-top: 15px; overflow: hidden; }
+        .progress-bar { border-radius: 10px; transition: width 0.6s ease; height: 100%; box-shadow: 0 0 10px currentColor; }
+        .terminal-container { background: #000; border: 1px solid #334155; border-radius: 8px; padding: 15px; font-family: 'Fira Code', monospace; font-size: 0.85rem; color: #4ade80; }
+        .term-label { color: #94a3b8; font-weight: bold; margin-right: 10px; }
+        .term-val { color: #e2e8f0; }
+        .btn-action { width: 100%; text-align: left; margin-bottom: 10px; padding: 12px 16px; font-size: 0.9rem; border-radius: 8px; display: flex; align-items: center; border: 1px solid var(--border); background: #1e293b; color: #cbd5e1; transition: all 0.2s; }
+        .btn-action:hover { background: #334155; color: #fff; border-color: var(--accent); }
+        .btn-primary { background-color: var(--accent); border: none; box-shadow: 0 0 15px var(--accent-glow); }
+        .btn-primary:hover { background-color: #2563eb; }
+        .chat-widget { position: fixed; bottom: 30px; right: 30px; width: 60px; height: 60px; background: var(--accent); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; box-shadow: 0 0 20px var(--accent-glow); cursor: pointer; transition: transform 0.3s; z-index: 9999; }
+        .chat-widget:hover { transform: scale(1.1); }
+        .chat-window { position: fixed; bottom: 100px; right: 30px; width: 320px; height: 400px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 16px; display: none; flex-direction: column; z-index: 9999; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
+        .chat-header { padding: 15px; background: #1e293b; border-bottom: 1px solid var(--border); border-radius: 16px 16px 0 0; display: flex; justify-content: space-between; align-items: center; }
+        .chat-body { flex: 1; padding: 15px; overflow-y: auto; font-size: 0.9rem; color: #cbd5e1; }
+        .chat-input-area { padding: 10px; border-top: 1px solid var(--border); display: flex; gap: 5px; }
+        .chat-msg { background: #334155; padding: 8px 12px; border-radius: 10px; margin-bottom: 8px; max-width: 80%; }
+        .chat-msg.support { background: #1e293b; color: var(--accent); align-self: flex-start; }
+        .chat-msg.me { background: var(--accent); color: white; align-self: flex-end; margin-left: auto; }
+        @keyframes pulse-text { 0% { opacity: 0.6; } 50% { opacity: 1; } 100% { opacity: 0.6; } }
+        .thinking-bubble { font-style: italic; color: #94a3b8; background: rgba(30, 41, 59, 0.5) !important; border: 1px dashed #334155 !important; animation: pulse-text 1.5s infinite; display: flex; align-items: center; gap: 10px; }
+        .modal-content { background-color: #1e293b; border: 1px solid #334155; color: white; }
+        .modal-header, .modal-footer { border-color: #334155; }
+        .btn-close { filter: invert(1); }
+        .form-control, .form-select { background-color: #0f172a; border-color: #334155; color: white; }
+        .form-control:focus { background-color: #1e293b; border-color: var(--accent); color: white; }
+        .text-light-muted { color: #cbd5e1 !important; }
+        .backup-option { border: 1px solid #334155; padding: 15px; border-radius: 8px; cursor: pointer; transition: all 0.2s; background: #1e293b; color: #cbd5e1; }
+        .backup-option:hover { border-color: var(--accent); background: #24304a; }
+        .backup-option input[type="radio"]:checked + div { color: var(--accent); font-weight: bold; }
+        #editor { width: 100%; height: 500px; font-size: 14px; border-radius: 0 0 8px 8px; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .spin { animation: spin 1s linear infinite; display: inline-block; vertical-align: middle; }
+        .toast-container { position: fixed; top: 20px; right: 20px; z-index: 10000; }
+        .custom-toast { background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(10px); border-left: 4px solid var(--accent); color: white; padding: 15px 20px; margin-bottom: 10px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); animation: slideIn 0.3s ease-out; min-width: 300px; display: flex; align-items: center; gap: 12px; }
+        @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+        .log-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+        .log-table td { padding: 10px; border-bottom: 1px solid #334155; color: #e2e8f0; }
+        .log-table tr:hover td { color: white; background: rgba(255,255,255,0.05); }
+        #web-loader-fill { transition: width 0.3s ease-out; }
     </style>
 </head>
 <body>
+<div class="toast-container" id="toastContainer"></div>
+<div class="sidebar">
+    <div class="brand"><i class="bi bi-cpu-fill text-primary me-2"></i><strong>SYLO</strong>_OS</div>
+    <div class="d-flex flex-column gap-1 p-2">
+        <a href="index.php" class="nav-link"><i class="bi bi-plus-lg me-3"></i> Nuevo Servicio</a>
+        <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#billingModal"><i class="bi bi-credit-card me-3"></i> Facturación</a>
+        <div class="mt-4 px-4 mb-2 text-light-muted fw-bold" style="font-size: 0.7rem; letter-spacing: 1px; opacity: 0.6;">MIS CLÚSTERES</div>
+        <?php foreach($clusters as $c): 
+            $cls = ($current && $c['id']==$current['id'])?'active':'';
+            $pstyle = getSidebarStyle($c['plan_name']); 
+        ?>
+            <a href="?id=<?=$c['id']?>" class="nav-link <?=$cls?>" style="<?=$cls ? $pstyle : ''?>">
+                <i class="bi bi-hdd-rack me-3"></i> <span>ID: <?=$c['id']?> (<?=$c['plan_name']?>)</span>
+            </a>
+        <?php endforeach; ?>
+    </div>
+    <div style="margin-top:auto; padding:20px; border-top:1px solid #1e293b;">
+        <a href="?action=logout" class="btn btn-outline-danger w-100 btn-sm"><i class="bi bi-power me-2"></i> Desconectar</a>
+    </div>
+</div>
 
-    <nav class="navbar navbar-expand-lg fixed-top">
-        <div class="container">
-            <a class="navbar-brand fw-bold text-primary" href="#"><i class="fas fa-cube me-2"></i>SYLO</a>
-            <div class="collapse navbar-collapse justify-content-center" id="mainNav">
-                <ul class="navbar-nav">
-                    <li class="nav-item"><a class="nav-link" href="#empresa">Empresa</a></li>
-                    <li class="nav-item"><a class="nav-link" href="#bench">Rendimiento</a></li>
-                    <li class="nav-item"><a class="nav-link" href="#calculadora">Calculadora</a></li>
-                    <li class="nav-item"><a class="nav-link" href="#pricing">Planes</a></li>
-                </ul>
-            </div>
-            <div class="d-flex align-items-center gap-3">
-                <button class="btn btn-link nav-link p-0" onclick="toggleTheme()"><i class="fas fa-moon fa-lg"></i></button>
-                <div class="d-none d-md-flex align-items-center cursor-pointer" onclick="new bootstrap.Modal('#statusModal').show()">
-                    <div class="status-dot me-2"></div><span class="small fw-bold text-success">Status</span>
+<div class="main-content">
+    <div class="d-flex justify-content-between align-items-center mb-5">
+        <div>
+            <h3 class="fw-bold mb-0 text-white">Panel de Control</h3>
+            <small class="text-light-muted">Bienvenido, <?=htmlspecialchars($user_info['username']??'Usuario')?></small>
+        </div>
+        <div class="d-flex align-items-center gap-3">
+            <button class="btn btn-dark border border-secondary position-relative" data-bs-toggle="modal" data-bs-target="#profileModal">
+                <i class="bi bi-person-circle"></i>
+            </button>
+        </div>
+    </div>
+
+    <?php if (!$current): ?>
+        <div class="text-center py-5"><i class="bi bi-cloud-slash display-1 text-muted opacity-25"></i><h3 class="mt-3 text-muted">Sin servicios activos</h3><a href="index.php" class="btn btn-primary mt-2">Desplegar Infraestructura</a></div>
+    <?php else: ?>
+    
+    <div class="row g-4">
+        <div class="col-lg-8">
+            <div class="d-flex align-items-center justify-content-between mb-4">
+                <div class="d-flex align-items-center gap-3">
+                    <div class="bg-black bg-opacity-25 p-3 rounded-circle border border-secondary">
+                        <?=getOSIconHtml($os_image)?>
+                    </div>
+                    <div>
+                        <h4 class="fw-bold mb-0 text-white">Servidor #<?=$current['id']?></h4>
+                        <small class="text-light-muted font-monospace"><i class="bi bi-hdd-network me-1"></i> <?=getOSNamePretty($os_image)?></small>
+                    </div>
                 </div>
-                <?php if (isset($_SESSION['user_id'])): ?>
-                    <a href="dashboard_cliente.php" class="btn btn-outline-primary btn-sm rounded-pill px-3 fw-bold">CONSOLA</a>
-                    <button class="btn btn-link text-danger btn-sm" onclick="logout()"><i class="fas fa-sign-out-alt"></i></button>
-                <?php else: ?>
-                    <button class="btn btn-primary btn-sm rounded-pill px-4 fw-bold" onclick="openM('authModal')">CLIENTE</button>
+                
+                <div class="d-flex gap-2">
+                    <span class="badge bg-success bg-opacity-10 text-success border border-success px-3 py-2 rounded-pill">ONLINE</span>
+                    <span class="badge px-3 py-2 rounded-pill" style="<?=getPlanStyle($current['plan_name'])?>">
+                        PLAN <?=strtoupper($current['plan_name'])?>
+                    </span>
+                </div>
+            </div>
+            
+            <div class="row g-4 mb-4">
+                <div class="col-md-6">
+                    <div class="metric-card">
+                        <div class="d-flex justify-content-between"><span class="text-light-muted text-uppercase small fw-bold">Uso CPU</span><i class="bi bi-cpu text-primary"></i></div>
+                        <div class="metric-value text-white mt-2"><span id="cpu-val">0</span>%</div>
+                        <div class="progress-thin"><div id="cpu-bar" class="progress-bar bg-primary" style="width:0%"></div></div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="metric-card">
+                        <div class="d-flex justify-content-between"><span class="text-light-muted text-uppercase small fw-bold">Memoria RAM</span><i class="bi bi-memory text-success"></i></div>
+                        <div class="metric-value text-white mt-2"><span id="ram-val">0</span>%</div>
+                        <div class="progress-thin"><div id="ram-bar" class="progress-bar bg-success" style="width:0%"></div></div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card-clean">
+                <div class="d-flex justify-content-between mb-3 align-items-center">
+                    <h6 class="fw-bold m-0 text-white"><i class="bi bi-terminal me-2 text-warning"></i>Accesos de Sistema</h6>
+                    <button onclick="copyAllCreds()" class="btn btn-sm btn-outline-secondary"><i class="bi bi-copy me-1"></i> Copiar</button>
+                </div>
+                <div class="terminal-container" id="all-creds-box">
+                    <?php if($has_web): ?><div><span class="term-label">WEB:</span> <a href="<?=htmlspecialchars($web_url??'#')?>" target="_blank" class="term-val text-decoration-none hover-white" id="disp-web-url"><?=htmlspecialchars($web_url??'Esperando IP...')?></a></div><?php endif; ?>
+                    <?php if($has_db): ?>
+                        <div class="mt-2 text-light-muted small">// DATABASE CLUSTER</div>
+                        <div><span class="term-label">MASTER:</span> <span class="term-val">mysql-master-0 (Write)</span></div>
+                        <div><span class="term-label">SLAVE:</span>  <span class="term-val">mysql-slave-0 (Read)</span></div>
+                    <?php endif; ?>
+                    <div class="mt-2 text-light-muted small">// SSH ROOT ACCESS</div>
+                    <div><span class="term-label">CMD:</span>  <span class="term-val text-success" id="disp-ssh-cmd"><?=htmlspecialchars($creds['ssh_cmd'] ?? 'Connecting...')?></span></div>
+                    <div><span class="term-label">PASS:</span> <span class="term-val text-warning" id="disp-ssh-pass"><?=htmlspecialchars($creds['ssh_pass'] ?? 'sylo1234')?></span></div>
+                </div>
+            </div>
+
+            <div class="card-clean mt-4">
+                <h6 class="fw-bold mb-3 text-white"><i class="bi bi-clock-history me-2 text-info"></i>Historial de Actividad (Sesión)</h6>
+                <table class="log-table">
+                    <tbody id="activity-log-body">
+                        <tr><td class="text-light-muted text-center">Esperando eventos...</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="col-lg-4">
+            <div class="card-clean">
+                <div class="d-flex justify-content-between mb-3 align-items-center">
+                    <h6 class="fw-bold m-0 text-white">Centro de Mando</h6>
+                    <button onclick="manualRefresh()" id="btn-refresh" class="btn btn-sm btn-dark border border-secondary text-light-muted"><i class="bi bi-arrow-clockwise"></i></button>
+                </div>
+                
+                <?php if($has_web): ?>
+                    <label class="small text-light-muted mb-2 d-block">Despliegue Web</label>
+                    <a href="<?= $web_url ? htmlspecialchars($web_url) : 'javascript:void(0);' ?>" target="<?= $web_url ? '_blank' : '_self' ?>" id="btn-ver-web" class="btn btn-primary w-100 mb-2 fw-bold position-relative overflow-hidden <?= $web_url ? '' : 'disabled' ?>">
+                        <div id="web-loader-fill" style="position:absolute;top:0;left:0;height:100%;width:0%;background:rgba(255,255,255,0.2);"></div>
+                        <span id="web-btn-text"><i class="bi bi-box-arrow-up-right me-2"></i><?= $web_url ? 'Ver Sitio Web' : 'Cargando...' ?></span>
+                    </a>
+                    <div class="d-flex gap-2 mb-4">
+                        <button class="btn btn-dark border border-secondary flex-fill text-light-muted" onclick="openEditor()"><i class="bi bi-code-slash"></i> Editar</button>
+                        <button class="btn btn-dark border border-secondary flex-fill text-light-muted" data-bs-toggle="modal" data-bs-target="#uploadModal"><i class="bi bi-upload"></i> Subir</button>
+                    </div>
                 <?php endif; ?>
-            </div>
-        </div>
-    </nav>
 
-    <section class="hero text-center">
-        <div class="container">
-            <span class="badge bg-primary mb-3 px-3 py-1 rounded-pill">V115 Stable</span>
-            <h1 class="display-3 fw-bold mb-4">Infraestructura <span class="text-primary">Ryzen™</span></h1>
-            <p class="lead mb-5">Orquestación Kubernetes V21 desde Alicante, España.</p>
-        </div>
-    </section>
+                <label class="small text-light-muted mb-2 d-block">Control de Energía</label>
+                <form method="POST" id="energyForm">
+                    <input type="hidden" name="order_id" value="<?=$current['id']?>">
+                    <?php if($current['status']=='active'): ?>
+                        <button type="submit" name="action" value="restart" class="btn-action" onclick="showToast('Reiniciando sistema...', 'info')"><i class="bi bi-arrow-repeat text-warning me-3 fs-5"></i><div><div class="fw-bold text-white">Reiniciar</div><small>Aplicar cambios</small></div></button>
+                        <button type="submit" name="action" value="stop" class="btn-action" onclick="showToast('Deteniendo sistema...', 'warning')"><i class="bi bi-stop-circle text-danger me-3 fs-5"></i><div><div class="fw-bold text-white">Apagar</div><small>Modo hibernación</small></div></button>
+                    <?php else: ?>
+                        <button type="submit" name="action" value="start" class="btn-action" onclick="showToast('Iniciando sistema...', 'success')"><i class="bi bi-play-circle text-success me-3 fs-5"></i><div><div class="fw-bold text-white">Encender</div><small>Volver a online</small></div></button>
+                    <?php endif; ?>
+                </form>
+                
+                <div class="mt-4">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <label class="small text-light-muted">Snapshots</label>
+                        <span class="badge bg-dark border border-secondary" id="backup-count">0/<?=$backup_limit?></span>
+                    </div>
+                    <button class="btn-action justify-content-center text-center py-2" onclick="showBackupModal()"><i class="bi bi-camera me-2"></i>Crear Snapshot</button>
+                    
+                    <div id="backup-ui" style="display:none" class="mt-3"><div class="progress" style="height:4px"><div id="backup-bar" class="progress-bar bg-info" style="width:0%"></div></div><small class="text-info d-block mt-1">Creando backup...</small></div>
+                    
+                    <div id="delete-ui" style="display:none" class="mt-3"><div class="progress" style="height:4px"><div id="delete-bar" class="progress-bar bg-danger" style="width:0%"></div></div><small class="text-danger d-block mt-1">Eliminando...</small></div>
 
-    <section id="empresa" class="py-5 bg-white"><div class="container"><div class="row align-items-center mb-5"><div class="col-lg-6"><h6 class="text-primary fw-bold">NUESTRA MISIÓN</h6><h2 class="fw-bold mb-4">Ingeniería Real</h2><p class="text-muted">Sylo nació en Alicante para eliminar la complejidad. Usamos hardware Threadripper y NVMe Gen5 real.</p><div class="mt-4"><a href="https://github.com/leonardsyloadm-cyber/SYLO-Kubernetes-for-all" target="_blank" class="btn btn-outline-dark rounded-pill px-4"><i class="fab fa-github me-2"></i>GitHub</a></div></div><div class="col-lg-6"><div class="row g-4"><div class="col-6 text-center"><div class="p-4 rounded bg-light border"><img src="https://ui-avatars.com/api/?name=Ivan+Arlanzon&background=0f172a&color=fff&size=100" class="avatar"><h5 class="fw-bold">Ivan A.</h5><span class="badge bg-primary">CEO</span></div></div><div class="col-6 text-center"><div class="p-4 rounded bg-light border"><img src="https://ui-avatars.com/api/?name=Leonard+Baicu&background=2563eb&color=fff&size=100" class="avatar"><h5 class="fw-bold">Leonard B.</h5><span class="badge bg-success">CTO</span></div></div></div></div></div></div></section>
-
-    <section id="bench" class="py-5 bg-light"><div class="container"><div class="row align-items-center"><div class="col-lg-5"><h2 class="fw-bold mb-3">Rendimiento Bruto</h2><p>Cinebench R23 Single Core.</p><div class="d-flex justify-content-between small fw-bold mt-4"><span>SYLO Ryzen</span><span class="text-primary">1,950 pts</span></div><div class="bench-bar b-sylo" style="width:100%"></div><div class="d-flex justify-content-between small fw-bold mt-3"><span>AWS c6a</span><span>1,420 pts</span></div><div class="bench-bar b-aws" style="width:72%"></div></div><div class="col-lg-6 offset-lg-1"><div class="row g-3"><div class="col-6"><div class="p-4 border rounded-4 text-center bg-white"><i class="fas fa-hdd fa-2x text-danger mb-2"></i><h5 class="fw-bold">NVMe Gen5</h5><small>7,500 MB/s</small></div></div><div class="col-6"><div class="p-4 border rounded-4 text-center bg-white"><i class="fas fa-memory fa-2x text-success mb-2"></i><h5 class="fw-bold">DDR5 ECC</h5><small>Error Correction</small></div></div></div></div></div></div></section>
-
-    <section id="calculadora" class="container py-5 my-5"><div class="calc-box shadow-lg"><div class="row g-5"><div class="col-lg-6"><h4 class="text-white mb-4"><i class="fas fa-calculator me-2 text-primary"></i>Configurador</h4><select class="form-select w-50 bg-dark text-white border-secondary mb-4" id="calc-preset" onchange="applyPreset()"><option value="custom">-- A Medida --</option><option value="bronce">Plan Bronce</option><option value="plata">Plan Plata</option><option value="oro">Plan Oro</option></select>
-        <label class="small text-white-50 fw-bold">vCPU (5€): <span id="c-cpu">1</span></label><input type="range" class="form-range mb-4" min="1" max="16" value="1" id="in-cpu" oninput="userMovedSlider()">
-        <label class="small text-white-50 fw-bold">RAM (5€): <span id="c-ram">1</span> GB</label><input type="range" class="form-range mb-4" min="1" max="32" value="1" id="in-ram" oninput="userMovedSlider()">
-        <div class="row g-2"><div class="col-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="check-calc-db" oninput="userMovedSlider()"><label class="text-white small">DB (+5€)</label></div></div><div class="col-6"><div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="check-calc-web" oninput="userMovedSlider()"><label class="text-white small">Web (+5€)</label></div></div></div>
-    </div><div class="col-lg-6"><div class="bg-white p-5 rounded-4 h-100 d-flex flex-column justify-content-center text-dark"><h5 class="fw-bold mb-3">Estimación</h5><div class="d-flex justify-content-between"><span class="fw-bold text-primary">SYLO</span><span class="price-display" id="out-sylo">0€</span></div><div class="progress mb-3" style="height:20px"><div id="pb-sylo" class="progress-bar bg-primary" style="width:0%"></div></div><div class="d-flex justify-content-between small text-muted"><span>AWS</span><span id="out-aws">0€</span></div><div class="progress mb-2" style="height:6px"><div id="pb-aws" class="progress-bar bg-secondary" style="width:100%"></div></div><div class="d-flex justify-content-between small text-muted"><span>Azure</span><span id="out-azure">0€</span></div><div class="progress mb-3" style="height:6px"><div id="pb-azure" class="progress-bar bg-secondary" style="width:100%"></div></div><div class="text-center mt-3"><span class="badge bg-success border border-success text-success bg-opacity-10 px-3 py-2">AHORRO: <span id="out-save">0%</span></span></div></div></div></div></div></section>
-
-    <section id="pricing" class="py-5 bg-white"><div class="container"><div class="text-center mb-5"><h6 class="text-primary fw-bold">PLANES V21</h6><h2 class="fw-bold">Escala con Confianza</h2></div><div class="row g-4 justify-content-center">
-        <div class="col-xl-3 col-md-6"><div class="card-stack-container" onclick="toggleCard(this)"><div class="card-face"><div class="face-front"><div><h5 class="fw-bold text-muted">Bronce</h5><div class="display-4 fw-bold text-primary my-2">5€</div><ul class="list-unstyled small text-muted"><li>1 vCPU / 1 GB RAM</li><li>Alpine Only</li><li class="text-danger">Sin DB / Web</li></ul></div><button onclick="event.stopPropagation();prepararPedido('Bronce')" class="btn btn-outline-dark w-100 rounded-pill btn-select">Elegir</button></div><div class="face-back"><div><h6 class="fw-bold text-primary mb-2">Specs</h6><ul class="list-unstyled k8s-specs text-muted"><li><span>CPU:</span> <strong>1 Core</strong></li><li><span>RAM:</span> <strong>1 GB</strong></li><li><span>OS:</span> <strong>Alpine (Fijo)</strong></li><li><span>SSH:</span> <strong>Sí</strong></li></ul><div class="mt-2"><p class="small fw-bold mb-0">Ideal para:</p><p class="small text-muted">Bastion Host, VPN, CLI.</p></div></div><button onclick="event.stopPropagation();prepararPedido('Bronce')" class="btn btn-outline-warning w-100 rounded-pill btn-select">Elegir</button></div></div></div></div>
-        <div class="col-xl-3 col-md-6"><div class="card-stack-container" onclick="toggleCard(this)"><div class="card-face"><div class="face-front" style="border-color:#2563eb"><div><h5 class="fw-bold text-primary">Plata</h5><div class="display-4 fw-bold text-primary my-2">15€</div><ul class="list-unstyled small text-muted"><li>MySQL Cluster</li><li>2 vCPU / 2 GB RAM</li><li class="text-danger">Sin Web</li></ul></div><button onclick="event.stopPropagation();prepararPedido('Plata')" class="btn btn-primary w-100 rounded-pill btn-select">Elegir</button></div><div class="face-back"><div><h6 class="fw-bold text-primary mb-2">Backend</h6><ul class="list-unstyled k8s-specs text-muted"><li><span>CPU:</span> <strong>2 Cores</strong></li><li><span>RAM:</span> <strong>2 GB</strong></li><li><span>OS:</span> <strong>Alp/Ubu</strong></li><li><span>DB:</span> <strong>MySQL 8</strong></li></ul><div class="mt-2"><p class="small fw-bold mb-0">Ideal para:</p><p class="small text-muted">Microservicios, Bases de Datos.</p></div></div><button onclick="event.stopPropagation();prepararPedido('Plata')" class="btn btn-primary w-100 rounded-pill btn-select">Elegir</button></div></div></div></div>
-        <div class="col-xl-3 col-md-6"><div class="card-stack-container" onclick="toggleCard(this)"><div class="card-face"><div class="face-front" style="border-color:#f59e0b"><div><h5 class="fw-bold text-warning">Oro</h5><div class="display-4 fw-bold text-primary my-2">30€</div><ul class="list-unstyled small text-muted"><li>Full Stack</li><li>3 vCPU / 3 GB RAM</li><li>Dominio .cloud</li></ul></div><button onclick="event.stopPropagation();prepararPedido('Oro')" class="btn btn-warning w-100 rounded-pill btn-select text-white">Elegir</button></div><div class="face-back"><div><h6 class="text-warning fw-bold mb-2">Producción</h6><ul class="list-unstyled k8s-specs text-muted"><li><span>CPU:</span> <strong>3 Cores</strong></li><li><span>RAM:</span> <strong>3 GB</strong></li><li><span>OS:</span> <strong>Alp/Ubu/RHEL</strong></li><li><span>Stack:</span> <strong>Nginx+MySQL</strong></li></ul><div class="mt-2"><p class="small fw-bold mb-0">Ideal para:</p><p class="small text-muted">Apps Producción, E-commerce.</p></div></div><button onclick="event.stopPropagation();prepararPedido('Oro')" class="btn btn-warning w-100 rounded-pill btn-select text-white">Elegir</button></div></div></div></div>
-        <div class="col-xl-3 col-md-6"><div class="card-stack-container" onclick="toggleCard(this)"><div class="card-face"><div class="face-front card-custom"><div><h5 class="fw-bold text-primary">A Medida</h5><div class="display-4 fw-bold text-primary my-2">Flex</div><ul class="list-unstyled small text-muted"><li>Hardware Ryzen</li><li>Topología Mixta</li></ul></div><button onclick="event.stopPropagation();prepararPedido('Personalizado')" class="btn btn-outline-primary w-100 rounded-pill btn-select">Configurar</button></div><div class="face-back"><div><h6 class="fw-bold text-primary mb-2">Arquitecto</h6><ul class="list-unstyled k8s-specs text-muted"><li><span>CPU:</span> <strong>1-32 Cores</strong></li><li><span>RAM:</span> <strong>1-64 GB</strong></li><li><span>OS:</span> <strong>Todos</strong></li><li><span>Net:</span> <strong>Custom</strong></li></ul><div class="mt-2"><p class="small fw-bold mb-0">Ideal para:</p><p class="small text-muted">Big Data, IA, Proyectos complejos.</p></div></div><button onclick="event.stopPropagation();prepararPedido('Personalizado')" class="btn btn-outline-primary w-100 rounded-pill btn-select">Configurar</button></div></div></div></div>
-    </div></div></section>
-
-    <section class="py-5 bg-white border-top"><div class="container text-center"><h3 class="fw-bold">Sylo Academy</h3><p class="text-muted mb-4">Documentación técnica oficial.</p><a href="https://www.notion.so/SYLO-Kubernetes-For-All-1f5bfdf3150380328e1efc4fe8e181f9?source=copy_link" target="_blank" class="btn btn-dark rounded-pill px-5 fw-bold"><i class="fas fa-book me-2"></i>Leer Docs</a></div></section>
-
-    <footer class="py-5 bg-light border-top mt-5"><div class="container text-center"><h5 class="fw-bold text-primary mb-3">SYLO CORP S.L.</h5><div class="mb-4"><a href="mailto:arlanzonivan@gmail.com" class="text-muted mx-2 text-decoration-none">arlanzonivan@gmail.com</a><a href="mailto:leob@gmail.com" class="text-muted mx-2 text-decoration-none">leob@gmail.com</a></div><button class="btn btn-link text-muted small" onclick="openLegal()">TÉRMINOS Y CONDICIONES</button></div></footer>
-
-    <div class="offcanvas offcanvas-end" tabindex="-1" id="legalCanvas"><div class="offcanvas-header p-4 border-bottom"><h4 class="offcanvas-title fw-bold text-primary">Contrato de Servicios</h4><button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button></div><div class="offcanvas-body p-5 legal-content">
-        <h5>1. Identidad y Objeto</h5><p>SYLO CORP S.L. es una Sociedad Limitada registrada en Alicante (CIF B-12345678). El presente contrato regula el uso de la plataforma Oktopus™ V21. Al contratar, acepta estas condiciones sin reservas.</p>
-        <h5>2. Hardware Ryzen Garantizado</h5><p>Garantizamos el uso exclusivo de procesadores AMD Ryzen™ Threadripper™ de última generación. Los recursos contratados (vCPU) corresponden a hilos de ejecución físicos y no virtuales. No realizamos "overselling" agresivo.</p>
-        <h5>3. Política de Uso Aceptable (AUP) - Kubernetes</h5><p>Queda terminantemente prohibido el uso para: Minería de criptomonedas, ataques DDoS, intrusiones en redes ajenas, y alojamiento de contenido ilegal. La detección resultará en la terminación inmediata.</p>
-        <h5>4. Privacidad y Protección de Datos</h5><p>En cumplimiento con el RGPD (UE 2016/679): Sus datos se almacenan cifrados en reposo (AES-256) en Alicante. No realizamos inspección profunda de paquetes (DPI).</p>
-        <h5>5. Acuerdo de Nivel de Servicio (SLA)</h5><p>Garantizamos un 99.9% de disponibilidad mensual. En caso de incumplimiento, se compensará con créditos de servicio.</p>
-        <h5>6. Pagos y Suspensión</h5><p>El servicio es prepago. El impago resultará en la suspensión del servicio a las 48 horas y el borrado de datos a los 15 días.</p>
-        <h5>7. Responsabilidad</h5><p>Sylo no será responsable de pérdidas de datos derivadas de una mala configuración por parte del usuario o vulnerabilidades en su software.</p>
-        <h5>8. Jurisdicción</h5><p>Las partes se someten a los juzgados de Alicante, España.</p>
-    </div></div>
-
-    <div class="modal fade" id="configModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content shadow-lg border-0 p-3">
-        <div class="modal-header border-0"><h5 class="fw-bold">Configurar <span id="m_plan" class="text-primary"></span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-        <div class="modal-body p-5">
-            <div class="row mb-3"><div class="col-6"><label class="form-label fw-bold small">Alias Cluster</label><input id="cfg-alias" class="form-control rounded-pill bg-light border-0"></div><div class="col-6"><label class="form-label fw-bold small">Usuario SSH</label><input id="cfg-ssh-user" class="form-control rounded-pill bg-light border-0" value="admin_sylo"></div></div>
-            <div class="mb-3"><label class="form-label fw-bold small">SO</label><select id="cfg-os" class="form-select rounded-pill bg-light border-0"></select></div>
-
-            <div id="grp-hardware" class="mb-3 p-3 bg-light rounded-3" style="display:none;">
-                <h6 class="text-primary fw-bold mb-3"><i class="fas fa-microchip me-2"></i>Recursos Personalizados</h6>
-                <div class="row">
-                    <div class="col-6"><label class="small fw-bold">vCPU: <span id="lbl-cpu"></span></label><input type="range" id="mod-cpu" min="1" max="16" oninput="updateModalHard()"></div>
-                    <div class="col-6"><label class="small fw-bold">RAM: <span id="lbl-ram"></span> GB</label><input type="range" id="mod-ram" min="1" max="32" oninput="updateModalHard()"></div>
+                    <div id="backups-list-container" class="mt-3"></div>
+                </div>
+                
+                <div class="mt-4 pt-3 border-top border-secondary border-opacity-25 text-center">
+                    <div class="d-grid gap-2">
+                        <button class="btn btn-outline-danger btn-sm" onclick="destroyK8s()">
+                            <i class="bi bi-radioactive me-2"></i>Destruir Kubernetes
+                        </button>
+                        <button class="btn btn-link text-danger btn-sm text-decoration-none opacity-50 hover-opacity-100" onclick="confirmTerminate()">
+                            Eliminar Servicio
+                        </button>
+                    </div>
                 </div>
             </div>
-
-            <div class="d-flex gap-3 mb-2">
-                <div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="mod-check-db" onchange="toggleModalSoft()"><label class="small fw-bold ms-1">Base de Datos</label></div>
-                <div class="form-check form-switch"><input class="form-check-input" type="checkbox" id="mod-check-web" onchange="toggleModalSoft()"><label class="small fw-bold ms-1">Servidor Web</label></div>
-            </div>
-            
-            <div id="mod-db-opts" style="display:none;" class="p-3 border rounded-3 mb-2">
-                <label class="small fw-bold">Motor DB</label>
-                <select id="mod-db-type" class="form-select rounded-pill bg-white border-0 mb-2"><option value="mysql">MySQL 8.0</option><option value="postgresql">PostgreSQL 14</option><option value="mongodb">MongoDB</option></select>
-                <input id="mod-db-name" class="form-control rounded-pill bg-white border-0" value="sylo_db" placeholder="Nombre DB">
-            </div>
-            <div id="mod-web-opts" style="display:none;" class="p-3 border rounded-3">
-                <label class="small fw-bold">Servidor Web</label>
-                <select id="mod-web-type" class="form-select rounded-pill bg-white border-0 mb-2"><option value="nginx">Nginx</option><option value="apache">Apache</option></select>
-                <input id="mod-web-name" class="form-control rounded-pill bg-white border-0 mb-2" value="sylo_web" placeholder="Nombre App">
-                <div class="input-group rounded-pill overflow-hidden"><input id="mod-sub" class="form-control border-0" placeholder="mi-app"><span class="input-group-text border-0 bg-white small">.sylobi.org</span></div>
-            </div>
-
-            <div class="mt-4"><button class="btn btn-primary w-100 rounded-pill fw-bold py-2 shadow-sm" onclick="lanzar()">DESPLEGAR AHORA</button></div>
         </div>
-    </div></div></div>
+    </div>
+    <?php endif; ?>
+</div>
 
-    <div class="modal fade" id="statusModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content p-4 border-0 shadow-lg"><h5 class="fw-bold mb-4">Estado del Sistema <span class="status-dot ms-2"></span></h5><div class="d-flex justify-content-between border-bottom py-2"><span>API Gateway (Alicante)</span><span class="badge bg-success">Online</span></div><div class="d-flex justify-content-between border-bottom py-2"><span>NVMe Array</span><span class="badge bg-success">Online</span></div><div class="d-flex justify-content-between border-bottom py-2"><span>Oktopus V21</span><span class="badge bg-success">Active</span></div></div></div></div>
-    <div class="modal fade" id="progressModal" data-bs-backdrop="static"><div class="modal-dialog modal-dialog-centered"><div class="modal-content terminal-window border-0"><div class="terminal-body text-center"><div class="spinner-border text-success mb-3" role="status"></div><h5 id="progress-text" class="mb-3">Iniciando...</h5><div class="progress"><div id="prog-bar" class="progress-bar bg-success" style="width:0%"></div></div></div></div></div></div>
-    <div class="modal fade" id="successModal"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 p-4" style="background:white; border-radius:15px;"><h2 class="text-success fw-bold mb-3">✅ ÉXITO</h2><div class="success-box"><span class="text-muted"># RESUMEN</span><br>Plan: <span id="s-plan" class="text-warning"></span><br>OS: <span id="s-os" class="text-info"></span><br>CPU: <span id="s-cpu"></span> vCore | RAM: <span id="s-ram"></span> GB<div class="mt-3 border-top border-secondary pt-2">CMD: <span id="s-cmd" class="text-white"></span><br>PASS: <span id="s-pass" class="text-white"></span></div></div><div class="text-center"><a href="dashboard_cliente.php" class="btn btn-primary rounded-pill px-5 fw-bold">IR A LA CONSOLA</a></div></div></div></div>
-    <div class="modal fade" id="authModal"><div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content border-0 shadow-lg p-4"><ul class="nav nav-pills nav-fill mb-4 p-1 bg-light rounded-pill"><li class="nav-item"><a class="nav-link active rounded-pill" data-bs-toggle="tab" href="#login-pane">Login</a></li><li class="nav-item"><a class="nav-link rounded-pill" data-bs-toggle="tab" href="#reg-pane">Registro</a></li></ul><div class="tab-content"><div class="tab-pane fade show active" id="login-pane"><input id="log_email" class="form-control mb-3" placeholder="Usuario/Email"><input type="password" id="log_pass" class="form-control mb-3" placeholder="Contraseña"><button class="btn btn-primary w-100 rounded-pill fw-bold" onclick="handleLogin()">Entrar</button></div><div class="tab-pane fade" id="reg-pane"><div class="text-center mb-3"><div class="btn-group w-50"><input type="radio" class="btn-check" name="t_u" id="t_a" value="autonomo" checked onchange="toggleReg()"><label class="btn btn-outline-primary" for="t_a">Autónomo</label><input type="radio" class="btn-check" name="t_u" id="t_e" value="empresa" onchange="toggleReg()"><label class="btn btn-outline-primary" for="t_e">Empresa</label></div></div><div class="row g-2"><div class="col-6"><input id="reg_u" class="form-control mb-2" placeholder="Usuario"></div><div class="col-6"><input id="reg_e" class="form-control mb-2" placeholder="Email"></div><div class="col-6"><input type="password" id="reg_p1" class="form-control mb-2" placeholder="Contraseña"></div><div class="col-6"><input type="password" id="reg_p2" class="form-control mb-2" placeholder="Repetir"></div></div><div id="fields-auto" class="mt-2"><input id="reg_fn" class="form-control mb-2" placeholder="Nombre Completo"><input id="reg_dni_a" class="form-control mb-2" placeholder="DNI"></div><div id="fields-emp" class="mt-2" style="display:none"><div class="row g-2"><div class="col-6"><input id="reg_contact" class="form-control mb-2" placeholder="Persona Contacto"></div><div class="col-6"><input id="reg_cif" class="form-control mb-2" placeholder="CIF"></div></div><select id="reg_tipo_emp" class="form-select mb-2" onchange="checkOther()"><option value="SL">S.L.</option><option value="SA">S.A.</option><option value="Cooperativa">Cooperativa</option><option value="Otro">Otro</option></select><input id="reg_rs" class="form-control mb-2" placeholder="Razón Social" style="display:none"></div><div class="row g-2 mt-1"><div class="col-6"><input id="reg_tel" class="form-control mb-2" placeholder="Teléfono"></div><div class="col-6"><input id="reg_cal" class="form-control mb-2" placeholder="Dirección"></div></div><div class="form-check mt-3"><input type="checkbox" id="reg_terms" class="form-check-input"><label class="form-check-label small">Acepto los <a href="#" onclick="viewTermsFromReg()">Términos</a>.</label></div><button class="btn btn-success w-100 rounded-pill fw-bold mt-3" onclick="handleRegister()">Crear Cuenta</button></div></div></div></div></div>
+<div class="chat-widget" onclick="toggleChat()"><i class="bi bi-chat-fill"></i></div>
+<div class="chat-window" id="chatWindow">
+    <div class="chat-header">
+        <div class="d-flex align-items-center gap-2"><div style="width:10px;height:10px;background:#10b981;border-radius:50%"></div><span class="fw-bold text-white">Soporte Sylo</span></div>
+        <i class="bi bi-x-lg cursor-pointer" onclick="toggleChat()"></i>
+    </div>
+    <div class="chat-body" id="chatBody">
+        <div class="chat-msg support">
+            Hola <?=htmlspecialchars($_SESSION['username']??'Usuario')?>, si tienes preguntas, estas son las más frecuentes:
+            <br><br>
+            1️⃣ ¿Cómo entro a mi servidor? (SSH)<br>
+            2️⃣ ¿Cuál es mi página web?<br>
+            3️⃣ Datos de Base de Datos<br>
+            4️⃣ ¿Cuántas copias puedo hacer?<br>
+            5️⃣ Estado de Salud (CPU/RAM)<br><br>
+            Escribe el número para ver la respuesta.
+        </div>
+    </div>
+    <div class="chat-input-area">
+        <input type="text" id="chatInput" class="form-control bg-dark border-secondary text-white" placeholder="Escribe..." onkeypress="handleChat(event)">
+        <button class="btn btn-primary btn-sm" onclick="sendChat()"><i class="bi bi-send"></i></button>
+    </div>
+</div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        const isLogged = <?=isset($_SESSION['user_id'])?'true':'false'?>;
-        function openM(id){const el=document.getElementById(id);if(el)new bootstrap.Modal(el).show();}
-        function hideM(id){const el=document.getElementById(id);const m=bootstrap.Modal.getInstance(el);if(m)m.hide();}
-        function openAuth(){openM('authModal');}
-        function openLegal(){new bootstrap.Offcanvas(document.getElementById('legalCanvas')).show();}
-        function viewTermsFromReg(){hideM('authModal');openLegal();}
-        function toggleTheme(){document.body.dataset.theme=document.body.dataset.theme==='dark'?'':'dark';}
-        function toggleCard(el){document.querySelectorAll('.card-stack-container').forEach(c=>c!==el&&c.classList.remove('active'));el.classList.toggle('active');}
-        function toggleReg(){const e=document.getElementById('t_e').checked;document.getElementById('fields-emp').style.display=e?'block':'none';document.getElementById('fields-auto').style.display=e?'none':'block';}
-        function checkOther(){document.getElementById('reg_rs').style.display=(document.getElementById('reg_tipo_emp').value==='Otro')?'block':'none';}
+<div class="modal fade" id="backupTypeModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0"><div class="modal-header border-0 pb-0"><h5 class="modal-title fw-bold"><i class="bi bi-hdd-fill me-2"></i>Nueva Snapshot</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body px-4 pt-4"><div class="mb-3"><label class="form-label small fw-bold text-light-muted">Nombre de la copia</label><input type="text" id="backup_name_input" class="form-control" placeholder="Ej: Antes de cambios..." maxlength="20"></div><div class="d-flex flex-column gap-2"><label class="backup-option d-flex align-items-center gap-3"><input type="radio" name="backup_type" value="full" checked class="form-check-input mt-0"><div><div class="fw-bold text-white">Completa (Full)</div><div class="small text-muted" style="font-size:0.75rem">Copia total del disco.</div></div></label><label class="backup-option d-flex align-items-center gap-3"><input type="radio" name="backup_type" value="diff" class="form-check-input mt-0"><div><div class="fw-bold text-white">Diferencial</div><div class="small text-muted" style="font-size:0.75rem">Cambios desde última Full.</div></div></label><label class="backup-option d-flex align-items-center gap-3"><input type="radio" name="backup_type" value="incr" class="form-check-input mt-0"><div><div class="fw-bold text-white">Incremental</div><div class="small text-muted" style="font-size:0.75rem">Solo lo nuevo hoy.</div></div></label></div><div id="limit-alert" class="alert alert-danger small mt-3 mb-0" style="display:none"><i class="bi bi-exclamation-octagon-fill me-1"></i> <strong>Límite alcanzado.</strong><br>Elimina una copia para continuar.</div><div id="normal-alert" class="alert alert-warning small mt-3 mb-0"><i class="bi bi-info-circle me-1"></i> Límite: <strong><?=$backup_limit?> copias</strong>.</div></div><div class="modal-footer border-0 px-4 pb-4"><button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Cancelar</button><button type="button" id="btn-start-backup" onclick="doBackup()" class="btn btn-primary rounded-pill px-4 fw-bold">Iniciar Copia</button></div></div></div></div>
+<div class="modal fade" id="editorModal" tabindex="-1" data-bs-backdrop="static"><div class="modal-dialog modal-xl modal-dialog-centered"><div class="modal-content border-0"><div class="modal-header bg-dark text-white border-bottom border-secondary"><h5 class="modal-title">Editor HTML</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body p-0"><div id="editor"></div></div><div class="modal-footer bg-dark border-top border-secondary"><button class="btn btn-secondary rounded-pill" data-bs-dismiss="modal">Cerrar</button><button class="btn btn-primary rounded-pill fw-bold" onclick="saveWeb()"><i class="bi bi-save me-2"></i>Publicar</button></div></div></div></div>
+<div class="modal fade" id="uploadModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0"><div class="modal-header border-0"><h5 class="modal-title">Subir Web</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="uploadForm" enctype="multipart/form-data"><input type="file" id="htmlFile" name="html_file" class="form-control mb-3" required><button type="submit" class="btn btn-success w-100 rounded-pill">Subir</button></form></div></div></div></div>
+<div class="modal fade" id="profileModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0"><div class="modal-header border-0 pb-0"><h5 class="modal-title fw-bold"><i class="bi bi-person-lines-fill me-2"></i>Perfil</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><form method="POST"><input type="hidden" name="action" value="update_profile"><div class="modal-body px-4 pt-4"><div class="mb-3"><label class="small text-light-muted">Nombre</label><input type="text" name="full_name" class="form-control" value="<?=htmlspecialchars($user_info['full_name']??'')?>"></div><div class="mb-3"><label class="small text-light-muted">Email</label><input type="email" name="email" class="form-control" value="<?=htmlspecialchars($user_info['email']??'')?>" required></div><button type="submit" class="btn btn-primary w-100 rounded-pill">Guardar</button></div></form></div></div></div>
+<div class="modal fade" id="billingModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0"><div class="modal-header border-0"><h5 class="modal-title">Facturación</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body"><?php foreach($clusters as $c): ?><div class="d-flex justify-content-between mb-2"><span>#<?=$c['id']?> <?=$c['plan_name']?></span><span class="text-success"><?=number_format(calculateWeeklyPrice($c),2)?>€</span></div><?php endforeach; ?><hr><div class="d-flex justify-content-between fs-5 text-white"><strong>Total</strong><strong class="text-primary"><?=number_format($total_weekly,2)?>€</strong></div></div></div></div></div>
 
-        // --- CALCULADORA (V99 LOGIC WITH INLINE EVENTS) ---
-        // Se llama al cargar para inicializar valores
-        document.addEventListener('DOMContentLoaded', updCalc);
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    const oid = <?=$current['id']??0?>; 
+    const planCpus = <?=$plan_cpus?>; 
+    const backupLimit = <?=$backup_limit?>;
+    let isManualLoading = false; 
+    
+    function showToast(msg, type='info') {
+        const icon = type==='success'?'check-circle':(type==='error'?'exclamation-triangle':'info-circle');
+        const color = type==='success'?'#10b981':(type==='error'?'#ef4444':'#3b82f6');
+        const html = `<div class="custom-toast" style="border-left-color:${color}"><i class="bi bi-${icon}" style="color:${color};font-size:1.2rem"></i><div><strong>Notificación</strong><br><small>${msg}</small></div></div>`;
+        const container = document.getElementById('toastContainer');
+        const el = document.createElement('div'); el.innerHTML = html;
+        container.appendChild(el);
+        setTimeout(() => el.remove(), 4000);
+        addLog(msg);
+    }
 
-        function userMovedSlider() { 
-            document.getElementById('calc-preset').value='custom'; 
-            updCalc(); 
+    function addLog(msg) {
+        const tbody = document.getElementById('activity-log-body');
+        const time = new Date().toLocaleTimeString();
+        const row = `<tr><td><span class="text-light-muted small me-2">[${time}]</span> <span class="text-white">${msg}</span></td></tr>`;
+        if(tbody.innerHTML.includes('Esperando')) tbody.innerHTML = '';
+        tbody.innerHTML = row + tbody.innerHTML;
+    }
+
+    function toggleChat() { const win = document.getElementById('chatWindow'); win.style.display = win.style.display==='flex'?'none':'flex'; }
+    function handleChat(e) { if(e.key==='Enter') sendChat(); }
+    
+    function sendChat() {
+        const inp = document.getElementById('chatInput');
+        const txt = inp.value.trim();
+        if(!txt) return;
+        const body = document.getElementById('chatBody');
+        body.innerHTML += `<div class="chat-msg me">${txt}</div>`;
+        inp.value = '';
+        body.scrollTop = body.scrollHeight;
+        const thinkingHTML = `<div id="sylo-thinking" class="chat-msg support thinking-bubble"><div class="spinner-border spinner-border-sm text-primary" role="status"></div><span id="thinking-text">Enviando...</span></div>`;
+        body.innerHTML += thinkingHTML;
+        body.scrollTop = body.scrollHeight;
+        const formData = new FormData();
+        formData.append('action', 'send_chat');
+        formData.append('order_id', oid);
+        formData.append('message', txt);
+        fetch('dashboard_cliente.php?ajax_action=1', { method: 'POST', body: formData });
+    }
+
+    const editorModal = new bootstrap.Modal(document.getElementById('editorModal')); 
+    const uploadModal = new bootstrap.Modal(document.getElementById('uploadModal')); 
+    const backupModal = new bootstrap.Modal(document.getElementById('backupTypeModal'));
+    let aceEditor = null;
+    const initialCode = <?php echo json_encode($html_code); ?>;
+    
+    document.addEventListener("DOMContentLoaded", function() { 
+        aceEditor = ace.edit("editor"); aceEditor.setTheme("ace/theme/twilight"); aceEditor.session.setMode("ace/mode/html"); aceEditor.setOptions({fontSize: "14pt"}); aceEditor.setValue(initialCode, -1); 
+    });
+    
+    document.getElementById('editorModal').addEventListener('shown.bs.modal', function () { aceEditor.resize(); });
+    function openEditor() { editorModal.show(); }
+    function showBackupModal() { backupModal.show(); }
+    function copyAllCreds() { navigator.clipboard.writeText(document.getElementById('all-creds-box').innerText); showToast("Copiado!", "success"); }
+    
+    function confirmTerminate() {
+        if (prompt("⚠️ ZONA DE PELIGRO ⚠️\n\nEscribe: eliminar") === "eliminar") {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.innerHTML = `<input type="hidden" name="action" value="terminate"><input type="hidden" name="order_id" value="${oid}">`;
+            document.body.appendChild(form); form.submit();
+        } else alert("Cancelado.");
+    }
+
+    // 🔥 NUEVA FUNCIÓN DESTROY K8S
+    function destroyK8s() {
+        if (prompt("☢️ ¿ESTÁS SEGURO?\nEsto borrará todos los Pods y datos de Kubernetes.\n\nEscribe: BORRAR") === "BORRAR") {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.innerHTML = `<input type="hidden" name="action" value="destroy_k8s"><input type="hidden" name="order_id" value="${oid}">`;
+            document.body.appendChild(form);
+            form.submit();
+            showToast("Destruyendo recursos...", "error");
         }
+    }
+
+    function doBackup() {
+        const nameInput = document.getElementById('backup_name_input');
+        const name = nameInput.value || "Backup";
         
-        function applyPreset() {
-            const p=document.getElementById('calc-preset').value, c=document.getElementById('in-cpu'), r=document.getElementById('in-ram'), d=document.getElementById('check-calc-db'), w=document.getElementById('check-calc-web');
-            if(p==='bronce'){c.value=1;r.value=1;d.checked=false;w.checked=false;} 
-            else if(p==='plata'){c.value=2;r.value=2;d.checked=true;w.checked=false;} 
-            else if(p==='oro'){c.value=3;r.value=3;d.checked=true;w.checked=true;}
-            updCalc();
-        }
+        // RECUPERAR EL TIPO CORRECTO
+        const typeInput = document.querySelector('input[name="backup_type"]:checked');
+        const type = typeInput ? typeInput.value : 'full';
 
-        function updCalc() {
-            let c=parseInt(document.getElementById('in-cpu').value), r=parseInt(document.getElementById('in-ram').value);
-            document.getElementById('c-cpu').innerText=c; document.getElementById('c-ram').innerText=r;
+        const modalEl = document.getElementById('backupTypeModal');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        modal.hide();
+        nameInput.value = ""; 
+
+        document.getElementById('backup-ui').style.display = 'block';
+        document.getElementById('backups-list-container').style.display = 'none';
+        document.getElementById('backup-bar').style.width = '5%';
+        
+        fetch('dashboard_cliente.php?ajax_action=1', {
+            method: 'POST', 
+            body: new URLSearchParams({
+                action: 'backup', 
+                order_id: oid, 
+                backup_type: type, 
+                backup_name: name
+            })
+        }); 
+        
+        showToast(`Iniciando Backup (${type.toUpperCase()})...`, "info");
+    }
+    
+    function setBtnState(loading, text, percent) {
+        const btn = document.getElementById('btn-ver-web');
+        const fill = document.getElementById('web-loader-fill');
+        const txt = document.getElementById('web-btn-text');
+        if(!btn) return;
+
+        if(loading) {
+            btn.classList.add('disabled');
+            btn.href = "javascript:void(0);";
+            if(percent) fill.style.width = percent + '%';
+            txt.innerHTML = `<i class="bi bi-arrow-repeat spin me-2"></i>${text}`;
+        } else {
+            btn.classList.remove('disabled');
+            fill.style.width = '0%';
+            txt.innerHTML = `<i class="bi bi-box-arrow-up-right me-2"></i>Ver Sitio Web`;
+        }
+    }
+
+    function restoreBackup(file, name) {
+        if(prompt(`⚠️ RESTAURAR "${name}"?\nEscribe: RESTAURAR`) === "RESTAURAR") {
+            isManualLoading = true;
+            setBtnState(true, 'Restaurando...', 5);
+            fetch('dashboard_cliente.php?ajax_action=1', {method:'POST', body:new URLSearchParams({action:'restore_backup', order_id:oid, filename:file})});
+            showToast(`Restaurando...`, "warning");
+            setTimeout(() => { isManualLoading = false; }, 4000);
+        } else alert("Cancelado.");
+    }
+
+    function deleteBackup(file, type, name) { 
+        if(confirm(`¿Borrar copia: ${name}?`)) { 
+            document.getElementById('backups-list-container').style.display = 'none';
+            document.getElementById('delete-ui').style.display = 'block';
+            document.getElementById('delete-bar').style.width = '100%';
+            fetch('dashboard_cliente.php?ajax_action=1', {method:'POST', body:new URLSearchParams({action:'delete_backup', order_id:oid, filename:file})});
+            showToast(`Eliminando...`, "warning");
+        } 
+    }
+    
+    function manualRefresh() {
+        const btn = document.getElementById('btn-refresh');
+        if(btn) btn.innerHTML = '<i class="bi bi-arrow-repeat spin"></i>';
+        fetch('dashboard_cliente.php?ajax_action=1', {method:'POST', body:new URLSearchParams({action:'refresh_status', order_id:oid})})
+        .then(() => { loadData(); showToast("Datos actualizados", "success"); });
+    }
+    
+    function saveWeb() { 
+        const wbtn = document.getElementById('btn-ver-web');
+        isManualLoading = true;
+        setBtnState(true, 'Iniciando...', 5);
+        editorModal.hide(); 
+        fetch('dashboard_cliente.php?ajax_action=1', {method:'POST', body:new URLSearchParams({action:'update_web', order_id:oid, html_content:aceEditor.getValue()})});
+        showToast("Publicando web...", "info");
+        setTimeout(() => { isManualLoading = false; }, 4000);
+    }
+
+    document.getElementById('uploadForm').addEventListener('submit', function(e) { 
+        e.preventDefault(); 
+        const file = this.querySelector('input[type="file"]').files[0];
+        if (file) { const reader = new FileReader(); reader.onload = function(e) { aceEditor.setValue(e.target.result); }; reader.readAsText(file); }
+        uploadModal.hide(); 
+        isManualLoading = true;
+        setBtnState(true, 'Subiendo...', 5);
+        const formData = new FormData(this); formData.append('order_id', oid); formData.append('action', 'upload_web');
+        fetch('dashboard_cliente.php?ajax_action=1', { method: 'POST', body: formData });
+        showToast("Archivo subido", "success");
+        setTimeout(() => { isManualLoading = false; }, 4000);
+    });
+
+    function loadData() {
+        if(!oid) return;
+        fetch(`dashboard_cliente.php?ajax_data=1&id=${oid}&t=${new Date().getTime()}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+            const rBtn = document.getElementById('btn-refresh'); if(rBtn) rBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i>';
+            if(d.terminated) { window.location.href = 'dashboard_cliente.php'; return; }
+            if(!d) return;
             
-            if(document.getElementById('calc-preset').value === 'bronce'){renderP(5);return;} 
-            if(document.getElementById('calc-preset').value === 'plata'){renderP(15);return;} 
-            if(document.getElementById('calc-preset').value === 'oro'){renderP(30);return;}
+            try { if(d.metrics) { 
+                let rawCpu = parseFloat(d.metrics.cpu); let visualCpu = (rawCpu / planCpus); if(visualCpu > 100) visualCpu = 100;
+                const cVal = document.getElementById('cpu-val'); if(cVal) cVal.innerText = visualCpu.toFixed(1);
+                const cBar = document.getElementById('cpu-bar'); if(cBar) cBar.style.width = visualCpu+'%';
+                const rVal = document.getElementById('ram-val'); if(rVal) rVal.innerText = parseFloat(d.metrics.ram).toFixed(1);
+                const rBar = document.getElementById('ram-bar'); if(rBar) rBar.style.width = parseFloat(d.metrics.ram)+'%'; 
+            }} catch(e) {}
             
-            let d_c=document.getElementById('check-calc-db').checked?5:0;
-            let w_c=document.getElementById('check-calc-web').checked?5:0;
+            const cmd = document.getElementById('disp-ssh-cmd'); if(cmd) cmd.innerText = d.ssh_cmd || '...';
+            const pass = document.getElementById('disp-ssh-pass'); if(pass) pass.innerText = d.ssh_pass || '...';
             
-            renderP((c*5)+(r*5)+d_c+w_c+5);
-        }
-
-        function renderP(val){ 
-            document.getElementById('out-sylo').innerText=val+"€"; 
-            let aws=Math.round((val*3.5)+40), az=Math.round((val*3.2)+30), sv=Math.round(((aws-val)/aws)*100); if(sv>99)sv=99;
-            document.getElementById('out-aws').innerText=aws+"€"; document.getElementById('out-azure').innerText=az+"€"; document.getElementById('out-save').innerText=sv+"%"; document.getElementById('pb-sylo').style.width=sv+"%"; document.getElementById('pb-aws').style.width="100%"; document.getElementById('pb-azure').style.width=(az/aws*100)+"%";
-        }
-
-        // --- DEPLOY LOGIC ---
-        let curPlan='';
-        function prepararPedido(plan) {
-            if(!isLogged) { openAuth(); return; }
-            curPlan = plan;
-            document.getElementById('m_plan').innerText = plan;
+            const wUrl = d.web_url;
+            try { if(wUrl) { 
+                const dispUrl = document.getElementById('disp-web-url');
+                if(dispUrl) { dispUrl.innerText = wUrl; dispUrl.href = wUrl; } 
+            } else { 
+                const dispUrl = document.getElementById('disp-web-url');
+                if(dispUrl) dispUrl.innerText = "Esperando IP..."; 
+            } } catch(e) {}
             
-            const selOS = document.getElementById('cfg-os'), mCpu = document.getElementById('mod-cpu'), mRam = document.getElementById('mod-ram'), dbT = document.getElementById('mod-db-type'), webT = document.getElementById('mod-web-type'), cDb = document.getElementById('mod-check-db'), cWeb = document.getElementById('mod-check-web');
-            const grpHard = document.getElementById('grp-hardware');
+            const bUi = document.getElementById('backup-ui'); const bBar = document.getElementById('backup-bar');
+            const dUi = document.getElementById('delete-ui'); const dBar = document.getElementById('delete-bar');
+            const list = document.getElementById('backups-list-container');
 
-            selOS.innerHTML = "";
-            if(plan==='Bronce'){ 
-                selOS.innerHTML="<option value='alpine'>Alpine</option>"; selOS.disabled=true; 
-                grpHard.style.display="none"; // OCULTAR SLIDERS EN FIJOS
-                mCpu.value=1; mRam.value=1; 
-                cDb.checked=false; cWeb.checked=false; cDb.disabled=true; cWeb.disabled=true; 
-            }
-            else if(plan==='Plata'){ 
-                selOS.innerHTML="<option value='ubuntu'>Ubuntu</option><option value='alpine'>Alpine</option>"; selOS.disabled=false; 
-                grpHard.style.display="none";
-                mCpu.value=2; mRam.value=2; 
-                cDb.checked=true; cWeb.checked=false; cDb.disabled=true; cWeb.disabled=true; dbT.disabled=true; 
-            }
-            else if(plan==='Oro'){ 
-                selOS.innerHTML="<option value='ubuntu'>Ubuntu</option><option value='alpine'>Alpine</option><option value='redhat'>RedHat</option>"; selOS.disabled=false; 
-                grpHard.style.display="none";
-                mCpu.value=3; mRam.value=3; 
-                cDb.checked=true; cWeb.checked=true; cDb.disabled=true; cWeb.disabled=true; dbT.disabled=true; webT.disabled=true; 
-            }
-            else { // Custom
-                selOS.innerHTML="<option value='ubuntu'>Ubuntu</option><option value='alpine'>Alpine</option><option value='redhat'>RedHat</option>"; selOS.disabled=false; 
-                grpHard.style.display="block"; // MOSTRAR SLIDERS SOLO EN CUSTOM
-                mCpu.value = document.getElementById('in-cpu').value; mRam.value = document.getElementById('in-ram').value; 
-                cDb.disabled=false; cWeb.disabled=false;
-                cDb.checked = document.getElementById('check-calc-db').checked;
-                cWeb.checked = document.getElementById('check-calc-web').checked;
-                dbT.disabled=false; webT.disabled=false;
-            }
-            updateModalHard(); toggleModalSoft();
-            openM('configModal');
-        }
+            const pw = d.web_progress;
+            const pb = d.backup_progress;
 
-        function updateModalHard(){ document.getElementById('lbl-cpu').innerText=document.getElementById('mod-cpu').value; document.getElementById('lbl-ram').innerText=document.getElementById('mod-ram').value; }
-        function toggleModalSoft(){ document.getElementById('mod-db-opts').style.display=document.getElementById('mod-check-db').checked?'block':'none'; document.getElementById('mod-web-opts').style.display=document.getElementById('mod-check-web').checked?'block':'none'; }
-
-        async function lanzar() {
-            const alias = document.getElementById('cfg-alias').value; if(!alias) { alert("Alias obligatorio"); return; }
-            const specs = {
-                cluster_alias: alias,
-                ssh_user: document.getElementById('cfg-ssh-user').value,
-                os_image: document.getElementById('cfg-os').value,
-                cpu: parseInt(document.getElementById('mod-cpu').value),
-                ram: parseInt(document.getElementById('mod-ram').value),
-                storage: 25,
-                db_enabled: document.getElementById('mod-check-db').checked,
-                web_enabled: document.getElementById('mod-check-web').checked,
-                db_custom_name: document.getElementById('mod-db-name').value,
-                web_custom_name: document.getElementById('mod-web-name').value,
-                subdomain: document.getElementById('mod-sub').value || 'interno',
-                db_type: document.getElementById('mod-db-type').value,
-                web_type: document.getElementById('mod-web-type').value
-            };
-            hideM('configModal'); openM('progressModal');
-            try {
-                const res = await fetch('index.php', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:'comprar', plan:curPlan, specs:specs}) });
-                const j = await res.json();
-                if(j.status === 'success') startPolling(j.order_id, specs); else { hideM('progressModal'); alert(j.mensaje); }
-            } catch(e) { hideM('progressModal'); alert("Error"); }
-        }
-
-        function startPolling(oid, finalSpecs) {
-            let i = setInterval(async () => {
-                const r = await fetch(`index.php?check_status=${oid}`);
-                const s = await r.json();
-                document.getElementById('prog-bar').style.width = s.percent+"%";
-                document.getElementById('progress-text').innerText = s.message;
-                if(s.status === 'completed') {
-                    clearInterval(i); hideM('progressModal');
-                    document.getElementById('s-plan').innerText = curPlan;
-                    document.getElementById('s-os').innerText = finalSpecs.os_image;
-                    document.getElementById('s-cpu').innerText = finalSpecs.cpu;
-                    document.getElementById('s-ram').innerText = finalSpecs.ram;
-                    document.getElementById('s-cmd').innerText = s.ssh_cmd;
-                    document.getElementById('s-pass').innerText = s.ssh_pass;
-                    openM('successModal');
+            if ((pw && pw.status === 'web_updating') || (pb && pb.status === 'restoring')) {
+                isManualLoading = false; 
+                const p = pw || pb;
+                setBtnState(true, p.msg, p.progress);
+            }
+            else if ((pw && pw.status === 'web_completed') || (pb && pb.status === 'completed' && document.getElementById('web-btn-text').innerText.includes('Restaurando'))) {
+                 isManualLoading = false;
+                 setBtnState(false);
+                 if(wUrl) {
+                    const btn = document.getElementById('btn-ver-web');
+                    btn.href = wUrl;
+                    btn.target = "_blank";
+                 }
+            }
+            else {
+                if (!isManualLoading) {
+                    const btn = document.getElementById('btn-ver-web');
+                    if(wUrl && wUrl.length > 5 && btn.classList.contains('disabled')) {
+                        setBtnState(false);
+                        btn.href = wUrl;
+                        btn.target = "_blank";
+                    }
                 }
-            }, 1500);
-        }
+            }
 
-        async function handleLogin() { const r=await fetch('index.php',{method:'POST',body:JSON.stringify({action:'login',email_user:document.getElementById('log_email').value,password:document.getElementById('log_pass').value})}); const d=await r.json(); if(d.status==='success') location.reload(); else alert(d.mensaje); }
-        async function handleRegister() { if(!document.getElementById('reg_terms').checked) return; const t = document.getElementById('t_a').checked ? 'autonomo' : 'empresa'; const d = { action:'register', username:document.getElementById('reg_u').value, email:document.getElementById('reg_e').value, password:document.getElementById('reg_p1').value, password_confirm:document.getElementById('reg_p2').value, telefono:document.getElementById('reg_tel').value, calle:document.getElementById('reg_cal').value, tipo_usuario:t }; if(t==='autonomo') { d.full_name=document.getElementById('reg_fn').value; d.dni=document.getElementById('reg_dni_a').value; } else { d.contact_name=document.getElementById('reg_contact').value; d.cif=document.getElementById('reg_cif').value; d.dni=d.cif; d.tipo_empresa=document.getElementById('reg_tipo_emp').value; if(d.tipo_empresa==='Otro') d.company_name=document.getElementById('reg_rs').value; } await fetch('index.php',{method:'POST',body:JSON.stringify(d)}); location.reload(); }
-        function logout() { fetch('index.php',{method:'POST',body:JSON.stringify({action:'logout'})}).then(()=>location.reload()); }
-        function copyData(){ navigator.clipboard.writeText(document.getElementById('ssh-details').innerText); }
-    </script>
+            try {
+                if(pb && pb.status === 'creating') {
+                    if(bUi) bUi.style.display='block'; if(dUi) dUi.style.display='none'; if(list) list.style.display='none'; 
+                    if(bBar) bBar.style.width=pb.progress+'%'; 
+                } else if(pb && pb.status === 'deleting') {
+                    if(bUi) bUi.style.display='none'; if(dUi) dUi.style.display='block'; if(list) list.style.display='none';
+                    if(dBar) dBar.style.width=pb.progress+'%'; 
+                } else if (!pb || pb.status === 'completed' || pb.status === 'error') {
+                    if(bUi) bUi.style.display='none'; if(dUi) dUi.style.display='none'; if(list) list.style.display='block';
+                    
+                    document.getElementById('backup-count').innerText = `${d.backups_list.length}/${backupLimit}`;
+                    let html = '';
+                    [...d.backups_list].reverse().forEach(b => {
+                        let typeClass = b.type == 'FULL' ? 'bg-primary' : (b.type == 'DIFF' ? 'bg-warning text-dark' : 'bg-info text-dark');
+                        html += `<div class="backup-item d-flex justify-content-between align-items-center mb-2 p-2 rounded" style="background:rgba(255,255,255,0.05)"><div class="text-white"><span class="fw-bold">${b.name.replace(/'/g, "")}</span> <span class="badge ${typeClass} ms-2">${b.type.toUpperCase()}</span><div class="small text-light-muted">${b.date}</div></div><div class="d-flex gap-2"><button onclick="restoreBackup('${b.file}', '${b.name.replace(/'/g, "")}')" class="btn btn-sm btn-outline-success"><i class="bi bi-arrow-counterclockwise"></i></button><button onclick="deleteBackup('${b.file}', '${b.type}', '${b.name.replace(/'/g, "")}')" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button></div></div>`;
+                    });
+                    list.innerHTML = html || '<small class="text-light-muted d-block text-center py-2">Sin copias disponibles.</small>';
+                }
+            } catch(e) {}
+            
+            try {
+                const chatBubble = document.getElementById('sylo-thinking'); const chatText = document.getElementById('thinking-text');
+                if (chatBubble && d.chat_status) chatText.innerText = d.chat_status;
+                if(d.chat_reply) { if(chatBubble) chatBubble.remove(); const body = document.getElementById('chatBody'); body.innerHTML += `<div class="chat-msg support">${d.chat_reply}</div>`; body.scrollTop = body.scrollHeight; showToast("Mensaje de soporte recibido", "info"); }
+            } catch(e) {}
+
+        }).catch(err => { console.log("Esperando datos...", err); });
+    }
+    setInterval(loadData, 1500);
+</script>
 </body>
 </html>

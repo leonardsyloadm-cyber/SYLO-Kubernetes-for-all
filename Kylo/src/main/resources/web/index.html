@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>KyloDB Architect Elite</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root { --dark: #2c3e50; --accent: #3498db; --light: #ecf0f1; --danger: #e74c3c; --success: #2ecc71; --console: #1e272e; }
+        body { margin: 0; font-family: 'Segoe UI', sans-serif; display: flex; height: 100vh; background: #f8f9fa; color: #333; font-size: 13px; }
+        
+        /* SIDEBAR PRO */
+        .sidebar { width: 280px; background: #2f3640; color: #dcdde1; display: flex; flex-direction: column; flex-shrink: 0; user-select: none; }
+        .logo { padding: 18px; font-size: 1.2em; font-weight: 800; background: #242a30; border-bottom: 1px solid #353b48; display: flex; align-items: center; gap: 10px; }
+        .logo i { color: var(--accent); }
+        .tree-area { flex: 1; overflow-y: auto; padding: 10px 0; }
+        
+        /* NODOS ARBOL LATERAL */
+        .node-row { display: flex; align-items: center; padding: 6px 15px; cursor: pointer; border-left: 3px solid transparent; transition:0.2s; }
+        .node-row:hover { background: #353b48; color: white; }
+        .node-row.active { background: #353b48; border-left-color: var(--accent); color: white; }
+        .toggle-icon { width: 20px; text-align: center; color: #7f8fa6; font-size: 0.8em; }
+        .ic-db { color: #f1c40f; } .ic-tbl { color: #00d2d3; } .ic-col { color: #2ecc71; font-size: 0.9em; }
+        .node-sub { padding-left: 35px; } 
+        .node-sub-sub { padding-left: 60px; font-size: 0.9em; color: #a4b0be; }
+        
+        /* MAIN */
+        .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .topbar { background: white; padding: 0 20px; height: 50px; display: flex; align-items: center; border-bottom: 1px solid #ddd; }
+        .tabs { background: white; display: flex; padding: 0 20px; border-bottom: 1px solid #ddd; gap: 20px; }
+        .tab { padding: 12px 0; cursor: pointer; border-bottom: 3px solid transparent; font-weight: 600; color: #7f8fa6; }
+        .tab.active { border-bottom-color: var(--accent); color: var(--accent); }
+        .content { padding: 20px; overflow-y: auto; flex: 1; position: relative; }
+        .panel { display: none; animation: fadeIn 0.3s; } .panel.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* --- ORGANIGRAMA VISUAL (HIERARCHY TREE) --- */
+        .org-container { display: flex; flex-direction: column; align-items: center; padding: 40px; }
+        
+        /* Nivel 1: DB (Raíz) */
+        .org-db { 
+            background: #2c3e50; color: white; padding: 10px 30px; border-radius: 50px; 
+            font-weight: 800; font-size: 1.4em; position: relative; margin-bottom: 40px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2); z-index: 2;
+        }
+        /* Tronco principal */
+        .org-db::after {
+            content: ''; position: absolute; bottom: -40px; left: 50%; width: 2px; height: 40px; background: #bdc3c7;
+        }
+
+        /* Contenedor de Tablas (Rama Horizontal) */
+        .org-tables-row { 
+            display: flex; gap: 40px; position: relative; justify-content: center; 
+            padding-top: 20px; /* Espacio para la linea horizontal */
+        }
+        /* Línea Horizontal Conectora */
+        .org-tables-row::before {
+            content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; background: #bdc3c7;
+            /* Truco: Ajustar márgenes para que la línea no sobresalga del primer y último hijo */
+            margin-left: calc(50% / var(--child-count)); 
+            margin-right: calc(50% / var(--child-count));
+        }
+        /* Conector vertical del tronco a la rama */
+        .org-tables-row::after {
+            content: ''; position: absolute; top: -20px; left: 50%; width: 2px; height: 20px; background: #bdc3c7;
+        }
+
+        /* Nivel 2: Tablas */
+        .org-table-group { display: flex; flex-direction: column; align-items: center; position: relative; }
+        /* Linea vertical hacia arriba (hacia la rama horizontal) */
+        .org-table-group::before {
+            content: ''; position: absolute; top: -22px; left: 50%; width: 2px; height: 22px; background: #bdc3c7;
+        }
+
+        .org-table-card {
+            background: var(--accent); color: white; padding: 8px 20px; border-radius: 6px;
+            font-weight: bold; font-size: 1.1em; margin-bottom: 20px; position: relative;
+            box-shadow: 0 4px 8px rgba(52,152,219,0.3); min-width: 120px; text-align: center;
+        }
+        /* Tronco hacia las columnas */
+        .org-table-card::after {
+            content: ''; position: absolute; bottom: -20px; left: 50%; width: 2px; height: 20px; background: #bdc3c7;
+        }
+
+        /* Nivel 3: Columnas */
+        .org-cols-container { display: flex; flex-direction: column; gap: 8px; position: relative; }
+        /* Linea vertical que une todas las columnas */
+        .org-cols-container::before {
+            content: ''; position: absolute; top: -20px; bottom: 15px; left: 50%; width: 2px; background: #bdc3c7; margin-left: -1px; z-index: 0;
+        }
+
+        .org-col-card {
+            background: white; border: 1px solid #ddd; padding: 6px 12px; border-radius: 4px;
+            text-align: center; width: 140px; position: relative; z-index: 1;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05); display: flex; justify-content: space-between; align-items: center;
+        }
+        .org-col-name { font-weight: bold; color: #34495e; font-size: 0.9em; }
+        .org-col-type { font-size: 0.7em; color: #7f8fa6; background: #f1f2f6; padding: 2px 5px; border-radius: 3px; }
+
+        /* KYLOQUERY */
+        .kylo-layout { display: flex; gap: 20px; height: 100%; }
+        .sql-col { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+        .cheat-col { width: 300px; background: white; border: 1px solid #ccc; border-radius: 4px; display: flex; flex-direction: column; overflow: hidden; }
+        .console { background: var(--console); color: #2ecc71; padding: 15px; font-family: monospace; height: 200px; overflow-y: auto; border-radius: 4px; border: 1px solid #000; }
+        .cheat-list { overflow-y: auto; flex: 1; }
+        .cheat-grp { background: #f1f2f6; padding: 8px 15px; font-weight: bold; font-size: 0.85em; color: #2c3e50; border: 1px solid #ddd; border-width: 1px 0; }
+        .cheat-item { padding: 6px 15px; border-bottom: 1px solid #f9f9f9; cursor: pointer; color: #2980b9; font-family: monospace; font-size: 0.9em; }
+        .cheat-item:hover { background: #eef7ff; }
+
+        /* TABLES */
+        table.grid { width: 100%; border-collapse: collapse; background: white; border: 1px solid #ddd; }
+        table.grid th { background: #f1f2f6; padding: 10px; text-align: left; }
+        table.grid td { padding: 8px; border-bottom: 1px solid #eee; }
+        .btn { padding: 8px 15px; background: var(--accent); color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        .btn-red { background: var(--danger); }
+        .toast { position: fixed; bottom: 20px; right: 20px; background: #333; color: white; padding: 15px; border-radius: 4px; display: none; z-index: 999; }
+    </style>
+</head>
+<body>
+
+<div class="sidebar">
+    <div class="logo"><i class="fas fa-layer-group"></i> KYLO<span style="font-weight:300">ARCHITECT</span></div>
+    <div style="padding:15px"><button class="btn" style="width:100%; background:#27ae60" onclick="newDB()">+ Nueva DB</button></div>
+    <div class="tree-area" id="tree-root"></div>
+</div>
+
+<div class="main">
+    <div class="topbar">
+        <div><i class="fas fa-database" style="color:#f1c40f"></i> <b id="lbl-db">...</b> <i class="fas fa-chevron-right" style="color:#ccc"></i> <b id="lbl-tbl">...</b></div>
+    </div>
+    <div class="tabs">
+        <div class="tab active" onclick="nav('browse')">Examinar</div>
+        <div class="tab" onclick="nav('struct')">Estructura Visual</div>
+        <div class="tab" onclick="nav('sql')">KyloQuery</div>
+        <div class="tab" onclick="nav('insert')">Insertar</div>
+    </div>
+    
+    <div class="content">
+        <div id="p-browse" class="panel active">
+            <div style="margin-bottom:15px; display:flex; justify-content:space-between">
+                <h3>Datos de Tabla</h3>
+                <div>
+                    <button class="btn btn-red" onclick="truncateTbl()">Vaciar</button>
+                    <button class="btn" onclick="refreshBrowse()">Refrescar</button>
+                </div>
+            </div>
+            <div id="browse-grid"></div>
+        </div>
+
+        <div id="p-struct" class="panel">
+            <div id="vis-area" class="org-container">
+                <p style="color:#aaa">Selecciona una base de datos a la izquierda.</p>
+            </div>
+        </div>
+
+        <div id="p-sql" class="panel" style="height:100%">
+            <div class="kylo-layout">
+                <div class="sql-col">
+                    <textarea id="sql-in" style="height:120px; padding:15px; font-family:monospace; border:1px solid #ccc; font-size:1.1em; resize:none" placeholder="SQL..."></textarea>
+                    <div style="text-align:right"><button class="btn" onclick="runSQL()">EJECUTAR</button></div>
+                    <div style="font-weight:bold; margin-top:10px; color:#555">Terminal:</div>
+                    <div id="console" class="console"><div>> KyloDB v16 Ready.</div></div>
+                </div>
+                <div class="cheat-col">
+                    <div style="padding:10px; font-weight:bold; text-align:center; background:#eee">COMANDOS</div>
+                    <div class="cheat-list">
+                        <div class="cheat-grp">DDL</div>
+                        <div class="cheat-item" onclick="fill('CREATE TABLE t (id INT PK)')">CREATE TABLE</div>
+                        <div class="cheat-item" onclick="fill('ALTER TABLE t ADD COLUMN c TEXT')">ALTER TABLE</div>
+                        <div class="cheat-item" onclick="fill('DROP TABLE t')">DROP TABLE</div>
+                        <div class="cheat-grp">DML</div>
+                        <div class="cheat-item" onclick="fill('SELECT * FROM t')">SELECT *</div>
+                        <div class="cheat-item" onclick="fill('INSERT INTO t VALUES (1, \'a\')')">INSERT</div>
+                        <div class="cheat-item" onclick="fill('DELETE FROM t WHERE _ID=\'x\'')">DELETE</div>
+                        <div class="cheat-grp">Advanced</div>
+                        <div class="cheat-item" onclick="fill('BACKUP DATABASE db')">BACKUP</div>
+                        <div class="cheat-item" onclick="fill('OPTIMIZE TABLE t')">OPTIMIZE</div>
+                        <div class="cheat-item" onclick="fill('GRANT ALL ON *.* TO u')">GRANT</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="p-insert" class="panel">
+            <h3>Nuevo Registro</h3>
+            <div id="insert-form" style="background:white; padding:20px; border:1px solid #ccc; max-width:500px"></div>
+        </div>
+    </div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+    let activeDB='', activeTbl='';
+
+    // --- ARBOL LATERAL ---
+    async function loadTree() {
+        const r = await fetch('/api/catalog');
+        const tree = await r.json();
+        const root = document.getElementById('tree-root');
+        root.innerHTML = '<ul style="list-style:none; padding:0; margin:0">';
+        
+        for(const [db, tables] of Object.entries(tree)) {
+            // NODO DB
+            let html = `<li>
+                <div class="node-row ${activeDB===db?'active':''}">
+                    <div class="toggle-icon" onclick="toggleSub(this)"><i class="fas fa-plus-square"></i></div>
+                    <div style="flex:1" onclick="selectDB('${db}')"><i class="fas fa-database ic-db"></i> ${db}</div>
+                </div>
+                <ul style="display:none; list-style:none; padding:0;">`;
+            
+            // NODOS TABLAS
+            for(const [tbl, cols] of Object.entries(tables)) {
+                html += `<li>
+                    <div class="node-row node-sub ${activeTbl===tbl && activeDB===db?'active':''}">
+                        <div class="toggle-icon" onclick="toggleSub(this)"><i class="fas fa-plus-square"></i></div>
+                        <div style="flex:1" onclick="selectTable('${db}','${tbl}')"><i class="fas fa-table ic-tbl"></i> ${tbl}</div>
+                    </div>
+                    <ul style="display:none; list-style:none; padding:0;">`;
+                
+                // NODOS COLUMNAS
+                cols.forEach(c => {
+                    const [n, t] = c.split(':');
+                    html += `<li><div class="node-row node-sub-sub">
+                        <span class="toggle-icon"></span><i class="fas fa-columns ic-col"></i> ${n} <span style="font-size:0.8em; margin-left:5px">(${t})</span>
+                    </div></li>`;
+                });
+                html += `</ul></li>`;
+            }
+            html += `</ul></li>`;
+            root.innerHTML += html;
+        }
+        root.innerHTML += '</ul>';
+    }
+
+    function toggleSub(el) {
+        const ul = el.parentElement.nextElementSibling;
+        const isH = ul.style.display==='none';
+        ul.style.display = isH?'block':'none';
+        el.innerHTML = isH?'<i class="fas fa-minus-square"></i>':'<i class="fas fa-plus-square"></i>';
+    }
+
+    function selectDB(db) {
+        activeDB=db; activeTbl='';
+        document.getElementById('lbl-db').innerText=db; document.getElementById('lbl-tbl').innerText='...';
+        execSQL(`USE ${db}`, true);
+        nav('struct'); loadFullStruct();
+    }
+
+    function selectTable(db, tbl) {
+        activeDB=db; activeTbl=tbl;
+        document.getElementById('lbl-db').innerText=db; document.getElementById('lbl-tbl').innerText=tbl;
+        execSQL(`USE ${db}`, true);
+        nav('browse'); refreshBrowse();
+    }
+
+    // --- ORGANIGRAMA VISUAL (TU DIBUJO REALIZADO) ---
+    async function loadFullStruct() {
+        if(!activeDB) return;
+        const r = await fetch('/api/catalog');
+        const tree = await r.json();
+        const tables = tree[activeDB] || {};
+        const count = Object.keys(tables).length;
+        const area = document.getElementById('vis-area');
+        
+        let html = `
+            <div class="org-db"><i class="fas fa-database"></i> ${activeDB}</div>
+            <div class="org-tables-row" style="--child-count: ${count}">
+        `;
+        
+        if(count === 0) html += '<p style="color:#aaa">Sin tablas.</p>';
+
+        for(const [tbl, cols] of Object.entries(tables)) {
+            html += `
+                <div class="org-table-group">
+                    <div class="org-table-card"><i class="fas fa-table"></i> ${tbl}</div>
+                    <div class="org-cols-container">
+            `;
+            cols.forEach(c => {
+                const [n, t] = c.split(':');
+                html += `
+                        <div class="org-col-card">
+                            <span class="org-col-name">${n}</span>
+                            <span class="org-col-type">${t}</span>
+                        </div>
+                `;
+            });
+            html += `   </div>
+                </div>`; // Cierre grupo tabla
+        }
+        html += `</div>`; // Cierre row
+        area.innerHTML = html;
+    }
+
+    // --- FUNCIONALIDAD CORE ---
+    async function refreshBrowse() {
+        if(!activeTbl) return;
+        const r = await fetch('/api/query', {method:'POST', body:`SELECT * FROM ${activeTbl}`});
+        const res = await r.json();
+        const div = document.getElementById('browse-grid');
+        div.innerHTML = '';
+        if(!res.data || res.data.length===0) { div.innerHTML='<p style="padding:20px">Vacio.</p>'; return; }
+        const k = Object.keys(res.data[0]).filter(x=>x!=='_ID');
+        let h = `<table class="grid"><thead><tr>`;
+        k.forEach(x=>h+=`<th>${x}</th>`);
+        h+=`<th>Acción</th></tr></thead><tbody>`;
+        res.data.forEach(row=>{ h+=`<tr>`; k.forEach(x=>h+=`<td>${row[x]}</td>`); h+=`<td><button class="btn btn-red" style="padding:2px 6px" onclick="delRow('${row['_ID']}')">X</button></td></tr>`; });
+        h+=`</tbody></table>`;
+        div.innerHTML=h;
+    }
+
+    async function execSQL(cmd, silent=false) {
+        if(!silent) log(`> ${cmd}`);
+        const r = await fetch('/api/query', {method:'POST', body:cmd});
+        const res = await r.json();
+        if(!silent) { log(res.success?`OK: ${res.message}`:`ERR: ${res.message}`); toast(res.message); if(cmd.includes('CREATE')||cmd.includes('DROP')) loadTree(); }
+    }
+
+    async function buildInsert() {
+        if(!activeTbl) { document.getElementById('insert-form').innerHTML='Selecciona tabla.'; return; }
+        const r = await fetch(`/api/describe/${activeDB}/${activeTbl}`);
+        const cols = await r.json();
+        let h='';
+        cols.forEach(c=>{
+            let t='text'; if(c.type==='INT')t='number';
+            h+=`<div style="margin-bottom:10px"><label style="font-weight:bold">${c.name}</label><input class="ins-val" type="${t}" style="width:100%; padding:8px; border:1px solid #ccc"></div>`;
+        });
+        h+=`<button class="btn" onclick="sendInsert()">Insertar</button>`;
+        document.getElementById('insert-form').innerHTML=h;
+    }
+    async function sendInsert() {
+        let vals=[]; document.querySelectorAll('.ins-val').forEach(i=>vals.push(`'${i.value}'`));
+        await execSQL(`INSERT INTO ${activeTbl} VALUES (${vals.join(',')})`);
+        nav('browse'); refreshBrowse();
+    }
+
+    function nav(id){ document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active')); document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active')); document.getElementById('p-'+id).classList.add('active'); event.currentTarget.classList.add('active'); if(id==='struct') loadFullStruct(); if(id==='insert') buildInsert(); }
+    function log(m){ const c=document.getElementById('console'); c.innerHTML+=`<div class="log-entry">${m}</div>`; c.scrollTop=c.scrollHeight; }
+    function runSQL(){ execSQL(document.getElementById('sql-in').value); }
+    function fill(t){ document.getElementById('sql-in').value=t; }
+    function newDB(){ const n=prompt("Nombre:"); if(n) execSQL(`CREATE DATABASE ${n}`); }
+    function toast(m){ const t=document.getElementById('toast'); t.innerText=m; t.style.display='block'; setTimeout(()=>t.style.display='none',3000); }
+    async function delRow(id){ if(confirm('Borrar?')) { await execSQL(`DELETE FROM ${activeTbl} WHERE _ID='${id}'`); refreshBrowse(); }}
+    async function truncateTbl(){ if(confirm('Vaciar?')) { await execSQL(`TRUNCATE ${activeTbl}`); refreshBrowse(); }}
+
+    loadTree();
+</script>
+</body>
+</html>

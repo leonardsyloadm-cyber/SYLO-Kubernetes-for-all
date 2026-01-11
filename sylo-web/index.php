@@ -1,6 +1,6 @@
 <?php
 // =================================================================================
-// 🏛️ SYLO WEB V112 - FINAL RESTORED (LEGACY CARDS + FIXED CALC + YOUR LEGAL TEXT)
+// 🏛️ SYLO WEB V113 - FINAL FIX (CALC OK + DASHBOARD LINK OK)
 // =================================================================================
 
 ini_set('display_errors', 1);
@@ -23,9 +23,11 @@ try {
 // --- CHECK USER ---
 $has_clusters = false;
 if (isset($_SESSION['user_id'])) {
-    $stmt = $conn->prepare("SELECT COUNT(*) FROM orders WHERE user_id = ? AND status IN ('active', 'suspended', 'creating', 'pending')");
-    $stmt->execute([$_SESSION['user_id']]);
-    if ($stmt->fetchColumn() > 0) $has_clusters = true;
+    try {
+        $stmt = $conn->prepare("SELECT COUNT(*) FROM orders WHERE user_id = ? AND status IN ('active', 'suspended', 'creating', 'pending')");
+        $stmt->execute([$_SESSION['user_id']]);
+        if ($stmt->fetchColumn() > 0) $has_clusters = true;
+    } catch(Exception $e) {}
 }
 
 // --- 2. STATUS CHECK ---
@@ -122,7 +124,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         [data-theme="dark"] .navbar { background: rgba(15, 23, 42, 0.95); border-bottom: 1px solid rgba(255,255,255,0.1); }
         [data-theme="dark"] .navbar-brand, [data-theme="dark"] .nav-link { color: white !important; }
         
-        /* THEME ELEMENTS */
         .info-card, .bg-white { background-color: var(--sylo-card) !important; color: var(--sylo-text); }
         [data-theme="dark"] .text-muted { color: #94a3b8 !important; }
         [data-theme="dark"] .bg-light { background-color: #1e293b !important; border-color: #334155; }
@@ -131,17 +132,14 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         
         .hero { padding: 140px 0 100px; background: linear-gradient(180deg, var(--sylo-bg) 0%, var(--sylo-card) 100%); }
         
-        /* CALCULATOR */
         .calc-box { background: #1e293b; border-radius: 24px; padding: 40px; color: white; border: 1px solid #334155; }
         .price-display { font-size: 3.5rem; font-weight: 800; color: var(--sylo-accent); }
         
-        /* SLIDERS AZULES FUERTES (FIXED) */
         input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
         input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 20px; width: 20px; border-radius: 50%; background: #3b82f6; cursor: pointer; margin-top: -8px; box-shadow: 0 0 10px #3b82f6; }
         input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #475569; border-radius: 2px; }
         input[type=range]:focus::-webkit-slider-runnable-track { background: #3b82f6; }
 
-        /* 3D CARDS */
         .card-stack-container { perspective: 1500px; height: 600px; cursor: pointer; position: relative; margin-bottom: 30px; }
         .card-face { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; transition: transform 0.8s; border-radius: 24px; }
         .card-stack-container.active .card-face { transform: rotateY(180deg); }
@@ -151,7 +149,6 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         .card-stack-container.active .face-front { pointer-events: none; }
         .card-stack-container.active .face-back { pointer-events: auto; }
         
-        /* UI HELPERS */
         .bench-bar { height: 35px; border-radius: 8px; display: flex; align-items: center; padding: 0 15px; color: white; margin-bottom: 8px; transition: width 1s; }
         .b-sylo { background: linear-gradient(90deg, #2563eb, #3b82f6); }
         .b-aws { background: #64748b; }
@@ -182,19 +179,21 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 <div class="d-none d-md-flex align-items-center cursor-pointer" onclick="new bootstrap.Modal('#statusModal').show()">
                     <div class="status-dot me-2"></div><span class="small fw-bold text-success">Status</span>
                 </div>
+                
                 <?php if (isset($_SESSION['user_id'])): ?>
-                    <a href="dashboard_cliente.php" class="btn btn-outline-primary btn-sm rounded-pill px-3 fw-bold">CONSOLA</a>
+                    <a href="dashboard_cliente.php" class="btn btn-primary btn-sm rounded-pill px-4 fw-bold">CONSOLA</a>
                     <button class="btn btn-link text-danger btn-sm" onclick="logout()"><i class="fas fa-sign-out-alt"></i></button>
                 <?php else: ?>
-                    <button class="btn btn-primary btn-sm rounded-pill px-4 fw-bold" onclick="openM('authModal')">CLIENTE</button>
+                    <button class="btn btn-outline-primary btn-sm rounded-pill px-4 fw-bold" onclick="openM('authModal')">CLIENTE</button>
                 <?php endif; ?>
+                
             </div>
         </div>
     </nav>
 
     <section class="hero text-center">
         <div class="container">
-            <span class="badge bg-primary mb-3 px-3 py-1 rounded-pill">V112 Stable</span>
+            <span class="badge bg-primary mb-3 px-3 py-1 rounded-pill">V113 Stable</span>
             <h1 class="display-3 fw-bold mb-4">Infraestructura <span class="text-primary">Ryzen™</span></h1>
             <p class="lead mb-5">Orquestación Kubernetes V21 desde Alicante, España.</p>
         </div>
@@ -287,7 +286,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
         // --- CALCULADORA (FIXED: UPDATE ON INPUT) ---
         document.addEventListener('DOMContentLoaded', () => { 
-            ['in-cpu','in-ram','check-calc-db','check-calc-web','sel-calc-db','sel-calc-web'].forEach(id=>document.getElementById(id)?.addEventListener('input', () => {
+            // Eliminados elementos 'sel-calc-db' y 'sel-calc-web' del array porque no existen en el HTML
+            ['in-cpu','in-ram','check-calc-db','check-calc-web'].forEach(id=>document.getElementById(id)?.addEventListener('input', () => {
                 document.getElementById('calc-preset').value='custom'; // Forzar custom al mover
                 updCalc(); 
             }));
@@ -308,9 +308,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             let d_c=document.getElementById('check-calc-db').checked?5:0;
             let w_c=document.getElementById('check-calc-web').checked?5:0;
             
-            // Logic for disabling selects in calc
-            document.getElementById('sel-calc-db').disabled=!document.getElementById('check-calc-db').checked;
-            document.getElementById('sel-calc-web').disabled=!document.getElementById('check-calc-web').checked;
+            // Eliminada la lógica que deshabilitaba los selects que no existen y causaban el error JS
             
             renderP((c*5)+(r*5)+d_c+w_c+5);
         }
@@ -413,6 +411,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         async function handleRegister() { if(!document.getElementById('reg_terms').checked) return; const t = document.getElementById('t_a').checked ? 'autonomo' : 'empresa'; const d = { action:'register', username:document.getElementById('reg_u').value, email:document.getElementById('reg_e').value, password:document.getElementById('reg_p1').value, password_confirm:document.getElementById('reg_p2').value, telefono:document.getElementById('reg_tel').value, calle:document.getElementById('reg_cal').value, tipo_usuario:t }; if(t==='autonomo') { d.full_name=document.getElementById('reg_fn').value; d.dni=document.getElementById('reg_dni_a').value; } else { d.contact_name=document.getElementById('reg_contact').value; d.cif=document.getElementById('reg_cif').value; d.dni=d.cif; d.tipo_empresa=document.getElementById('reg_tipo_emp').value; if(d.tipo_empresa==='Otro') d.company_name=document.getElementById('reg_rs').value; } await fetch('index.php',{method:'POST',body:JSON.stringify(d)}); location.reload(); }
         function logout() { fetch('index.php',{method:'POST',body:JSON.stringify({action:'logout'})}).then(()=>location.reload()); }
         function copyData(){ navigator.clipboard.writeText(document.getElementById('ssh-details').innerText); }
+        function userMovedSlider(){ document.getElementById('calc-preset').value='custom'; updCalc(); }
     </script>
 </body>
 </html>

@@ -1,109 +1,147 @@
-===================================================
-🚀 GUÍA DE INSTALACIÓN SYLO - V4.0 (AI + ENTERPRISE)
-===================================================
+================================================================================
+🤖 SYLO ENTERPRISE V6.0 - MANIFIESTO DE ARQUITECTURA & DESPLIEGUE
+================================================================================
+ATENCIÓN ANTIGRAVITY (AI AGENT):
+Estás a punto de desplegar "Sylo Cloud", una plataforma de Hosting Enterprise
+con Inteligencia Artificial integrada y un Motor de Base de Datos propio.
 
-¡Hola Leo! Esta versión incluye la arquitectura de SEGURIDAD (Calico)
-y el nuevo CEREBRO DE IA (Ollama + Sylo Brain) para el soporte técnico.
+A continuación tienes el CONTEXTO TOTAL del sistema. Memorízalo antes de ejecutar.
 
-REQUISITOS PREVIOS:
-- Docker Desktop instalado y corriendo.
-- Python 3 instalado.
-- Minikube instalado.
-- OpenTofu (tofu) instalado.
-- Kubectl instalado.
-- OLLAMA instalado (Linux: curl -fsSL https://ollama.com/install.sh | sh)
+--------------------------------------------------------------------------------
+1. INVENTARIO DE ARTEFACTOS (TU CAJA DE HERRAMIENTAS)
+--------------------------------------------------------------------------------
+El sistema se compone de 4 pilares fundamentales que deben orquestarse:
 
----------------------------------------------------
-PASO 0: LIMPIEZA DE RED (IPS INMORTALES)
----------------------------------------------------
-Configura estas IPs en el código para que Docker y Localhost se entiendan:
+[A] EL CEREBRO (IA & WORKERS)
+    - worker/sylo_brain.py (v25 Guardian):
+      * Motor: Ollama (Qwen 2.5:1.5b).
+      * Función: Chatbot de soporte técnico nivel 1.
+      * Seguridad: Filtro "Guardian" hardcoded anti-política/violencia.
+      * Capacidad: RAG estático (Manual Técnico Sylo).
 
-1. sylo-web/index.php             -> API_URL = "http://172.17.0.1:8001/api/clientes"
-2. worker/sylo_brain.py           -> OLLAMA_URL = "http://172.17.0.1:11434/api/generate"
-3. dashboard_cliente.php          -> API_URL_BASE = "http://172.17.0.1:8001/api/clientes"
+    - worker/orchestrator_sylo.py (v21 Logic Core):
+      * Función: El "Jefe de Obra". Decide qué se instala según el PLAN.
+      * Reglas: Impone restricciones de negocio sobre Kubernetes/Docker.
 
-*(Nota: 172.17.0.1 es la IP del Host desde Docker. Si falla, prueba host.docker.internal)*
+    - worker/operator_sylo.py (v46 Maintenance):
+      * Función: El "Conserje". Limpieza de logs, purga de contenedores huérfanos.
 
----------------------------------------------------
-PASO 1: PREPARAR OLLAMA (SOLO UNA VEZ)
----------------------------------------------------
-Para que la IA funcione con Docker, hay que abrirla al mundo.
+[B] EL NÚCLEO DE DATOS (KYLO DB)
+    - Backend: Java (KyloServer v28 Smart Insert).
+      * Puerto: 5000 (TCP) / 8082 (API).
+      * Características: NoSQL híbrido, persistencia en disco encriptado.
+    - Frontend: HTML/JS (Kylo Architect v28).
+      * Ubicación: sylo-web/js/kylo-core.js.
+      * Tech: Drag & Drop Visual Builder, Inteligencia Relacional (FKs automáticas).
 
-1. Edita el servicio de Ollama:
-   $ sudo systemctl edit ollama.service
+[C] LA INTERFAZ DE CLIENTE (WEB)
+    - Stack: PHP 8.x + Apache.
+    - Ubicación: sylo-web/
+    - Conexión: Habla con la API Python (Puerto 8001) y KyloDB.
 
-2. Pega ESTO (sin almohadillas #) en el hueco libre:
-   [Service]
-   Environment="OLLAMA_HOST=0.0.0.0"
+[D] LA INFRAESTRUCTURA (INFRA)
+    - Docker: Contenedores para aislamiento.
+    - Calico CNI: Seguridad de red entre pods/contenedores.
+    - Minikube: Orquestación local simulando nube real.
 
-3. Guarda (Ctrl+O) y Sal (Ctrl+X).
+--------------------------------------------------------------------------------
+2. REGLAS DE NEGOCIO (EL ORQUESTADOR V21 MANDA)
+--------------------------------------------------------------------------------
+Al aprovisionar un cliente, el Orquestador V21 debe cumplir estrictamente:
 
-4. Aplica cambios y descarga el modelo:
-   $ sudo systemctl daemon-reload
-   $ sudo systemctl restart ollama
-   $ ollama pull qwen2.5:1.5b
+1. PLAN BRONCE:
+   - SO: Alpine Linux (Ligero).
+   - Acceso: Solo SSH.
+   - Prohibido: Web Server y Bases de Datos (ignora petición del JSON).
 
----------------------------------------------------
-PASO 2: INSTALAR LIBRERÍAS PYTHON
----------------------------------------------------
-1. Abre una terminal en la raíz del proyecto.
-2. Activa entorno:
-   $ source venv/bin/activate
-3. Instala todo:
-   $ pip install fastapi uvicorn requests psutil mysql-connector-python
+2. PLAN PLATA:
+   - SO: Ubuntu o Alpine.
+   - DB: MySQL Obligatoria.
+   - Prohibido: Web Server.
 
----------------------------------------------------
-PASO 3: ARRANCAR INFRAESTRUCTURA BASE
----------------------------------------------------
-1. En la raíz del proyecto:
-   $ docker-compose up -d --build
+3. PLAN ORO:
+   - SO: Todo permitido (inc. RedHat).
+   - Obligatorio: Web Server + DB MySQL.
+   - Extras: Snapshots ilimitados.
 
-2. (Opcional) Si la web no conecta tras cambiar de WiFi:
-   $ docker restart sylo-web
+4. PLAN PERSONALIZADO (Cliente 14 - CorpusProfe):
+   - Configuración "A la carta".
+   - Web: Nginx específico.
 
----------------------------------------------------
-PASO 4: ARRANCAR LA API (EL NÚCLEO)
----------------------------------------------------
-1. Abre TERMINAL 1 (API):
-   $ source venv/bin/activate
-   $ python3 Cerebro/api_sylo.py
+NOTA IMPORTANTE: Los dominios son automáticos, no dependen del ID del cliente.
 
-   (Debe decir: "API Restaurada y Lista" en puerto 8001).
+--------------------------------------------------------------------------------
+3. PROTOCOLO DE DESPLIEGUE AUTOMATIZADO (NO-INTERACTIVE)
+--------------------------------------------------------------------------------
+ANTIGRAVITY: Ejecuta esta secuencia para levantar el imperio.
 
----------------------------------------------------
-PASO 5: ARRANCAR SYLO BRAIN (LA IA)
----------------------------------------------------
-Este script conecta el chat de la web con Ollama y la base de conocimientos.
+PASO 1: PARCHEO DE RED (SED INJECTION)
+--------------------------------------
+# Inyecta la IP del host para que los contenedores hablen con la API/Ollama.
+HOST_IP="172.17.0.1" # Si falla en Mac/Win, usa host.docker.internal
 
-1. Abre TERMINAL 2 (Cerebro):
-   $ source venv/bin/activate
-   $ python3 worker/sylo_brain.py
+sed -i "s|API_URL = .*|API_URL = \"http://${HOST_IP}:8001/api/clientes\"|g" sylo-web/index.php
+sed -i "s|API_URL_BASE = .*|API_URL_BASE = \"http://${HOST_IP}:8001/api/clientes\"|g" sylo-web/dashboard_cliente.php
+sed -i "s|OLLAMA_URL = .*|OLLAMA_URL = \"http://${HOST_IP}:11434/api/generate\"|g" worker/sylo_brain.py
 
-   (Debe decir: "Sylo Brain v20... Iniciado").
+PASO 2: PREPARACIÓN DE OLLAMA
+-----------------------------
+# Exponer Ollama 0.0.0.0 y descargar modelo Qwen
+sudo mkdir -p /etc/systemd/system/ollama.service.d
+echo -e "[Service]\nEnvironment=\"OLLAMA_HOST=0.0.0.0\"" | sudo tee /etc/systemd/system/ollama.service.d/override.conf
+sudo systemctl daemon-reload && sudo systemctl restart ollama
+ollama pull qwen2.5:1.5b
 
----------------------------------------------------
-PASO 6: ARRANCAR EL ORQUESTADOR (EL CAPATAZ)
----------------------------------------------------
-Despliega los Kubernetes, Calico y reglas de negocio.
+PASO 3: ENTORNO PYTHON
+----------------------
+python3 -m venv venv
+source venv/bin/activate
+pip install fastapi uvicorn requests psutil mysql-connector-python colorama tabulate javalin
 
-1. Abre TERMINAL 3 (Orquestador):
-   $ source venv/bin/activate
-   $ sudo python3 worker/orchestrator_sylo.py
+PASO 4: STARTUP SCRIPT (EL LANZADOR)
+------------------------------------
+# Genera este script y ejecútalo para levantar los 4 pilares en background.
 
----------------------------------------------------
-PASO 7: EL OPERADOR (MANTENIMIENTO)
----------------------------------------------------
-Script V46 que gestiona estados y limpieza.
+cat << 'EOF' > start_sylo_enterprise.sh
+#!/bin/bash
+source venv/bin/activate
 
-1. Abre TERMINAL 4 (Operador):
-   $ source venv/bin/activate
-   $ sudo python3 worker/operator_sylo.py
+echo "🚀 DESPLEGANDO SYLO ENTERPRISE V6.0..."
 
----------------------------------------------------
-PASO 8: VERIFICACIÓN FINAL
----------------------------------------------------
-1. 🌍 WEB CLIENTE: http://localhost:8000/index.php
-2. 🤖 CHAT IA: Entra al Dashboard, escribe "hola" y verifica que responde.
-   (Si responde rápido, es Python. Si tarda un poco y explica cosas, es Ollama).
+# 1. INFRAESTRUCTURA BASE (DOCKER)
+echo "📦 Levantando Contenedores (Web + MySQL + KyloDB)..."
+docker-compose down --remove-orphans
+docker-compose up -d --build
+sleep 5 # Esperar a que Docker respire
 
-¡Sistema Completo Sylo Enterprise Listo! ☁️👮‍♂️🧠
+# 2. PROCESOS PYTHON (API + IA + WORKERS)
+echo "🧠 Iniciando Cerebro y Workers..."
+
+nohup python3 Cerebro/api_sylo.py > logs_api.txt 2>&1 &
+echo "   [OK] API (Port 8001) - PID $!"
+
+nohup python3 worker/sylo_brain.py > logs_brain.txt 2>&1 &
+echo "   [OK] SYLO BRAIN (Ollama Link) - PID $!"
+
+nohup sudo -E python3 worker/orchestrator_sylo.py > logs_orchestrator.txt 2>&1 &
+echo "   [OK] ORCHESTRATOR V21 (Business Rules) - PID $!"
+
+nohup sudo -E python3 worker/operator_sylo.py > logs_operator.txt 2>&1 &
+echo "   [OK] OPERATOR V46 (Maintenance) - PID $!"
+
+echo "✅ SISTEMA ONLINE. Monitorea 'logs_*.txt' para detalles."
+EOF
+
+chmod +x start_sylo_enterprise.sh
+./start_sylo_enterprise.sh
+
+--------------------------------------------------------------------------------
+4. VALIDACIÓN DE ÉXITO
+--------------------------------------------------------------------------------
+Si todo ha ido bien:
+1. Web Cliente: http://localhost:8000
+2. KyloDB GUI: http://localhost:8082
+3. API Docs: http://localhost:8001/docs
+
+ANTIGRAVITY: Misión cumplida. Esperando órdenes.
+================================================================================

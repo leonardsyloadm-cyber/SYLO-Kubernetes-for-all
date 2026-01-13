@@ -1,110 +1,7 @@
 <?php
-// =================================================================================
-// 🏛️ SYLO WEB V113 - FINAL FIX (CALC OK + DASHBOARD LINK OK)
-// =================================================================================
-
-ini_set('display_errors', 1);
-error_reporting(E_ALL);
-session_start();
-
-define('API_URL', 'http://host.docker.internal:8001/api/clientes');
-
-// --- 1. DB ---
-$db_host = getenv('DB_HOST') ?: "kylo-main-db";
-$db_user = getenv('DB_USER') ?: "sylo_app";
-$db_pass = getenv('DB_PASS') ?: "sylo_app_pass";
-$db_name = getenv('DB_NAME') ?: "kylo_main_db";
-
-try {
-    $conn = new PDO("mysql:host=$db_host;dbname=$db_name", $db_user, $db_pass);
-    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-} catch(PDOException $e) { if($_SERVER['REQUEST_METHOD']=='POST') die(json_encode(["status"=>"error"])); }
-
-// --- CHECK USER ---
-$has_clusters = false;
-if (isset($_SESSION['user_id'])) {
-    try {
-        $stmt = $conn->prepare("SELECT COUNT(*) FROM orders WHERE user_id = ? AND status IN ('active', 'suspended', 'creating', 'pending')");
-        $stmt->execute([$_SESSION['user_id']]);
-        if ($stmt->fetchColumn() > 0) $has_clusters = true;
-    } catch(Exception $e) {}
-}
-
-// --- 2. STATUS CHECK ---
-if (isset($_GET['check_status'])) {
-    header('Content-Type: application/json');
-    $id = filter_var($_GET['check_status'], FILTER_VALIDATE_INT);
-    $ch = curl_init(API_URL . "/estado/" . $id);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 2);
-    $res = curl_exec($ch);
-    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    if ($code === 200 && $res) echo $res;
-    else echo json_encode(["percent" => 10, "message" => "Conectando al Núcleo...", "status" => "pending"]);
-    exit;
-}
-
-// --- 3. POST HANDLER ---
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
-    $input = json_decode(file_get_contents('php://input'), true);
-    $action = $input['action'] ?? '';
-    header('Content-Type: application/json');
-
-    if ($action === 'register') {
-        try {
-            if ($input['password'] !== $input['password_confirm']) throw new Exception("Pass mismatch");
-            $user = htmlspecialchars($input['username']);
-            $email = filter_var($input['email'], FILTER_VALIDATE_EMAIL);
-            $pass = password_hash($input['password'], PASSWORD_BCRYPT);
-            $tipo = $input['tipo_usuario'];
-            $fn = ($tipo === 'autonomo') ? $input['full_name'] : $input['contact_name'];
-            $dn = ($tipo === 'autonomo') ? $input['dni'] : $input['cif'];
-            $cn = ($tipo === 'empresa') ? $input['company_name'] : null;
-            $te = ($tipo === 'empresa') ? $input['tipo_empresa'] : null;
-            $sql = "INSERT INTO users (username, full_name, email, password_hash, role, tipo_usuario, dni, telefono, company_name, tipo_empresa, calle, created_at) VALUES (?, ?, ?, ?, 'client', ?, ?, ?, ?, ?, ?, NOW())";
-            $stmt = $conn->prepare($sql);
-            $stmt->execute([$user, $fn, $email, $pass, $tipo, $dn, $input['telefono'], $cn, $te, $input['calle']]);
-            $_SESSION['user_id'] = $conn->lastInsertId(); $_SESSION['username'] = $user; $_SESSION['company'] = $cn ?: 'Particular';
-            echo json_encode(["status"=>"success"]);
-        } catch (Exception $e) { echo json_encode(["status"=>"error", "mensaje"=>$e->getMessage()]); }
-        exit;
-    }
-    if ($action === 'login') {
-        $stmt = $conn->prepare("SELECT * FROM users WHERE email = ? OR username = ?");
-        $stmt->execute([$input['email_user'], $input['email_user']]);
-        $u = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($u && password_verify($input['password'], $u['password_hash'])) {
-            $_SESSION['user_id'] = $u['id']; $_SESSION['username'] = $u['username']; $_SESSION['company'] = $u['company_name'];
-            echo json_encode(["status"=>"success"]);
-        } else echo json_encode(["status"=>"error", "mensaje"=>"Credenciales inválidas"]);
-        exit;
-    }
-    if ($action === 'logout') { session_destroy(); echo json_encode(["status"=>"success"]); exit; }
-    if ($action === 'comprar') {
-        if (!isset($_SESSION['user_id'])) exit(json_encode(["status"=>"auth_required"]));
-        $plan = htmlspecialchars($input['plan']); $s = $input['specs']; 
-        try {
-            $stmt = $conn->prepare("INSERT INTO orders (user_id, plan_id, status) VALUES (?, 1, 'pending')");
-            $stmt->execute([$_SESSION['user_id']]);
-            $oid = $conn->lastInsertId();
-            $sqlS = "INSERT INTO order_specs (order_id, cpu_cores, ram_gb, storage_gb, db_enabled, db_type, web_enabled, web_type, cluster_alias, subdomain, ssh_user, os_image, db_custom_name, web_custom_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-            $stmtS = $conn->prepare($sqlS);
-            $stmtS->execute([$oid, $s['cpu'], $s['ram'], $s['storage'], $s['db_enabled']?1:0, $s['db_type'], $s['web_enabled']?1:0, $s['web_type'], $s['cluster_alias'], $s['subdomain'], $s['ssh_user'], $s['os_image'], $s['db_custom_name'], $s['web_custom_name']]);
-            
-            $payload = ["id_cliente" => (int)$oid, "plan" => $plan, "cliente_nombre" => $_SESSION['username'], "specs" => $s, "id_usuario_real" => (string)$_SESSION['user_id']];
-            $ch = curl_init(API_URL . "/crear");
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true); curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-            curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-            curl_setopt($ch, CURLOPT_TIMEOUT, 1); curl_exec($ch); curl_close($ch);
-            echo json_encode(["status"=>"success", "order_id"=>$oid]);
-        } catch (Exception $e) { echo json_encode(["status"=>"error", "mensaje"=>$e->getMessage()]); }
-        exit;
-    }
-}
+// view: sylo-web/public/index.php
+require_once 'php/auth.php';
 ?>
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -115,51 +12,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     
-    <style>
-        :root { --sylo-bg: #f8fafc; --sylo-text: #334155; --sylo-card: #ffffff; --sylo-accent: #2563eb; --input-bg: #f1f5f9; }
-        [data-theme="dark"] { --sylo-bg: #0f172a; --sylo-text: #f1f5f9; --sylo-card: #1e293b; --sylo-accent: #3b82f6; --input-bg: #334155; }
-        
-        body { font-family: 'Inter', sans-serif; background-color: var(--sylo-bg); color: var(--sylo-text); transition: 0.3s; }
-        .navbar { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(0,0,0,0.05); }
-        [data-theme="dark"] .navbar { background: rgba(15, 23, 42, 0.95); border-bottom: 1px solid rgba(255,255,255,0.1); }
-        [data-theme="dark"] .navbar-brand, [data-theme="dark"] .nav-link { color: white !important; }
-        
-        .info-card, .bg-white { background-color: var(--sylo-card) !important; color: var(--sylo-text); }
-        [data-theme="dark"] .text-muted { color: #94a3b8 !important; }
-        [data-theme="dark"] .bg-light { background-color: #1e293b !important; border-color: #334155; }
-        [data-theme="dark"] .form-control, [data-theme="dark"] .form-select { background-color: var(--input-bg); border-color: #475569; color: white; }
-        [data-theme="dark"] .modal-content { background-color: var(--sylo-card); color: white; }
-        
-        .hero { padding: 140px 0 100px; background: linear-gradient(180deg, var(--sylo-bg) 0%, var(--sylo-card) 100%); }
-        
-        .calc-box { background: #1e293b; border-radius: 24px; padding: 40px; color: white; border: 1px solid #334155; }
-        .price-display { font-size: 3.5rem; font-weight: 800; color: var(--sylo-accent); }
-        
-        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
-        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 20px; width: 20px; border-radius: 50%; background: #3b82f6; cursor: pointer; margin-top: -8px; box-shadow: 0 0 10px #3b82f6; }
-        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #475569; border-radius: 2px; }
-        input[type=range]:focus::-webkit-slider-runnable-track { background: #3b82f6; }
-
-        .card-stack-container { perspective: 1500px; height: 600px; cursor: pointer; position: relative; margin-bottom: 30px; }
-        .card-face { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; transition: transform 0.8s; border-radius: 24px; }
-        .card-stack-container.active .card-face { transform: rotateY(180deg); }
-        .face-front, .face-back { position: absolute; width: 100%; height: 100%; top:0; left:0; backface-visibility: hidden; border-radius: 24px; padding: 30px; display: flex; flex-direction: column; justify-content: space-between; background: var(--sylo-card); border: 1px solid #e2e8f0; box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
-        .face-front { z-index: 2; transform: rotateY(0deg); pointer-events: auto; }
-        .face-back { z-index: 1; transform: rotateY(180deg); background: var(--sylo-bg); border-color: var(--sylo-accent); pointer-events: none; }
-        .card-stack-container.active .face-front { pointer-events: none; }
-        .card-stack-container.active .face-back { pointer-events: auto; }
-        
-        .bench-bar { height: 35px; border-radius: 8px; display: flex; align-items: center; padding: 0 15px; color: white; margin-bottom: 8px; transition: width 1s; }
-        .b-sylo { background: linear-gradient(90deg, #2563eb, #3b82f6); }
-        .b-aws { background: #64748b; }
-        .success-box { background: black; color: white; border-radius: 8px; padding: 20px; font-family: 'JetBrains Mono', monospace; text-align: left; }
-        .status-dot { width: 10px; height: 10px; background-color: #22c55e; border-radius: 50%; display: inline-block; animation: pulse 2s infinite; }
-        @keyframes pulse { 0% {box-shadow:0 0 0 0 rgba(34,197,94,0.7);} 70% {box-shadow:0 0 0 6px rgba(34,197,94,0);} 100% {box-shadow:0 0 0 0 rgba(34,197,94,0);} }
-        
-        .modal-content { border:none; border-radius: 16px; }
-        .avatar { width: 100px; height: 100px; border-radius: 50%; object-fit: cover; margin-bottom: 15px; }
-        .k8s-specs li { display: flex; justify-content: space-between; border-bottom: 1px dashed #cbd5e1; padding: 8px 0; font-size: 0.9rem; }
-    </style>
+    <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
@@ -181,7 +34,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 </div>
                 
                 <?php if (isset($_SESSION['user_id'])): ?>
-                    <a href="dashboard_cliente.php" class="btn btn-primary btn-sm rounded-pill px-4 fw-bold">CONSOLA</a>
+                    <a href="../panel/dashboard.php" class="btn btn-primary btn-sm rounded-pill px-4 fw-bold">CONSOLA</a>
                     <button class="btn btn-link text-danger btn-sm" onclick="logout()"><i class="fas fa-sign-out-alt"></i></button>
                 <?php else: ?>
                     <button class="btn btn-outline-primary btn-sm rounded-pill px-4 fw-bold" onclick="openM('authModal')">CLIENTE</button>
@@ -268,150 +121,11 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     <div class="modal fade" id="statusModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content p-4 border-0 shadow-lg"><h5 class="fw-bold mb-4">Estado del Sistema <span class="status-dot ms-2"></span></h5><div class="d-flex justify-content-between border-bottom py-2"><span>API Gateway (Alicante)</span><span class="badge bg-success">Online</span></div><div class="d-flex justify-content-between border-bottom py-2"><span>NVMe Array</span><span class="badge bg-success">Online</span></div><div class="d-flex justify-content-between border-bottom py-2"><span>Oktopus V21</span><span class="badge bg-success">Active</span></div></div></div></div>
     <div class="modal fade" id="progressModal" data-bs-backdrop="static"><div class="modal-dialog modal-dialog-centered"><div class="modal-content terminal-window border-0"><div class="terminal-body text-center"><div class="spinner-border text-success mb-3" role="status"></div><h5 id="progress-text" class="mb-3">Iniciando...</h5><div class="progress"><div id="prog-bar" class="progress-bar bg-success" style="width:0%"></div></div></div></div></div></div>
-    <div class="modal fade" id="successModal"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 p-4" style="background:white; border-radius:15px;"><h2 class="text-success fw-bold mb-3">✅ ÉXITO</h2><div class="success-box"><span class="text-muted"># RESUMEN</span><br>Plan: <span id="s-plan" class="text-warning"></span><br>OS: <span id="s-os" class="text-info"></span><br>CPU: <span id="s-cpu"></span> vCore | RAM: <span id="s-ram"></span> GB<div class="mt-3 border-top border-secondary pt-2">CMD: <span id="s-cmd" class="text-white"></span><br>PASS: <span id="s-pass" class="text-white"></span></div></div><div class="text-center"><a href="dashboard_cliente.php" class="btn btn-primary rounded-pill px-5 fw-bold">IR A LA CONSOLA</a></div></div></div></div>
+    <div class="modal fade" id="successModal"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 p-4" style="background:white; border-radius:15px;"><h2 class="text-success fw-bold mb-3">✅ ÉXITO</h2><div class="success-box"><span class="text-muted"># RESUMEN</span><br>Plan: <span id="s-plan" class="text-warning"></span><br>OS: <span id="s-os" class="text-info"></span><br>CPU: <span id="s-cpu"></span> vCore | RAM: <span id="s-ram"></span> GB<div class="mt-3 border-top border-secondary pt-2">CMD: <span id="s-cmd" class="text-white"></span><br>PASS: <span id="s-pass" class="text-white"></span></div></div><div class="text-center"><a href="../panel/dashboard.php" class="btn btn-primary rounded-pill px-5 fw-bold">IR A LA CONSOLA</a></div></div></div></div>
     <div class="modal fade" id="authModal"><div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content border-0 shadow-lg p-4"><ul class="nav nav-pills nav-fill mb-4 p-1 bg-light rounded-pill"><li class="nav-item"><a class="nav-link active rounded-pill" data-bs-toggle="tab" href="#login-pane">Login</a></li><li class="nav-item"><a class="nav-link rounded-pill" data-bs-toggle="tab" href="#reg-pane">Registro</a></li></ul><div class="tab-content"><div class="tab-pane fade show active" id="login-pane"><input id="log_email" class="form-control mb-3" placeholder="Usuario/Email"><input type="password" id="log_pass" class="form-control mb-3" placeholder="Contraseña"><button class="btn btn-primary w-100 rounded-pill fw-bold" onclick="handleLogin()">Entrar</button></div><div class="tab-pane fade" id="reg-pane"><div class="text-center mb-3"><div class="btn-group w-50"><input type="radio" class="btn-check" name="t_u" id="t_a" value="autonomo" checked onchange="toggleReg()"><label class="btn btn-outline-primary" for="t_a">Autónomo</label><input type="radio" class="btn-check" name="t_u" id="t_e" value="empresa" onchange="toggleReg()"><label class="btn btn-outline-primary" for="t_e">Empresa</label></div></div><div class="row g-2"><div class="col-6"><input id="reg_u" class="form-control mb-2" placeholder="Usuario"></div><div class="col-6"><input id="reg_e" class="form-control mb-2" placeholder="Email"></div><div class="col-6"><input type="password" id="reg_p1" class="form-control mb-2" placeholder="Contraseña"></div><div class="col-6"><input type="password" id="reg_p2" class="form-control mb-2" placeholder="Repetir"></div></div><div id="fields-auto" class="mt-2"><input id="reg_fn" class="form-control mb-2" placeholder="Nombre Completo"><input id="reg_dni_a" class="form-control mb-2" placeholder="DNI"></div><div id="fields-emp" class="mt-2" style="display:none"><div class="row g-2"><div class="col-6"><input id="reg_contact" class="form-control mb-2" placeholder="Persona Contacto"></div><div class="col-6"><input id="reg_cif" class="form-control mb-2" placeholder="CIF"></div></div><select id="reg_tipo_emp" class="form-select mb-2" onchange="checkOther()"><option value="SL">S.L.</option><option value="SA">S.A.</option><option value="Cooperativa">Cooperativa</option><option value="Otro">Otro</option></select><input id="reg_rs" class="form-control mb-2" placeholder="Razón Social" style="display:none"></div><div class="row g-2 mt-1"><div class="col-6"><input id="reg_tel" class="form-control mb-2" placeholder="Teléfono"></div><div class="col-6"><input id="reg_cal" class="form-control mb-2" placeholder="Dirección"></div></div><div class="form-check mt-3"><input type="checkbox" id="reg_terms" class="form-check-input"><label class="form-check-label small">Acepto los <a href="#" onclick="viewTermsFromReg()">Términos</a>.</label></div><button class="btn btn-success w-100 rounded-pill fw-bold mt-3" onclick="handleRegister()">Crear Cuenta</button></div></div></div></div></div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        const isLogged = <?=isset($_SESSION['user_id'])?'true':'false'?>;
-        function openM(id){const el=document.getElementById(id);if(el)new bootstrap.Modal(el).show();}
-        function hideM(id){const el=document.getElementById(id);const m=bootstrap.Modal.getInstance(el);if(m)m.hide();}
-        function openAuth(){openM('authModal');}
-        function openLegal(){new bootstrap.Offcanvas(document.getElementById('legalCanvas')).show();}
-        function viewTermsFromReg(){hideM('authModal');openLegal();}
-        function toggleTheme(){document.body.dataset.theme=document.body.dataset.theme==='dark'?'':'dark';}
-        function toggleCard(el){document.querySelectorAll('.card-stack-container').forEach(c=>c!==el&&c.classList.remove('active'));el.classList.toggle('active');}
-        function toggleReg(){const e=document.getElementById('t_e').checked;document.getElementById('fields-emp').style.display=e?'block':'none';document.getElementById('fields-auto').style.display=e?'none':'block';}
-        function checkOther(){document.getElementById('reg_rs').style.display=(document.getElementById('reg_tipo_emp').value==='Otro')?'block':'none';}
-
-        // --- CALCULADORA (FIXED: UPDATE ON INPUT) ---
-        document.addEventListener('DOMContentLoaded', () => { 
-            // Eliminados elementos 'sel-calc-db' y 'sel-calc-web' del array porque no existen en el HTML
-            ['in-cpu','in-ram','check-calc-db','check-calc-web'].forEach(id=>document.getElementById(id)?.addEventListener('input', () => {
-                document.getElementById('calc-preset').value='custom'; // Forzar custom al mover
-                updCalc(); 
-            }));
-            updCalc(); // Init
-        });
-        
-        function applyPreset() {
-            const p=document.getElementById('calc-preset').value, c=document.getElementById('in-cpu'), r=document.getElementById('in-ram'), d=document.getElementById('check-calc-db'), w=document.getElementById('check-calc-web');
-            if(p==='bronce'){c.value=1;r.value=1;d.checked=false;w.checked=false;} 
-            else if(p==='plata'){c.value=2;r.value=2;d.checked=true;w.checked=false;} 
-            else if(p==='oro'){c.value=3;r.value=3;d.checked=true;w.checked=true;}
-            updCalc();
-        }
-        function updCalc() {
-            let c=parseInt(document.getElementById('in-cpu').value), r=parseInt(document.getElementById('in-ram').value);
-            document.getElementById('c-cpu').innerText=c; document.getElementById('c-ram').innerText=r;
-            
-            let d_c=document.getElementById('check-calc-db').checked?5:0;
-            let w_c=document.getElementById('check-calc-web').checked?5:0;
-            
-            // Eliminada la lógica que deshabilitaba los selects que no existen y causaban el error JS
-            
-            renderP((c*5)+(r*5)+d_c+w_c+5);
-        }
-        function renderP(val){ 
-            document.getElementById('out-sylo').innerText=val+"€"; 
-            let aws=Math.round((val*3.5)+40), az=Math.round((val*3.2)+30), sv=Math.round(((aws-val)/aws)*100); if(sv>99)sv=99;
-            document.getElementById('out-aws').innerText=aws+"€"; document.getElementById('out-azure').innerText=az+"€"; document.getElementById('out-save').innerText=sv+"%"; document.getElementById('pb-sylo').style.width=sv+"%"; document.getElementById('pb-aws').style.width="100%"; document.getElementById('pb-azure').style.width=(az/aws*100)+"%";
-        }
-
-        // --- DEPLOY LOGIC ---
-        let curPlan='';
-        function prepararPedido(plan) {
-            if(!isLogged) { openAuth(); return; }
-            curPlan = plan;
-            document.getElementById('m_plan').innerText = plan;
-            
-            const selOS = document.getElementById('cfg-os'), mCpu = document.getElementById('mod-cpu'), mRam = document.getElementById('mod-ram'), dbT = document.getElementById('mod-db-type'), webT = document.getElementById('mod-web-type'), cDb = document.getElementById('mod-check-db'), cWeb = document.getElementById('mod-check-web');
-            const grpHard = document.getElementById('grp-hardware');
-
-            selOS.innerHTML = "";
-            if(plan==='Bronce'){ 
-                selOS.innerHTML="<option value='alpine'>Alpine</option>"; selOS.disabled=true; 
-                grpHard.style.display="none"; // OCULTAR SLIDERS EN FIJOS
-                mCpu.value=1; mRam.value=1; 
-                cDb.checked=false; cWeb.checked=false; cDb.disabled=true; cWeb.disabled=true; 
-            }
-            else if(plan==='Plata'){ 
-                selOS.innerHTML="<option value='ubuntu'>Ubuntu</option><option value='alpine'>Alpine</option>"; selOS.disabled=false; 
-                grpHard.style.display="none";
-                mCpu.value=2; mRam.value=2; 
-                cDb.checked=true; cWeb.checked=false; cDb.disabled=true; cWeb.disabled=true; dbT.disabled=true; 
-            }
-            else if(plan==='Oro'){ 
-                selOS.innerHTML="<option value='ubuntu'>Ubuntu</option><option value='alpine'>Alpine</option><option value='redhat'>RedHat</option>"; selOS.disabled=false; 
-                grpHard.style.display="none";
-                mCpu.value=3; mRam.value=3; 
-                cDb.checked=true; cWeb.checked=true; cDb.disabled=true; cWeb.disabled=true; dbT.disabled=true; webT.disabled=true; 
-            }
-            else { // Custom
-                selOS.innerHTML="<option value='ubuntu'>Ubuntu</option><option value='alpine'>Alpine</option><option value='redhat'>RedHat</option>"; selOS.disabled=false; 
-                grpHard.style.display="block"; // MOSTRAR SLIDERS SOLO EN CUSTOM
-                mCpu.value = document.getElementById('in-cpu').value; mRam.value = document.getElementById('in-ram').value; 
-                cDb.disabled=false; cWeb.disabled=false;
-                cDb.checked = document.getElementById('check-calc-db').checked;
-                cWeb.checked = document.getElementById('check-calc-web').checked;
-                dbT.disabled=false; webT.disabled=false;
-            }
-            updateModalHard(); toggleModalSoft();
-            openM('configModal');
-        }
-
-        function updateModalHard(){ document.getElementById('lbl-cpu').innerText=document.getElementById('mod-cpu').value; document.getElementById('lbl-ram').innerText=document.getElementById('mod-ram').value; }
-        function toggleModalSoft(){ document.getElementById('mod-db-opts').style.display=document.getElementById('mod-check-db').checked?'block':'none'; document.getElementById('mod-web-opts').style.display=document.getElementById('mod-check-web').checked?'block':'none'; }
-
-        async function lanzar() {
-            const alias = document.getElementById('cfg-alias').value; if(!alias) { alert("Alias obligatorio"); return; }
-            const specs = {
-                cluster_alias: alias,
-                ssh_user: document.getElementById('cfg-ssh-user').value,
-                os_image: document.getElementById('cfg-os').value,
-                cpu: parseInt(document.getElementById('mod-cpu').value),
-                ram: parseInt(document.getElementById('mod-ram').value),
-                storage: 25,
-                db_enabled: document.getElementById('mod-check-db').checked,
-                web_enabled: document.getElementById('mod-check-web').checked,
-                db_custom_name: document.getElementById('mod-db-name').value,
-                web_custom_name: document.getElementById('mod-web-name').value,
-                subdomain: document.getElementById('mod-sub').value || 'interno',
-                db_type: document.getElementById('mod-db-type').value,
-                web_type: document.getElementById('mod-web-type').value
-            };
-            hideM('configModal'); openM('progressModal');
-            try {
-                const res = await fetch('index.php', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:'comprar', plan:curPlan, specs:specs}) });
-                const j = await res.json();
-                if(j.status === 'success') startPolling(j.order_id, specs); else { hideM('progressModal'); alert(j.mensaje); }
-            } catch(e) { hideM('progressModal'); alert("Error"); }
-        }
-
-        function startPolling(oid, finalSpecs) {
-            let i = setInterval(async () => {
-                const r = await fetch(`index.php?check_status=${oid}`);
-                const s = await r.json();
-                document.getElementById('prog-bar').style.width = s.percent+"%";
-                document.getElementById('progress-text').innerText = s.message;
-                if(s.status === 'completed') {
-                    clearInterval(i); hideM('progressModal');
-                    document.getElementById('s-plan').innerText = curPlan;
-                    document.getElementById('s-os').innerText = finalSpecs.os_image;
-                    document.getElementById('s-cpu').innerText = finalSpecs.cpu;
-                    document.getElementById('s-ram').innerText = finalSpecs.ram;
-                    document.getElementById('s-cmd').innerText = s.ssh_cmd;
-                    document.getElementById('s-pass').innerText = s.ssh_pass;
-                    openM('successModal');
-                }
-            }, 1500);
-        }
-
-        async function handleLogin() { const r=await fetch('index.php',{method:'POST',body:JSON.stringify({action:'login',email_user:document.getElementById('log_email').value,password:document.getElementById('log_pass').value})}); const d=await r.json(); if(d.status==='success') location.reload(); else alert(d.mensaje); }
-        async function handleRegister() { if(!document.getElementById('reg_terms').checked) return; const t = document.getElementById('t_a').checked ? 'autonomo' : 'empresa'; const d = { action:'register', username:document.getElementById('reg_u').value, email:document.getElementById('reg_e').value, password:document.getElementById('reg_p1').value, password_confirm:document.getElementById('reg_p2').value, telefono:document.getElementById('reg_tel').value, calle:document.getElementById('reg_cal').value, tipo_usuario:t }; if(t==='autonomo') { d.full_name=document.getElementById('reg_fn').value; d.dni=document.getElementById('reg_dni_a').value; } else { d.contact_name=document.getElementById('reg_contact').value; d.cif=document.getElementById('reg_cif').value; d.dni=d.cif; d.tipo_empresa=document.getElementById('reg_tipo_emp').value; if(d.tipo_empresa==='Otro') d.company_name=document.getElementById('reg_rs').value; } await fetch('index.php',{method:'POST',body:JSON.stringify(d)}); location.reload(); }
-        function logout() { fetch('index.php',{method:'POST',body:JSON.stringify({action:'logout'})}).then(()=>location.reload()); }
-        function copyData(){ navigator.clipboard.writeText(document.getElementById('ssh-details').innerText); }
-        function userMovedSlider(){ document.getElementById('calc-preset').value='custom'; updCalc(); }
-    </script>
+    <script>const isLogged = <?=isset($_SESSION['user_id'])?'true':'false'?>;</script>
+    <script src="js/main.js"></script>
 </body>
 </html>

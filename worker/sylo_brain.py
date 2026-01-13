@@ -23,7 +23,7 @@ POSSIBLE_URLS = [
     "http://0.0.0.0:11434/api/generate"
 ]
 
-OLLAMA_URL = None
+OLLAMA_URL = "http://172.17.0.1:11434/api/generate"
 
 print(f"[BRAIN] 🧠 Sylo Brain v25 (GUARDIAN EDITION) Iniciado.")
 
@@ -55,7 +55,7 @@ def find_ollama():
             r = requests.post(url, json=test_payload, timeout=5)
             if r.status_code == 200:
                 print(" ✅ OK!")
-                OLLAMA_URL = url
+                OLLAMA_URL = "http://172.17.0.1:11434/api/generate"
                 return True
             print(f" ❌ ({r.status_code})")
         except:
@@ -168,7 +168,7 @@ def ask_ollama(user_msg, tech_data, plan_data, oid):
         return f"⚠️ Error IA: {r.status_code}"
         
     except Exception as e:
-        OLLAMA_URL = None 
+        OLLAMA_URL = "http://172.17.0.1:11434/api/generate"
         return "⚠️ Error conexión. Reintentando..."
 
 # ================= CEREBRO PRINCIPAL =================

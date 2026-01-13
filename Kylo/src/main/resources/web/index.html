@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>KyloDB v23 (FK Fix)</title>
+    <title>KyloDB v27 (Insert Fix Final)</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
         :root { --dark: #2c3e50; --accent: #3498db; --light: #ecf0f1; --danger: #e74c3c; --success: #2ecc71; --console: #1e272e; }
@@ -55,22 +55,31 @@
         
         /* BUILDER */
         #builder-panel { background: #f8f9fa; border: 1px solid #ddd; padding: 15px; border-radius: 6px; margin-bottom: 10px; display: none; }
-        .builder-row { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+        .builder-row { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; min-height: 50px; }
         
-        .b-block { padding: 8px 15px; border-radius: 4px; color: white; font-weight: bold; cursor: grab; display: flex; align-items: center; gap: 5px; font-size: 0.9em; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        .b-head { background: #2c3e50; cursor: pointer; } 
+        .b-block { padding: 10px 15px; border-radius: 4px; color: white; font-weight: bold; cursor: grab; display: flex; align-items: center; gap: 8px; font-size: 0.95em; box-shadow: 0 2px 5px rgba(0,0,0,0.1); user-select: none; transition: 0.1s; border: 2px solid transparent; }
+        .b-block:active { cursor: grabbing; transform: scale(1.01); }
+        .b-block.dragging { opacity: 0.4; }
+        
+        .b-block.drag-over-top { border-top: 4px solid #3498db; margin-top: 5px; }
+        .b-block.drag-over-bottom { border-bottom: 4px solid #3498db; margin-bottom: 5px; }
+
+        .b-head { background: #2c3e50; cursor: default; } 
         .b-from { background: #e67e22; } .b-where { background: #9b59b6; } .b-order { background: #1abc9c; }
         .b-into { background: #e67e22; } .b-values { background: #27ae60; } .b-set { background: #f39c12; }
         .b-create { background: #8e44ad; } .b-col { background: #2980b9; } 
         .b-pk { background: #e74c3c; font-size: 0.8em; padding: 4px 8px; }
         .b-uk { background: #f39c12; font-size: 0.8em; padding: 4px 8px; }
         .b-fk { background: #34495e; padding: 5px 12px; }
+        .b-field { background: #16a085; }
         
         .b-input { background: rgba(255,255,255,0.2); border: none; color: white; padding: 4px 8px; border-radius: 3px; width: 120px; font-size: 0.9em; }
         .b-input::placeholder { color: rgba(255,255,255,0.6); }
         .b-input:focus { outline: none; background: rgba(255,255,255,0.3); }
-        .b-sel-type, .b-sel-tbl, .b-sel-col { background: rgba(0,0,0,0.2); color: white; border: none; font-size: 0.8em; border-radius: 3px; cursor: pointer; padding: 4px; max-width: 120px; }
-        .b-sel-type option, .b-sel-tbl option, .b-sel-col option { background: #333; }
+        
+        .b-sel-type, .b-sel-tbl, .b-sel-col, .b-sel-op { background: rgba(0,0,0,0.2); color: white; border: none; font-size: 0.9em; border-radius: 3px; cursor: pointer; padding: 4px; }
+        .b-sel-type option, .b-sel-tbl option, .b-sel-col option, .b-sel-op option { background: #333; }
+        .b-sel-op { width: 50px; text-align: center; background: rgba(0,0,0,0.4); }
 
         .mode-btn { background: white; border: 1px solid #ccc; color: #555; padding: 4px 10px; font-size: 0.8em; border-radius: 15px; cursor: pointer; transition: 0.2s; }
         .mode-btn:hover { background: #eee; }
@@ -153,7 +162,8 @@
                             <div class="b-block b-head">SELECT *</div>
                         </div>
                         
-                        <div class="builder-row" style="border-top:1px solid #ddd; padding-top:10px; gap:5px" id="b-tools"></div>
+                        <div class="builder-row" style="border-top:1px solid #ddd; padding-top:10px; gap:5px; flex-direction:row" id="b-tools">
+                            </div>
                     </div>
 
                     <textarea id="sql-in" style="height:120px; padding:15px; font-family:monospace; border:1px solid #ccc; font-size:1.1em; resize:none" placeholder="SQL..."></textarea>
@@ -203,17 +213,9 @@
 <script>
     let activeDB='', activeTbl='', tablesInDB=[], currentMode='SELECT', fullCatalog={};
 
-    // --- ARBOL & CATALOGO (MODIFICADO V23) ---
     async function loadTree() {
-        const r = await fetch('/api/catalog'); 
-        const tree = await r.json(); 
-        
-        // FIX: Actualizar variables globales al recargar el arbol
-        fullCatalog = tree;
-        if(activeDB && fullCatalog[activeDB]) {
-            tablesInDB = Object.keys(fullCatalog[activeDB]);
-        }
-
+        const r = await fetch('/api/catalog'); const tree = await r.json(); fullCatalog = tree;
+        if(activeDB && fullCatalog[activeDB]) { tablesInDB = Object.keys(fullCatalog[activeDB]); }
         const root = document.getElementById('tree-root');
         root.innerHTML = '<ul style="list-style:none; padding:0; margin:0">';
         for(const [db, tables] of Object.entries(tree)) {
@@ -226,13 +228,11 @@
         } root.innerHTML += '</ul>';
     }
 
-    function selectDB(db) { 
-        activeDB=db; activeTbl=''; document.getElementById('lbl-db').innerText=db; 
-        fetch('/api/catalog').then(r=>r.json()).then(d => { fullCatalog=d; tablesInDB=Object.keys(d[db]||{}); });
-        execSQL(`USE ${db}`, true); nav('struct'); loadStruct(); 
-    }
+    function selectDB(db) { activeDB=db; activeTbl=''; document.getElementById('lbl-db').innerText=db; fetch('/api/catalog').then(r=>r.json()).then(d => { fullCatalog=d; tablesInDB=Object.keys(d[db]||{}); }); execSQL(`USE ${db}`, true); nav('struct'); loadStruct(); }
 
-    // --- BUILDER (SAME V22) ---
+    // --- BUILDER & DRAG/DROP VISUAL ---
+    let dragSrc = null;
+
     function setMode(m) {
         currentMode = m;
         document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
@@ -242,16 +242,22 @@
         const tools = document.getElementById('b-tools');
         canvas.innerHTML = '';
         
-        if(m==='CREATE') { 
+        if(m==='SELECT') {
+            canvas.innerHTML = '<div class="b-block b-head">SELECT *</div>';
+            tools.innerHTML = `<button class="btn b-from" onclick="addBlock('FROM')">+ FROM</button> <button class="btn b-where" onclick="addBlock('WHERE')">+ WHERE</button> <button class="btn b-order" onclick="addBlock('ORDER')">+ ORDER</button>`;
+        } else if(m==='INSERT') {
+            canvas.innerHTML = '<div class="b-block b-head">INSERT</div>';
+            // IMPORTANTE: Aseguramos que cargamos las tablas antes
+            tools.innerHTML = `<button class="btn b-into" onclick="addBlock('INTO')">+ INTO (Tabla)</button> <button class="btn b-values" onclick="addBlock('FIELD')">+ CAMPO=VALOR</button>`;
+        } else if(m==='UPDATE') {
+            canvas.innerHTML = '<div class="b-block b-head">UPDATE</div>';
+            tools.innerHTML = `<button class="btn b-from" onclick="addBlock('TABLE')">+ TABLE</button> <button class="btn b-set" onclick="addBlock('SET')">+ SET (Col=Val)</button> <button class="btn b-where" onclick="addBlock('WHERE')">+ WHERE</button>`;
+        } else if(m==='DELETE') {
+            canvas.innerHTML = '<div class="b-block b-head">DELETE</div>';
+            tools.innerHTML = `<button class="btn b-from" onclick="addBlock('FROM')">+ FROM</button> <button class="btn b-where" onclick="addBlock('WHERE')">+ WHERE</button>`;
+        } else if(m==='CREATE') { 
             canvas.innerHTML = '<div class="b-block b-create">CREATE TABLE <input class="b-input" style="width:80px" placeholder="nombre" oninput="updB()"></div>';
-            tools.innerHTML = `<button class="btn b-col" onclick="addBlock('COLUMN')">+ COLUMNA</button> <button class="btn b-pk" onclick="addBlock('PK')">+ PK</button> <button class="btn b-uk" onclick="addBlock('UK')">+ UK</button> <button class="btn b-fk" onclick="addBlock('FK')">+ FK (Relación)</button>`;
-        } else {
-            // Default generic
-            if(m==='SELECT') tools.innerHTML = `<button class="btn b-from" onclick="addBlock('FROM')">+ FROM</button> <button class="btn b-where" onclick="addBlock('WHERE')">+ WHERE</button>`;
-            if(m==='INSERT') tools.innerHTML = `<button class="btn b-into" onclick="addBlock('INTO')">+ INTO</button> <button class="btn b-values" onclick="addBlock('VALUES')">+ VALUES</button>`;
-            if(m==='UPDATE') tools.innerHTML = `<button class="btn b-from" onclick="addBlock('TABLE')">+ TABLE</button> <button class="btn b-set" onclick="addBlock('SET')">+ SET</button>`;
-            if(m==='DELETE') tools.innerHTML = `<button class="btn b-from" onclick="addBlock('FROM')">+ FROM</button> <button class="btn b-where" onclick="addBlock('WHERE')">+ WHERE</button>`;
-            canvas.innerHTML = `<div class="b-block b-head">${m} ${m==='SELECT'?'*':''}</div>`;
+            tools.innerHTML = `<button class="btn b-col" onclick="addBlock('COLUMN')">+ COLUMNA</button> <button class="btn b-pk" onclick="addBlock('PK')">+ PK</button> <button class="btn b-uk" onclick="addBlock('UK')">+ UK</button> <button class="btn b-fk" onclick="addBlock('FK')">+ FK</button>`;
         }
         tools.innerHTML += `<button class="btn btn-red" style="margin-left:auto" onclick="resetBuilder()">Reset</button>`;
         updB();
@@ -259,80 +265,144 @@
 
     function addBlock(t) {
         let cls = 'b-select'; let content = '';
-        if(t==='PK') { cls='b-pk'; content='PRIMARY KEY'; }
+        
+        // --- FIX DEL SELECTOR ---
+        if(t==='INTO') {
+            cls = 'b-into'; 
+            // Generamos las opciones aqui mismo
+            let tblOpts = tablesInDB.length > 0 ? tablesInDB.map(tt => `<option value="${tt}">${tt}</option>`).join('') : '<option disabled>Sin tablas</option>';
+            content = `${t} <select class="b-sel-tbl" onchange="updateContext(this)">${tblOpts}</select>`;
+        }
+        // Resto de bloques
+        else if(t==='FROM' || t==='TABLE') {
+            cls = 'b-from';
+            let tblOpts = tablesInDB.length > 0 ? tablesInDB.map(tt => `<option value="${tt}">${tt}</option>`).join('') : '<option disabled>Sin tablas</option>';
+            content = `${t} <select class="b-sel-tbl" onchange="updateContext(this)">${tblOpts}</select>`;
+        }
+        else if(t==='WHERE') {
+            cls = 'b-where';
+            let colOpts = getColOpts(getActiveTableInBuilder());
+            content = `WHERE <select class="b-sel-col" onchange="updB()">${colOpts}</select> <select class="b-sel-op" onchange="updB()"><option>=</option><option>!=</option><option>&gt;</option><option>&lt;</option><option>LIKE</option></select> <input class="b-input" oninput="updB()">`;
+        }
+        else if(t==='ORDER') {
+            cls = 'b-order';
+            let colOpts = getColOpts(getActiveTableInBuilder());
+            content = `ORDER BY <select class="b-sel-col" onchange="updB()">${colOpts}</select> <select class="b-sel-op" onchange="updB()"><option>ASC</option><option>DESC</option></select>`;
+        }
+        else if(t==='FIELD') {
+            cls = 'b-field';
+            let colOpts = getColOpts(getActiveTableInBuilder());
+            content = `SET <select class="b-sel-col" onchange="updB()">${colOpts}</select> = <input class="b-input" placeholder="valor" oninput="updB()">`;
+        }
+        else if(t==='SET') {
+            cls = 'b-set';
+            let colOpts = getColOpts(getActiveTableInBuilder());
+            content = `SET <select class="b-sel-col" onchange="updB()">${colOpts}</select> = <input class="b-input" placeholder="valor" oninput="updB()">`;
+        }
+        else if(t==='PK') { cls='b-pk'; content='PRIMARY KEY'; }
         else if(t==='UK') { cls='b-uk'; content='UNIQUE'; }
         else if(t==='COLUMN') { 
             cls = 'b-col';
-            content = `COL <input class="b-input" style="width:70px" placeholder="nombre" oninput="updB()"> 
-                       <select class="b-sel-type" onchange="updB()"><option>INT</option><option>TEXT</option><option>EMAIL</option><option>DATE</option></select>`;
+            content = `COL <input class="b-input" style="width:70px" placeholder="nombre" oninput="updB()"> <select class="b-sel-type" onchange="updB()"><option>INT</option><option>TEXT</option><option>EMAIL</option><option>DATE</option></select>`;
         } else if(t==='FK') { 
             cls = 'b-fk';
-            const lastCol = Array.from(document.querySelectorAll('.b-col input')).pop();
-            const defaultLocal = lastCol ? lastCol.value : '';
             let tblOpts = tablesInDB.map(tt => `<option value="${tt}">${tt}</option>`).join('');
-            let colOpts = "";
-            const firstTable = tablesInDB[0];
-            if(firstTable && fullCatalog[activeDB] && fullCatalog[activeDB][firstTable]) {
-                colOpts = fullCatalog[activeDB][firstTable].map(c => `<option value="${c.split(':')[0]}">${c.split(':')[0]}</option>`).join('');
-            }
-            content = `FK (<input class="b-input" style="width:60px" value="${defaultLocal}" oninput="updB()">) 
-                       REFS <select class="b-sel-tbl" onchange="updateFkCols(this)">${tblOpts}</select>
-                       (<select class="b-sel-col" onchange="updB()">${colOpts}</select>)`;
+            content = `FK (<input class="b-input" style="width:50px" placeholder="local" oninput="updB()">) REFS <select class="b-sel-tbl" onchange="updateFkCols(this)">${tblOpts}</select> (<select class="b-sel-col" onchange="updB()"></select>)`;
         } else {
-            let k = t; if(t==='FROM'||t==='INTO'||t==='TABLE') cls='b-from';
-            if(t==='WHERE') cls='b-where'; if(t==='VALUES') cls='b-values'; if(t==='SET') cls='b-set';
             content = `${t} <input class="b-input" oninput="updB()">`;
         }
-        document.getElementById('b-canvas').insertAdjacentHTML('beforeend', `<div class="b-block ${cls}">${content}</div>`);
+        
+        const div = document.createElement('div');
+        div.className = `b-block ${cls}`;
+        div.draggable = true;
+        div.innerHTML = content;
+        div.addEventListener('dragstart', handleDragStart);
+        div.addEventListener('dragover', handleDragOver);
+        div.addEventListener('dragleave', handleDragLeave);
+        div.addEventListener('drop', handleDrop);
+        div.addEventListener('dragend', handleDragEnd);
+        
+        document.getElementById('b-canvas').appendChild(div);
+        if(t==='FK') updateFkCols(div.querySelector('.b-sel-tbl'));
         updB();
     }
 
-    function updateFkCols(tblSelect) {
-        const selectedTable = tblSelect.value;
-        const colSelect = tblSelect.nextElementSibling;
-        if(fullCatalog[activeDB] && fullCatalog[activeDB][selectedTable]) {
-            const cols = fullCatalog[activeDB][selectedTable];
-            colSelect.innerHTML = cols.map(c => `<option value="${c.split(':')[0]}">${c.split(':')[0]}</option>`).join('');
-        } else colSelect.innerHTML = "";
-        updB();
+    // --- DRAG INDICATORS ---
+    function handleDragStart(e) { dragSrc = this; e.dataTransfer.effectAllowed = 'move'; this.classList.add('dragging'); }
+    function handleDragOver(e) { 
+        if (e.preventDefault) e.preventDefault(); 
+        const bounding = this.getBoundingClientRect();
+        const offset = e.clientY - bounding.top;
+        this.classList.remove('drag-over-top', 'drag-over-bottom'); 
+        if (offset > bounding.height / 2) this.classList.add('drag-over-bottom'); else this.classList.add('drag-over-top');
+        return false; 
     }
+    function handleDragLeave(e) { this.classList.remove('drag-over-top', 'drag-over-bottom'); }
+    function handleDragEnd(e) { document.querySelectorAll('.b-block').forEach(b => b.classList.remove('drag-over-top', 'drag-over-bottom', 'dragging')); }
+    function handleDrop(e) {
+        e.stopPropagation();
+        this.classList.remove('drag-over-top', 'drag-over-bottom');
+        if (dragSrc !== this) {
+            const bounding = this.getBoundingClientRect();
+            const offset = e.clientY - bounding.top;
+            if (offset > bounding.height / 2) this.parentNode.insertBefore(dragSrc, this.nextSibling); else this.parentNode.insertBefore(dragSrc, this);
+            updB();
+        }
+        return false;
+    }
+
+    // --- INTELLIGENCE ---
+    function getActiveTableInBuilder() { const s = document.querySelector('.b-sel-tbl'); return s ? s.value : (tablesInDB[0] || ''); }
+    function getColOpts(tbl) { if(tbl&&fullCatalog[activeDB]&&fullCatalog[activeDB][tbl]) return fullCatalog[activeDB][tbl].map(c=>`<option value="${c.split(':')[0]}">${c.split(':')[0]}</option>`).join(''); return '<option>id</option>'; }
+    function updateContext(sel) { updB(); const t=sel.value; const n=getColOpts(t); document.querySelectorAll('.b-sel-col').forEach(s=>s.innerHTML=n); }
+    function updateFkCols(s) { const t=s.value; const n=s.nextElementSibling; if(fullCatalog[activeDB]&&fullCatalog[activeDB][t]) n.innerHTML=fullCatalog[activeDB][t].map(c=>`<option value="${c.split(':')[0]}">${c.split(':')[0]}</option>`).join(''); else n.innerHTML=""; updB(); }
 
     function updB() {
-        let s = "";
-        const blocks = document.querySelectorAll('.b-block');
-        if(currentMode==='CREATE') {
-            const tName = blocks[0].querySelector('input').value || 'nueva_tabla';
-            s = `CREATE TABLE ${tName} (`;
-            let defs = [];
+        let s = ""; const blocks = document.querySelectorAll('.b-block');
+        if(currentMode==='SELECT') { 
+            s = "SELECT *"; 
+            blocks.forEach(el => { 
+                if(el.classList.contains('b-head'))return; 
+                if(el.classList.contains('b-where')) { const c=el.querySelector('.b-sel-col').value; const o=el.querySelector('.b-sel-op').value; const v=el.querySelector('input').value; if(v)s+=` WHERE ${c} ${o} ${v}`; }
+                else if(el.classList.contains('b-order')) { const c=el.querySelector('.b-sel-col').value; const o=el.querySelector('.b-sel-op').value; s+=` ORDER BY ${c} ${o}`; }
+                else if(el.classList.contains('b-from')) { s+=` FROM ${el.querySelector('select').value}`; } 
+                else s+=` ${el.innerText.split(' ')[0]} ${el.querySelector('input').value}`; 
+            }); 
+        }
+        else if(currentMode==='INSERT') { 
+            let tbl = ""; let cols = []; let vals = [];
+            blocks.forEach(el => { 
+                if(el.classList.contains('b-into')) tbl = el.querySelector('select').value;
+                if(el.classList.contains('b-field')) { cols.push(el.querySelector('.b-sel-col').value); vals.push(el.querySelector('input').value); }
+            }); 
+            if(tbl && cols.length) s = `INSERT INTO ${tbl} (${cols.join(', ')}) VALUES (${vals.join(', ')})`;
+            else s = "INSERT INTO ...";
+        }
+        else if(currentMode==='UPDATE') { 
+            s="UPDATE"; let sets=[];
+            blocks.forEach(el=>{ 
+                if(el.classList.contains('b-head'))return; 
+                if(el.classList.contains('b-from')) s+=` ${el.querySelector('select').value}`; 
+                else if(el.classList.contains('b-set')){ const c=el.querySelector('.b-sel-col').value; const v=el.querySelector('input').value; if(v)sets.push(`${c}=${v}`); }
+                else if(el.classList.contains('b-where')){const c=el.querySelector('.b-sel-col').value;const o=el.querySelector('.b-sel-op').value;const v=el.querySelector('input').value;if(v)s+=` SET ${sets.join(', ')} WHERE ${c} ${o} ${v}`;} 
+            }); 
+            if(!s.includes('WHERE') && sets.length) s+=` SET ${sets.join(', ')}`;
+        }
+        else if(currentMode==='DELETE') { s="DELETE"; blocks.forEach(el=>{ if(el.classList.contains('b-head'))return; if(el.classList.contains('b-from'))s+=` FROM ${el.querySelector('select').value}`; else if(el.classList.contains('b-where')){const c=el.querySelector('.b-sel-col').value;const o=el.querySelector('.b-sel-op').value;const v=el.querySelector('input').value;if(v)s+=` WHERE ${c} ${o} ${v}`;} }); }
+        else if(currentMode==='CREATE') {
+            const tName = blocks[0].querySelector('input').value || 'nueva_tabla'; s = `CREATE TABLE ${tName} (`; let defs = [];
             blocks.forEach((el, idx) => {
                 if(idx===0) return;
-                if(el.classList.contains('b-col')) {
-                    const name = el.querySelector('input').value;
-                    const type = el.querySelector('select').value;
-                    if(name) defs.push(`${name} ${type}`);
-                }
-                else if(el.innerText.includes('PRIMARY KEY') && defs.length > 0) defs[defs.length-1] += " PRIMARY KEY";
-                else if(el.innerText.includes('UNIQUE') && defs.length > 0) defs[defs.length-1] += " UNIQUE";
-                else if(el.classList.contains('b-fk')) {
-                    const localCol = el.querySelector('input').value;
-                    const remoteTbl = el.querySelector('.b-sel-tbl').value;
-                    const remoteCol = el.querySelector('.b-sel-col').value;
-                    if(localCol && remoteTbl && remoteCol) defs.push(`FOREIGN KEY (${localCol}) REFERENCES ${remoteTbl}(${remoteCol})`);
-                }
-            });
-            s += defs.join(', ') + ")";
-        } else {
-             s = currentMode; 
-             if(currentMode==='SELECT') s += " *";
-             blocks.forEach(el => { 
-                 if(el.classList.contains('b-head'))return; 
-                 s+=` ${el.innerText.split(' ')[0]} ${el.querySelector('input').value}`; 
-             });
+                if(el.classList.contains('b-col')) { const n=el.querySelector('input').value; const t=el.querySelector('select').value; if(n) defs.push(`${n} ${t}`); }
+                else if(el.innerText.includes('PRIMARY KEY') && defs.length) defs[defs.length-1] += " PRIMARY KEY";
+                else if(el.innerText.includes('UNIQUE') && defs.length) defs[defs.length-1] += " UNIQUE";
+                else if(el.classList.contains('b-fk')) { const l=el.querySelector('input').value; const rt=el.querySelector('.b-sel-tbl').value; const rc=el.querySelector('.b-sel-col').value; if(l&&rt&&rc) defs.push(`FOREIGN KEY (${l}) REFERENCES ${rt}(${rc})`); }
+            }); s += defs.join(', ') + ")";
         }
         document.getElementById('sql-in').value = s;
     }
     
-    // --- REST OF UTILS ---
+    // --- UTILS ---
     function toggleBuilder(){ const b=document.getElementById('builder-panel'); b.style.display=b.style.display==='none'?'block':'none'; setMode('SELECT'); }
     function resetBuilder() { setMode(currentMode); document.getElementById('sql-in').value=''; }
     document.getElementById('sql-in').addEventListener('input', function() {
@@ -361,27 +431,7 @@
     async function truncateTbl(){ if(confirm('Vaciar?')){ await execSQL(`TRUNCATE ${activeTbl}`); refreshBrowse(); }}
     async function buildInsert(){ if(!activeTbl){document.getElementById('insert-form').innerHTML='Selecciona tabla.';return;} const r=await fetch(`/api/describe/${activeDB}/${activeTbl}`); const c=await r.json(); let h=''; c.forEach(col=>{ let t=col.type==='INT'?'number':'text'; h+=`<div style="margin-bottom:10px"><label style="font-weight:bold">${col.name}</label><input class="ins-val" type="${t}" style="width:100%; padding:8px; border:1px solid #ccc"></div>`; }); h+='<button class="btn" onclick="sendInsert()">Guardar</button>'; document.getElementById('insert-form').innerHTML=h; }
     async function sendInsert(){ let v=[]; document.querySelectorAll('.ins-val').forEach(i=>v.push(`'${i.value}'`)); await execSQL(`INSERT INTO ${activeTbl} VALUES (${v.join(',')})`); nav('browse'); refreshBrowse(); }
-    
-    // EXEC SQL + AUTO UPDATE
-    async function execSQL(cmd, silent=false) { 
-        if(!silent) addToHistory(cmd); 
-        const r=await fetch('/api/query',{method:'POST',body:cmd}); const res=await r.json(); 
-        if(!silent){ 
-            logResult(res.success?`OK: ${res.message}`:`ERR: ${res.message}`,res.success); 
-            toast(res.message); 
-            if(cmd.includes('CREATE')||cmd.includes('DROP')) loadTree(); // Esto ahora actualiza el catalogo
-            
-            const resCont=document.getElementById('sql-result-container'); 
-            if(res.data&&res.data.length>0){ 
-                const k=Object.keys(res.data[0]).filter(x=>x!=='_ID'); 
-                let h='<table class="grid"><thead><tr>'; k.forEach(x=>h+=`<th>${x}</th>`); h+='</tr></thead><tbody>'; 
-                res.data.forEach(row=>{ h+='<tr>'; k.forEach(j=>h+=`<td>${row[j]}</td>`); h+='</tr>';}); h+='</tbody></table>'; 
-                document.getElementById('sql-result-area').innerHTML=h; 
-                document.getElementById('res-count').innerText=res.data.length+' filas'; 
-                resCont.style.display='block'; 
-            } else { resCont.style.display='none'; }
-        }
-    }
+    async function execSQL(cmd, silent=false) { if(!silent) addToHistory(cmd); const r=await fetch('/api/query',{method:'POST',body:cmd}); const res=await r.json(); if(!silent){ logResult(res.success?`OK: ${res.message}`:`ERR: ${res.message}`,res.success); toast(res.message); if(cmd.includes('CREATE')||cmd.includes('DROP')) loadTree(); const resCont=document.getElementById('sql-result-container'); if(res.data&&res.data.length>0){ const k=Object.keys(res.data[0]).filter(x=>x!=='_ID'); let h='<table class="grid"><thead><tr>'; k.forEach(x=>h+=`<th>${x}</th>`); h+='</tr></thead><tbody>'; res.data.forEach(row=>{ h+='<tr>'; k.forEach(j=>h+=`<td>${row[j]}</td>`); h+='</tr>';}); h+='</tbody></table>'; document.getElementById('sql-result-area').innerHTML=h; document.getElementById('res-count').innerText=res.data.length+' filas'; resCont.style.display='block'; } else { resCont.style.display='none'; }}}
 
     loadTree(); loadHistory();
 </script>

@@ -120,7 +120,7 @@ function getOSNamePretty($os) {
 }
 
 // --- INIT DATA ---
-$sql = "SELECT o.*, p.name as plan_name, p.cpu_cores as p_cpu, p.ram_gb as p_ram, os.cpu_cores as custom_cpu, os.ram_gb as custom_ram, os.db_enabled, os.web_enabled, os.os_image FROM orders o JOIN plans p ON o.plan_id=p.id LEFT JOIN order_specs os ON o.id = os.order_id WHERE user_id=? AND status!='cancelled' ORDER BY o.id DESC";
+$sql = "SELECT o.*, p.name as plan_name, p.cpu_cores as p_cpu, p.ram_gb as p_ram, os.cpu_cores as custom_cpu, os.ram_gb as custom_ram, os.db_enabled, os.web_enabled, os.os_image, os.tools FROM orders o JOIN plans p ON o.plan_id=p.id LEFT JOIN order_specs os ON o.id = os.order_id WHERE user_id=? AND status!='cancelled' ORDER BY o.id DESC";
 $stmt = $conn->prepare($sql); $stmt->execute([$_SESSION['user_id']]); $clusters = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $current = null; 
@@ -129,6 +129,7 @@ $total_weekly = 0;
 $creds = ['ssh_cmd'=>'Esperando...', 'ssh_pass'=>'...'];
 $web_url = null;
 $html_code = "<!DOCTYPE html>\n<html>\n<body>\n<h1>Bienvenido a Sylo</h1>\n</body>\n</html>";
+$installed_tools = [];
 
 foreach($clusters as $c) $total_weekly += calculateWeeklyPrice($c);
 
@@ -151,6 +152,13 @@ if($clusters) {
             $creds['ssh_pass'] = $d['ssh_pass'] ?? '...';
             $web_url = $d['web_url'] ?? null;
             if(isset($d['html_source']) && !empty($d['html_source'])) { $html_code = $d['html_source']; }
+            
+            // SYLO TOOLBELT (DB PRIORITY)
+            if(!empty($current['tools'])) {
+                $installed_tools = json_decode($current['tools'], true) ?? [];
+            } else {
+                $installed_tools = $d['installed_tools'] ?? [];
+            }
         }
     }
 }

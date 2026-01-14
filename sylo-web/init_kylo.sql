@@ -64,6 +64,7 @@ CREATE TABLE order_specs (
     subdomain VARCHAR(63) NOT NULL DEFAULT 'demo',
     ssh_user VARCHAR(32) DEFAULT 'usuario',
     os_image ENUM('alpine', 'ubuntu', 'redhat') DEFAULT 'ubuntu',
+    tools TEXT,
     CONSTRAINT fk_specs_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
 );
 

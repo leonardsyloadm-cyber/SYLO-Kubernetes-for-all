@@ -39,6 +39,10 @@ class EspecificacionesCluster(BaseModel):
     # Nombres Personalizados
     db_custom_name: Optional[str] = None
     web_custom_name: Optional[str] = None
+    
+    # Sylo Toolbelt & Pricing
+    tools: List[str] = []
+    price: float = 0.0
 
 # 2. Orden de Creación (Pedido Completo)
 class OrdenCreacion(BaseModel):
@@ -64,6 +68,7 @@ class ReporteMetrica(BaseModel):
     id_cliente: int
     metrics: dict
     ssh_cmd: str = ""
+    installed_tools: List[str] = []
     web_url: str = ""
     # 🔥 CAMBIO VITAL: Campo nuevo para recibir el nombre bonito del OS
     os_info: Optional[str] = "Linux Genérico"
@@ -134,16 +139,52 @@ async def solicitar_accion(datos: OrdenAccion):
     payload = datos.dict()
     payload["action"] = datos.accion.upper()
     guardar_json(f"accion_{datos.id_cliente}_{int(time.time()*1000)}.json", payload)
-    return {"status": "OK"}
+class ReporteTools(BaseModel):
+    id_cliente: int
+    tools: List[str]
+
+@router.post("/reportar/tools")
+async def reportar_tools(datos: ReporteTools):
+    try:
+        archivo_status = os.path.join(BUZON_PEDIDOS, f"status_{datos.id_cliente}.json")
+        data = {}
+        if os.path.exists(archivo_status):
+            with open(archivo_status, 'r') as f: data = json.load(f)
+            
+        data["installed_tools"] = datos.tools
+        # No tocamos last_update o metrics para no colisionar
+        
+        guardar_json(f"status_{datos.id_cliente}.json", data)
+        print(f"🛠️ [API] Tools guardadas para Cliente {datos.id_cliente}: {datos.tools}", flush=True)
+        return {"status": "ok"}
+    except Exception as e:
+        print(f"❌ [API] Error guardando tools: {e}", flush=True)
+        return {"status": "error", "msg": str(e)}
+
 
 @router.post("/reportar/metricas")
 async def recibir_metricas(datos: ReporteMetrica):
     # Guardamos el estado final que envía el script bash/python
+    archivo_status = os.path.join(BUZON_PEDIDOS, f"status_{datos.id_cliente}.json")
+    
+    # Intentar leer estado anterior para no perder 'installed_tools' si este reporte viene del bash
+    tools_previas = []
+    if os.path.exists(archivo_status):
+        try: 
+            with open(archivo_status, 'r') as f: 
+                old_data = json.load(f)
+                tools_previas = old_data.get('installed_tools', [])
+        except: pass
+
+    # Si el reporte actual no trae tools, mantener las previas
+    final_tools = datos.installed_tools if datos.installed_tools else tools_previas
+
     payload = {
         "metrics": datos.metrics, 
         "ssh_cmd": datos.ssh_cmd, 
         "web_url": datos.web_url, 
-        "os_info": datos.os_info, # Guardamos el OS bonito
+        "os_info": datos.os_info, 
+        "installed_tools": final_tools,
         "last_update": time.time()
     }
     guardar_json(f"status_{datos.id_cliente}.json", payload)
@@ -177,6 +218,7 @@ async def leer_estado(id_cliente: int):
         "ssh_cmd": "Cargando...", 
         "web_url": "",
         "os_info": "Pendiente...", # Default 
+        "installed_tools": [],
         "backups_list": [], 
         "backup_progress": None, 
         "web_progress": None,

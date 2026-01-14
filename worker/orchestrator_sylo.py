@@ -9,6 +9,7 @@ import shutil
 import signal
 import threading
 from concurrent.futures import ThreadPoolExecutor
+import docker # Sylo Toolbelt Dependency
 
 try: import requests
 except: pass
@@ -28,6 +29,11 @@ DB_CONTAINER = "kylo-main-db"
 DB_USER = "sylo_app"
 DB_PASS = "sylo_app_pass"
 DB_NAME = "kylo_main_db"
+
+# --- SYLO TOOLBELT CATALOGS ---
+TIER_1_ESSENTIALS = ["htop", "nano", "ncdu", "curl", "wget", "zip", "unzip", "git"]
+TIER_2_DEV        = ["python3", "python3-pip", "nodejs", "npm", "mysql-client", "jq", "tmux", "lazygit"]
+TIER_3_PRO        = ["rsync", "ffmpeg", "imagemagick", "redis-tools", "ansible", "speedtest-cli", "zsh"]
 
 # Scripts de Despliegue
 SCRIPT_BRONCE = os.path.join(BASE_DIR, "tofu-k8s/k8s-simple/deploy_simple.sh")
@@ -242,6 +248,86 @@ def run_bash_script(script_path, args, env_vars=None, cwd=None):
         return process.returncode == 0
     except: return False
 
+# ==============================================================================
+# SYLO TOOLBELT: LOGIC & INJECTION
+# ==============================================================================
+
+def validate_tools(plan_name, total_price, requested_tools):
+    """
+    Filtra las herramientas según el plan del usuario.
+    Retorna la lista final de herramientas permitidas.
+    """
+    allowed_catalog = set()
+    
+    # Determinar nivel de acceso basado en Plan o Precio
+    plan_clean = plan_name.lower()
+    
+    # Lógica Dinámica de Precios (Custom)
+    is_custom = (plan_clean == "personalizado")
+    
+    # Tier 1: Bronce o Custom < 15
+    if plan_clean == "bronce" or (is_custom and total_price < 15):
+        allowed_catalog.update(TIER_1_ESSENTIALS)
+        
+    # Tier 2: Plata o Custom >= 15
+    elif plan_clean == "plata" or (is_custom and 15 <= total_price < 30):
+        allowed_catalog.update(TIER_1_ESSENTIALS)
+        allowed_catalog.update(TIER_2_DEV)
+        
+    # Tier 3: Oro o Custom >= 30
+    elif plan_clean == "oro" or (is_custom and total_price >= 30):
+        allowed_catalog.update(TIER_1_ESSENTIALS)
+        allowed_catalog.update(TIER_2_DEV)
+        allowed_catalog.update(TIER_3_PRO)
+        
+    # Filtrado silencioso
+    final_list = [t for t in requested_tools if t in allowed_catalog]
+    
+    if final_list:
+        log(f"🔧 Toolbelt: Solicitadas {len(requested_tools)} -> Aprobadas {len(final_list)} ({plan_name})", Colors.CYAN)
+    
+    return final_list
+
+def install_tools(container_name, tools_list):
+    """
+    Inyecta las herramientas en el contenedor usando Docker API.
+    Auto-detecta si es Alpine o Debian/Ubuntu.
+    """
+    if not tools_list: return
+    
+    log(f"🛠️ Instalando Sylo Toolbelt en {container_name}: {', '.join(tools_list)}...", Colors.YELLOW)
+    try:
+        client = docker.from_env()
+        container = client.containers.get(container_name)
+        
+        # Detectar OS (Check rápido)
+        # Intentamos ejecutar 'cat /etc/os-release'
+        exit_code, output = container.exec_run("cat /etc/os-release")
+        os_info = output.decode().lower()
+        
+        cmd_install = ""
+        if "alpine" in os_info:
+            # Alpine: apk add --no-cache
+            pkgs = " ".join(tools_list)
+            cmd_install = f"apk add --no-cache {pkgs}"
+        else:
+            # Debian/Ubuntu: apt-get
+            # Añadimos DEBIAN_FRONTEND=noninteractive para evitar bloqueos
+            pkgs = " ".join(tools_list)
+            cmd_install = f"apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y {pkgs}"
+            
+        # Ejecutar Instalación
+        # Detach=False para esperar a que termine
+        res = container.exec_run(["/bin/sh", "-c", cmd_install], user="root")
+        
+        if res.exit_code == 0:
+            log(f"✅ Herramientas instaladas correctamente en {container_name}.", Colors.GREEN)
+        else:
+            log(f"⚠️ Error instalando herramientas: {res.output.decode()}", Colors.RED)
+            
+    except Exception as e:
+        log(f"⚠️ Fallo en inyección Toolbelt: {e}", Colors.RED)
+
 def process_order(json_file):
     if shutdown_event.is_set(): return
     processing_file = json_file + ".procesando"
@@ -322,12 +408,47 @@ def process_order(json_file):
             
             os_final = os_requested
 
+        # --- (MARKETPLACE ELIMINADO POR PETICIÓN DEL CLIENTE) ---
+        elif plan_raw == "App":
+            log(f"⚠️ Pedido de App ignorado: El módulo App Reactor ha sido desactivado.", Colors.YELLOW)
+            success = False
+
         # ==============================================================================
 
         if success:
-            log(f"✅ ID {oid} Desplegado. Aplicando Seguridad...", Colors.GREEN)
+            log(f"✅ ID {oid} Desplegado. Aplicando Mejoras...", Colors.GREEN)
             
-            # 1. SEGURIDAD
+            # 1. SYLO TOOLBELT INJECTION
+            requested_tools = specs.get("tools", [])
+            total_price = float(specs.get("price", 0)) # Asegurarse de que venga en el JSON
+            
+            # Nombre del contenedor (Asumimos convención sylo-cliente-{oid} para Docker)
+            # OJO: Si es Kubernetes, esto intenta conectar al contenedor 'docker' que tenga ese nombre.
+            # En Minikube con driver docker, los contenedores son hermanos o internos.
+            # Asumimos que la red es plana o accesible.
+            target_container = f"sylo-cliente-{oid}" 
+            
+            valid_tools = validate_tools(plan_raw, total_price, requested_tools)
+            install_tools(target_container, valid_tools)
+            
+            # --- PERSIST TOOL INFO VIA API (SAFER) ---
+            try:
+                import requests
+                api_tools_url = f"{API_URL.replace('/clientes', '')}/clientes/reportar/tools"
+                payload = {"id_cliente": oid, "tools": valid_tools}
+                try:
+                    r = requests.post(api_tools_url, json=payload, timeout=2)
+                    if r.status_code == 200:
+                        log(f"💾 Tools reportadas a API: {valid_tools}", Colors.CYAN)
+                    else:
+                        log(f"⚠️ Error API Tools: {r.text}", Colors.RED)
+                except Exception as ex:
+                     log(f"⚠️ Error conexión API Tools: {ex}", Colors.RED)
+
+            except Exception as e:
+                log(f"⚠️ Error general tools: {e}", Colors.RED)
+
+            # 2. SEGURIDAD
             apply_security_policy(cluster_profile, owner_id)
             
             # 2. RED Y MONITORING

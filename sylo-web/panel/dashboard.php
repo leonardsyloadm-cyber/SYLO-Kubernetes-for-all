@@ -105,6 +105,25 @@ require_once 'php/data.php';
                     <div><span class="term-label">CMD:</span>  <span class="term-val text-success" id="disp-ssh-cmd"><?=htmlspecialchars($creds['ssh_cmd'] ?? 'Connecting...')?></span></div>
                     <div><span class="term-label">PASS:</span> <span class="term-val text-warning" id="disp-ssh-pass"><?=htmlspecialchars($creds['ssh_pass'] ?? 'sylo1234')?></span></div>
                 </div>
+                </div>
+            </div>
+
+            <!-- SYLO TOOLBELT SECTION -->
+            <div class="card-clean mt-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="fw-bold m-0 text-white"><i class="bi bi-tools me-2 text-info"></i>Software Instalado</h6>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    <?php if(!empty($installed_tools)): ?>
+                        <?php foreach($installed_tools as $tool): ?>
+                            <span class="badge bg-dark border border-secondary text-white py-2 px-3 fw-normal">
+                                <i class="bi bi-check2-circle text-success me-1"></i> <?=htmlspecialchars($tool)?>
+                            </span>
+                        <?php endforeach; ?>
+                    <?php else: ?>
+                        <small class="text-light-muted">No se han detectado herramientas instaladas.</small>
+                    <?php endif; ?>
+                </div>
             </div>
 
             <div class="card-clean mt-4">

@@ -12,7 +12,69 @@ require_once 'php/auth.php';
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     
-    <link rel="stylesheet" href="css/style.css">
+    <style>
+        :root { --sylo-bg: #f8fafc; --sylo-text: #334155; --sylo-card: #ffffff; --sylo-accent: #2563eb; --input-bg: #f1f5f9; }
+        [data-theme="dark"] { --sylo-bg: #0f172a; --sylo-text: #f1f5f9; --sylo-card: #1e293b; --sylo-accent: #3b82f6; --input-bg: #334155; }
+        
+        body { font-family: 'Inter', sans-serif; background-color: var(--sylo-bg); color: var(--sylo-text); transition: 0.3s; }
+        .navbar { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(0,0,0,0.05); }
+        [data-theme="dark"] .navbar { background: rgba(15, 23, 42, 0.95); border-bottom: 1px solid rgba(255,255,255,0.1); }
+        [data-theme="dark"] .navbar-brand, [data-theme="dark"] .nav-link { color: white !important; }
+        
+        .info-card, .bg-white { background-color: var(--sylo-card) !important; color: var(--sylo-text); }
+        [data-theme="dark"] .text-muted { color: #94a3b8 !important; }
+        [data-theme="dark"] .bg-light { background-color: #1e293b !important; border-color: #334155; }
+        [data-theme="dark"] .form-control, [data-theme="dark"] .form-select { background-color: var(--input-bg); border-color: #475569; color: white; }
+        [data-theme="dark"] .modal-content { background-color: var(--sylo-card); color: white; }
+        
+        .hero { padding: 140px 0 100px; background: linear-gradient(180deg, var(--sylo-bg) 0%, var(--sylo-card) 100%); }
+        
+        .calc-box { background: #1e293b; border-radius: 24px; padding: 40px; color: white; border: 1px solid #334155; }
+        .price-display { font-size: 3.5rem; font-weight: 800; color: var(--sylo-accent); }
+        
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 20px; width: 20px; border-radius: 50%; background: #3b82f6; cursor: pointer; margin-top: -8px; box-shadow: 0 0 10px #3b82f6; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #475569; border-radius: 2px; }
+        input[type=range]:focus::-webkit-slider-runnable-track { background: #3b82f6; }
+
+        .card-stack-container { perspective: 1500px; height: 600px; cursor: pointer; position: relative; margin-bottom: 30px; }
+        .card-face { width: 100%; height: 100%; position: relative; transform-style: preserve-3d; transition: transform 0.8s; border-radius: 24px; }
+        .card-stack-container.active .card-face { transform: rotateY(180deg); }
+        .face-front, .face-back { position: absolute; width: 100%; height: 100%; top:0; left:0; backface-visibility: hidden; border-radius: 24px; padding: 30px; display: flex; flex-direction: column; justify-content: space-between; background: var(--sylo-card); border: 1px solid #e2e8f0; box-shadow: 0 10px 30px rgba(0,0,0,0.05); }
+        .face-front { z-index: 2; transform: rotateY(0deg); pointer-events: auto; }
+        .face-back { z-index: 1; transform: rotateY(180deg); background: var(--sylo-bg); border-color: var(--sylo-accent); pointer-events: none; }
+        .card-stack-container.active .face-front { pointer-events: none; }
+        .card-stack-container.active .face-back { pointer-events: auto; }
+        
+        .bench-bar { height: 35px; border-radius: 8px; display: flex; align-items: center; padding: 0 15px; color: white; margin-bottom: 8px; transition: width 1s; }
+        .b-sylo { background: linear-gradient(90deg, #2563eb, #3b82f6); }
+        .b-aws { background: #64748b; }
+        .success-box { background: black; color: white; border-radius: 8px; padding: 20px; font-family: 'JetBrains Mono', monospace; text-align: left; }
+        .status-dot { width: 10px; height: 10px; background-color: #22c55e; border-radius: 50%; display: inline-block; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% {box-shadow:0 0 0 0 rgba(34,197,94,0.7);} 70% {box-shadow:0 0 0 6px rgba(34,197,94,0);} 100% {box-shadow:0 0 0 0 rgba(34,197,94,0);} }
+        
+        .modal-content { border:none; border-radius: 16px; }
+        .avatar { width: 100px; height: 100px; border-radius: 50%; object-fit: cover; margin-bottom: 15px; }
+        .k8s-specs li { display: flex; justify-content: space-between; border-bottom: 1px dashed #cbd5e1; padding: 8px 0; font-size: 0.9rem; }
+        
+        /* SYLO TOOL CHIPS */
+        .tool-opt { cursor: pointer; transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1); border: 1px solid #e2e8f0; background: #fff; padding: 6px 12px; border-radius: 8px; display: inline-flex; align-items: center; font-size: 0.85rem; font-weight: 600; color: #64748b; user-select: none; }
+        .tool-opt:hover { transform: translateY(-1px); border-color: var(--sylo-accent); color: var(--sylo-accent); }
+        .tool-opt input { display: none; } /* Hide checkbox */
+        
+        /* Active State with Animation */
+        .tool-opt.active { background: var(--sylo-accent); color: white; border-color: var(--sylo-accent); box-shadow: 0 4px 6px rgba(37, 99, 235, 0.2); animation: syloBounce 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+        
+        .tool-opt.disabled { opacity: 0.4; pointer-events: none; background: #f1f5f9; border-color: #e2e8f0; color: #94a3b8; }
+        .tool-opt i { margin-right: 6px; }
+
+        @keyframes syloBounce {
+            0% { transform: scale(1); }
+            40% { transform: scale(0.92); }
+            70% { transform: scale(1.05); }
+            100% { transform: scale(1); }
+        }
+    </style>
 </head>
 <body>
 
@@ -115,17 +177,297 @@ require_once 'php/auth.php';
                 <div class="input-group rounded-pill overflow-hidden"><input id="mod-sub" class="form-control border-0" placeholder="mi-app"><span class="input-group-text border-0 bg-white small">.sylobi.org</span></div>
             </div>
 
-            <div class="mt-4"><button class="btn btn-primary w-100 rounded-pill fw-bold py-2 shadow-sm" onclick="lanzar()">DESPLEGAR AHORA</button></div>
+            <!-- SYLO TOOLBELT UI -->
+            <div id="grp-toolbelt" class="mt-3 p-4 bg-light border rounded-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="text-primary fw-bold m-0"><i class="fas fa-toolbox me-2"></i>Sylo Toolbelt</h6>
+                    <span id="tier-badge" class="badge bg-secondary">Calculando Nivel...</span>
+                </div>
+                
+                <p class="small text-muted mb-3">Herramientas inyectadas en tu contenedor (Coste incluido en el Tier).</p>
+                
+                <div class="mb-3">
+                    <small class="text-uppercase fw-bold text-muted d-block mb-2" style="font-size:0.7rem; letter-spacing:1px;">Tier 1: Essentials (< 15€)</small>
+                    <div id="tools-t1" class="d-flex flex-wrap gap-2"></div>
+                </div>
+                
+                <div class="mb-3">
+                    <small class="text-uppercase fw-bold text-muted d-block mb-2" style="font-size:0.7rem; letter-spacing:1px;">Tier 2: Developer (15€ - 30€)</small>
+                    <div id="tools-t2" class="d-flex flex-wrap gap-2"></div>
+                </div>
+                
+                <div class="mb-0">
+                    <small class="text-uppercase fw-bold text-muted d-block mb-2" style="font-size:0.7rem; letter-spacing:1px;">Tier 3: Pro Admin (> 30€)</small>
+                    <div id="tools-t3" class="d-flex flex-wrap gap-2"></div>
+                </div>
+            </div>
+
+            <div class="mt-4">
+                <div class="d-flex justify-content-between align-items-center mb-3 px-2">
+                    <span class="text-muted fw-bold">Presupuesto Estimado</span>
+                    <span class="display-6 fw-bold text-primary" id="modal-total-price">0€</span>
+                </div>
+                <button class="btn btn-primary w-100 rounded-pill fw-bold py-3 shadow-sm" onclick="lanzar()">DESPLEGAR INFRAESTRUCTURA</button>
+            </div>
         </div>
     </div></div></div>
 
     <div class="modal fade" id="statusModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content p-4 border-0 shadow-lg"><h5 class="fw-bold mb-4">Estado del Sistema <span class="status-dot ms-2"></span></h5><div class="d-flex justify-content-between border-bottom py-2"><span>API Gateway (Alicante)</span><span class="badge bg-success">Online</span></div><div class="d-flex justify-content-between border-bottom py-2"><span>NVMe Array</span><span class="badge bg-success">Online</span></div><div class="d-flex justify-content-between border-bottom py-2"><span>Oktopus V21</span><span class="badge bg-success">Active</span></div></div></div></div>
     <div class="modal fade" id="progressModal" data-bs-backdrop="static"><div class="modal-dialog modal-dialog-centered"><div class="modal-content terminal-window border-0"><div class="terminal-body text-center"><div class="spinner-border text-success mb-3" role="status"></div><h5 id="progress-text" class="mb-3">Iniciando...</h5><div class="progress"><div id="prog-bar" class="progress-bar bg-success" style="width:0%"></div></div></div></div></div></div>
+<<<<<<< Updated upstream:sylo-web/public/index.php
     <div class="modal fade" id="successModal"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 p-4" style="background:white; border-radius:15px;"><h2 class="text-success fw-bold mb-3">✅ ÉXITO</h2><div class="success-box"><span class="text-muted"># RESUMEN</span><br>Plan: <span id="s-plan" class="text-warning"></span><br>OS: <span id="s-os" class="text-info"></span><br>CPU: <span id="s-cpu"></span> vCore | RAM: <span id="s-ram"></span> GB<div class="mt-3 border-top border-secondary pt-2">CMD: <span id="s-cmd" class="text-white"></span><br>PASS: <span id="s-pass" class="text-white"></span></div></div><div class="text-center"><a href="../panel/dashboard.php" class="btn btn-primary rounded-pill px-5 fw-bold">IR A LA CONSOLA</a></div></div></div></div>
     <div class="modal fade" id="authModal"><div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content border-0 shadow-lg p-4"><ul class="nav nav-pills nav-fill mb-4 p-1 bg-light rounded-pill"><li class="nav-item"><a class="nav-link active rounded-pill" data-bs-toggle="tab" href="#login-pane">Login</a></li><li class="nav-item"><a class="nav-link rounded-pill" data-bs-toggle="tab" href="#reg-pane">Registro</a></li></ul><div class="tab-content"><div class="tab-pane fade show active" id="login-pane"><input id="log_email" class="form-control mb-3" placeholder="Usuario/Email"><input type="password" id="log_pass" class="form-control mb-3" placeholder="Contraseña"><button class="btn btn-primary w-100 rounded-pill fw-bold" onclick="handleLogin()">Entrar</button></div><div class="tab-pane fade" id="reg-pane"><div class="text-center mb-3"><div class="btn-group w-50"><input type="radio" class="btn-check" name="t_u" id="t_a" value="autonomo" checked onchange="toggleReg()"><label class="btn btn-outline-primary" for="t_a">Autónomo</label><input type="radio" class="btn-check" name="t_u" id="t_e" value="empresa" onchange="toggleReg()"><label class="btn btn-outline-primary" for="t_e">Empresa</label></div></div><div class="row g-2"><div class="col-6"><input id="reg_u" class="form-control mb-2" placeholder="Usuario"></div><div class="col-6"><input id="reg_e" class="form-control mb-2" placeholder="Email"></div><div class="col-6"><input type="password" id="reg_p1" class="form-control mb-2" placeholder="Contraseña"></div><div class="col-6"><input type="password" id="reg_p2" class="form-control mb-2" placeholder="Repetir"></div></div><div id="fields-auto" class="mt-2"><input id="reg_fn" class="form-control mb-2" placeholder="Nombre Completo"><input id="reg_dni_a" class="form-control mb-2" placeholder="DNI"></div><div id="fields-emp" class="mt-2" style="display:none"><div class="row g-2"><div class="col-6"><input id="reg_contact" class="form-control mb-2" placeholder="Persona Contacto"></div><div class="col-6"><input id="reg_cif" class="form-control mb-2" placeholder="CIF"></div></div><select id="reg_tipo_emp" class="form-select mb-2" onchange="checkOther()"><option value="SL">S.L.</option><option value="SA">S.A.</option><option value="Cooperativa">Cooperativa</option><option value="Otro">Otro</option></select><input id="reg_rs" class="form-control mb-2" placeholder="Razón Social" style="display:none"></div><div class="row g-2 mt-1"><div class="col-6"><input id="reg_tel" class="form-control mb-2" placeholder="Teléfono"></div><div class="col-6"><input id="reg_cal" class="form-control mb-2" placeholder="Dirección"></div></div><div class="form-check mt-3"><input type="checkbox" id="reg_terms" class="form-check-input"><label class="form-check-label small">Acepto los <a href="#" onclick="viewTermsFromReg()">Términos</a>.</label></div><button class="btn btn-success w-100 rounded-pill fw-bold mt-3" onclick="handleRegister()">Crear Cuenta</button></div></div></div></div></div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>const isLogged = <?=isset($_SESSION['user_id'])?'true':'false'?>;</script>
     <script src="js/main.js"></script>
+=======
+    <div class="modal fade" id="successModal"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 p-4" style="background:white; border-radius:15px;"><h2 class="text-success fw-bold mb-3">✅ ÉXITO</h2><div class="success-box"><span class="text-muted"># RESUMEN</span><br>Plan: <span id="s-plan" class="text-warning"></span><br>OS: <span id="s-os" class="text-info"></span><br>CPU: <span id="s-cpu"></span> vCore | RAM: <span id="s-ram"></span> GB<div class="mt-2 border-top border-secondary pt-2"><span class="text-muted small">TOOLS:</span> <span id="s-tools" class="text-white small fw-bold"></span></div><div class="mt-3 border-top border-secondary pt-2">CMD: <span id="s-cmd" class="text-white"></span><br>PASS: <span id="s-pass" class="text-white"></span></div></div><div class="text-center"><a href="dashboard_cliente.php" class="btn btn-primary rounded-pill px-5 fw-bold">IR A LA CONSOLA</a></div></div></div></div>
+    <div class="modal fade" id="authModal"><div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content border-0 shadow-lg p-4"><ul class="nav nav-pills nav-fill mb-4 p-1 bg-light rounded-pill"><li class="nav-item"><a class="nav-link active rounded-pill" data-bs-toggle="tab" href="#login-pane">Login</a></li><li class="nav-item"><a class="nav-link rounded-pill" data-bs-toggle="tab" href="#reg-pane">Registro</a></li></ul><div class="tab-content"><div class="tab-pane fade show active" id="login-pane"><input id="log_email" class="form-control mb-3" placeholder="Usuario/Email"><input type="password" id="log_pass" class="form-control mb-3" placeholder="Contraseña"><button class="btn btn-primary w-100 rounded-pill fw-bold" onclick="handleLogin()">Entrar</button></div><div class="tab-pane fade" id="reg-pane"><div class="text-center mb-3"><div class="btn-group w-50"><input type="radio" class="btn-check" name="t_u" id="t_a" value="autonomo" checked onchange="toggleReg()"><label class="btn btn-outline-primary" for="t_a">Autónomo</label><input type="radio" class="btn-check" name="t_u" id="t_e" value="empresa" onchange="toggleReg()"><label class="btn btn-outline-primary" for="t_e">Empresa</label></div></div><div class="row g-2"><div class="col-6"><input id="reg_u" class="form-control mb-2" placeholder="Usuario"></div><div class="col-6"><input id="reg_e" class="form-control mb-2" placeholder="Email"></div><div class="col-6"><input type="password" id="reg_p1" class="form-control mb-2" placeholder="Contraseña"></div><div class="col-6"><input type="password" id="reg_p2" class="form-control mb-2" placeholder="Repetir"></div></div><div id="fields-auto" class="mt-2"><input id="reg_fn" class="form-control mb-2" placeholder="Nombre Completo"><input id="reg_dni_a" class="form-control mb-2" placeholder="DNI"></div><div id="fields-emp" class="mt-2" style="display:none"><div class="row g-2"><div class="col-6"><input id="reg_contact" class="form-control mb-2" placeholder="Persona Contacto"></div><div class="col-6"><input id="reg_cif" class="form-control mb-2" placeholder="CIF"></div></div><select id="reg_tipo_emp" class="form-select mb-2" onchange="checkOther()"><option value="SL">S.L.</option><option value="SA">S.A.</option><option value="Cooperativa">Cooperativa</option><option value="Otro">Otro</option></select><input id="reg_rs" class="form-control mb-2" placeholder="Razón Social" style="display:none"></div><div class="row g-2 mt-1"><div class="col-6"><input id="reg_tel" class="form-control mb-2" placeholder="Teléfono"></div><div class="col-6"><input id="reg_cal" class="form-control mb-2" placeholder="Dirección"></div></div><div class="form-check mt-3"><input type="checkbox" id="reg_terms" class="form-check-input"><label class="form-check-label small">Acepto los <a href="#" onclick="viewTermsFromReg()">Términos</a>.</label></div><button class="btn btn-success w-100 rounded-pill fw-bold mt-3" onclick="handleRegister()">Crear Cuenta</button></div></div></div></div></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        const isLogged = <?=isset($_SESSION['user_id'])?'true':'false'?>;
+        function openM(id){const el=document.getElementById(id);if(el)new bootstrap.Modal(el).show();}
+        function hideM(id){const el=document.getElementById(id);const m=bootstrap.Modal.getInstance(el);if(m)m.hide();}
+        function openAuth(){openM('authModal');}
+        function openLegal(){new bootstrap.Offcanvas(document.getElementById('legalCanvas')).show();}
+        function viewTermsFromReg(){hideM('authModal');openLegal();}
+        function toggleTheme(){document.body.dataset.theme=document.body.dataset.theme==='dark'?'':'dark';}
+        function toggleCard(el){document.querySelectorAll('.card-stack-container').forEach(c=>c!==el&&c.classList.remove('active'));el.classList.toggle('active');}
+        function toggleReg(){const e=document.getElementById('t_e').checked;document.getElementById('fields-emp').style.display=e?'block':'none';document.getElementById('fields-auto').style.display=e?'none':'block';}
+        function checkOther(){document.getElementById('reg_rs').style.display=(document.getElementById('reg_tipo_emp').value==='Otro')?'block':'none';}
+
+        // --- CALCULADORA (FIXED: UPDATE ON INPUT) ---
+        document.addEventListener('DOMContentLoaded', () => { 
+            // Eliminados elementos 'sel-calc-db' y 'sel-calc-web' del array porque no existen en el HTML
+            ['in-cpu','in-ram','check-calc-db','check-calc-web'].forEach(id=>document.getElementById(id)?.addEventListener('input', () => {
+                document.getElementById('calc-preset').value='custom'; // Forzar custom al mover
+                updCalc(); 
+            }));
+            updCalc(); // Init
+        });
+        
+        function applyPreset() {
+            const p=document.getElementById('calc-preset').value, c=document.getElementById('in-cpu'), r=document.getElementById('in-ram'), d=document.getElementById('check-calc-db'), w=document.getElementById('check-calc-web');
+            if(p==='bronce'){c.value=1;r.value=1;d.checked=false;w.checked=false;} 
+            else if(p==='plata'){c.value=2;r.value=2;d.checked=true;w.checked=false;} 
+            else if(p==='oro'){c.value=3;r.value=3;d.checked=true;w.checked=true;}
+            updCalc();
+        }
+        function updCalc() {
+            let c=parseInt(document.getElementById('in-cpu').value), r=parseInt(document.getElementById('in-ram').value);
+            document.getElementById('c-cpu').innerText=c; document.getElementById('c-ram').innerText=r;
+            
+            let d_c=document.getElementById('check-calc-db').checked?5:0;
+            let w_c=document.getElementById('check-calc-web').checked?5:0;
+            
+            // Eliminada la lógica que deshabilitaba los selects que no existen y causaban el error JS
+            
+            renderP((c*5)+(r*5)+d_c+w_c+5);
+        }
+        function renderP(val){ 
+            document.getElementById('out-sylo').innerText=val+"€"; 
+            let aws=Math.round((val*3.5)+40), az=Math.round((val*3.2)+30), sv=Math.round(((aws-val)/aws)*100); if(sv>99)sv=99;
+            document.getElementById('out-aws').innerText=aws+"€"; document.getElementById('out-azure').innerText=az+"€"; document.getElementById('out-save').innerText=sv+"%"; document.getElementById('pb-sylo').style.width=sv+"%"; document.getElementById('pb-aws').style.width="100%"; document.getElementById('pb-azure').style.width=(az/aws*100)+"%";
+        }
+
+        // --- DEPLOY LOGIC ---
+        let curPlan='';
+        function prepararPedido(plan) {
+            if(!isLogged) { openAuth(); return; }
+            curPlan = plan;
+            document.getElementById('m_plan').innerText = plan;
+            
+            const selOS = document.getElementById('cfg-os'), mCpu = document.getElementById('mod-cpu'), mRam = document.getElementById('mod-ram'), dbT = document.getElementById('mod-db-type'), webT = document.getElementById('mod-web-type'), cDb = document.getElementById('mod-check-db'), cWeb = document.getElementById('mod-check-web');
+            const grpHard = document.getElementById('grp-hardware');
+
+            selOS.innerHTML = "";
+            if(plan==='Bronce'){ 
+                selOS.innerHTML="<option value='alpine'>Alpine</option>"; selOS.disabled=true; 
+                grpHard.style.display="none"; // OCULTAR SLIDERS EN FIJOS
+                mCpu.value=1; mRam.value=1; 
+                cDb.checked=false; cWeb.checked=false; cDb.disabled=true; cWeb.disabled=true; 
+            }
+            else if(plan==='Plata'){ 
+                selOS.innerHTML="<option value='ubuntu'>Ubuntu</option><option value='alpine'>Alpine</option>"; selOS.disabled=false; 
+                grpHard.style.display="none";
+                mCpu.value=2; mRam.value=2; 
+                cDb.checked=true; cWeb.checked=false; cDb.disabled=true; cWeb.disabled=true; dbT.disabled=true; 
+            }
+            else if(plan==='Oro'){ 
+                selOS.innerHTML="<option value='ubuntu'>Ubuntu</option><option value='alpine'>Alpine</option><option value='redhat'>RedHat</option>"; selOS.disabled=false; 
+                grpHard.style.display="none";
+                mCpu.value=3; mRam.value=3; 
+                cDb.checked=true; cWeb.checked=true; cDb.disabled=true; cWeb.disabled=true; dbT.disabled=true; webT.disabled=true; 
+            }
+            else { // Custom
+                selOS.innerHTML="<option value='ubuntu'>Ubuntu</option><option value='alpine'>Alpine</option><option value='redhat'>RedHat</option>"; selOS.disabled=false; 
+                grpHard.style.display="block"; // MOSTRAR SLIDERS SOLO EN CUSTOM
+                mCpu.value = document.getElementById('in-cpu').value; mRam.value = document.getElementById('in-ram').value; 
+                cDb.disabled=false; cWeb.disabled=false;
+                cDb.checked = document.getElementById('check-calc-db').checked;
+                cWeb.checked = document.getElementById('check-calc-web').checked;
+                dbT.disabled=false; webT.disabled=false;
+            }
+            updateModalHard(); toggleModalSoft();
+            
+            // Iniciar recálculo dinámico y renderizado de tools
+            recalcModal();
+            
+            openM('configModal');
+        }
+
+        function updateModalHard(){ document.getElementById('lbl-cpu').innerText=document.getElementById('mod-cpu').value; document.getElementById('lbl-ram').innerText=document.getElementById('mod-ram').value; }
+        function toggleModalSoft(){ document.getElementById('mod-db-opts').style.display=document.getElementById('mod-check-db').checked?'block':'none'; document.getElementById('mod-web-opts').style.display=document.getElementById('mod-check-web').checked?'block':'none'; }
+
+        // --- TOOLBELT & PRICING LOGIC ---
+        const TIER1 = ["htop", "nano", "ncdu", "curl", "wget", "zip", "unzip", "git"];
+        const TIER2 = ["python3", "python3-pip", "nodejs", "npm", "mysql-client", "jq", "tmux", "lazygit"];
+        const TIER3 = ["rsync", "ffmpeg", "imagemagick", "redis-tools", "ansible", "speedtest-cli", "zsh"];
+
+        // Listeners para recálculo dinámico en el Modal
+        ['mod-cpu','mod-ram','mod-check-db','mod-check-web','cfg-os','mod-db-type','mod-web-type'].forEach(id => {
+            document.getElementById(id)?.addEventListener('change', recalcModal);
+            document.getElementById(id)?.addEventListener('input', recalcModal);
+        });
+
+        function recalcModal() {
+            let price = 0;
+            const p = curPlan;
+
+            if(p === 'Bronce') price = 5;
+            else if(p === 'Plata') price = 15;
+            else if(p === 'Oro') price = 30;
+            else { // CUSTOM LOGIC COMPLEJA
+                const cpu = parseInt(document.getElementById('mod-cpu').value) || 1;
+                const ram = parseInt(document.getElementById('mod-ram').value) || 1;
+                price += (cpu * 5) + (ram * 5);
+
+                const os = document.getElementById('cfg-os').value;
+                if(os === 'alpine') price += 5;
+                if(os === 'ubuntu') price += 10;
+                if(os === 'redhat') price += 15;
+
+                if(document.getElementById('mod-check-db').checked) {
+                    const dbT = document.getElementById('mod-db-type').value;
+                    if(dbT === 'mysql') price += 5;
+                    if(dbT === 'postgresql') price += 10;
+                    if(dbT === 'mongodb') price += 10;
+                }
+
+                if(document.getElementById('mod-check-web').checked) {
+                    const webT = document.getElementById('mod-web-type').value;
+                    if(webT === 'nginx') price += 5;
+                    if(webT === 'apache') price += 10;
+                }
+            }
+
+            document.getElementById('modal-total-price').innerText = price + "€";
+            renderTools(p, price);
+        }
+
+        function renderTools(plan, price) {
+            let access = 1;
+            let badgeTxt = "Nivel 1 (Bronce)";
+            let badgeClass = "bg-secondary";
+
+            if(plan === 'Plata') { access=2; badgeTxt="Nivel 2 (Plata)"; badgeClass="bg-primary"; }
+            if(plan === 'Oro') { access=3; badgeTxt="Nivel 3 (Oro)"; badgeClass="bg-warning text-dark"; }
+            
+            if(plan === 'Personalizado') {
+                if(price >= 30) { access=3; badgeTxt="Nivel 3 (Custom Pro)"; badgeClass="bg-warning text-dark"; }
+                else if(price >= 15) { access=2; badgeTxt="Nivel 2 (Custom Dev)"; badgeClass="bg-primary"; }
+                else { badgeTxt="Nivel 1 (Custom Basic)"; }
+            }
+            
+            document.getElementById('tier-badge').className = `badge ${badgeClass}`;
+            document.getElementById('tier-badge').innerText = badgeTxt;
+
+            const genChips = (list, lvl) => list.map(t => {
+                const enabled = lvl <= access;
+                // Preservar estado checked si ya existe, si no, false (user request: no pre-selected)
+                const existing = document.getElementById(`t_${t}`);
+                const isChecked = existing ? existing.checked : false; // Mantiene estado al redibujar
+                
+                // Si pasa de enabled a disabled, forzamos uncheck visual
+                const finalCheck = enabled ? isChecked : false;
+
+                return `
+                <label class="tool-opt ${enabled?'':'disabled'} ${finalCheck?'active':''}">
+                    <input type="checkbox" name="sylo_tools" value="${t}" id="t_${t}" 
+                           ${finalCheck?'checked':''} ${enabled?'':'disabled'}
+                           onchange="this.parentElement.classList.toggle('active', this.checked)">
+                    ${getIcon(t)} ${t}
+                </label>`;
+            }).join('');
+
+            document.getElementById('tools-t1').innerHTML = genChips(TIER1, 1);
+            document.getElementById('tools-t2').innerHTML = genChips(TIER2, 2);
+            document.getElementById('tools-t3').innerHTML = genChips(TIER3, 3);
+        }
+
+        function getIcon(t) {
+            const map = {'python3':'🐍','nodejs':'🟢','git':'🐙','htop':'📊','mysql-client':'🐬','docker':'🐳','zsh':'🐚'};
+            return map[t] || '🔧';
+        }
+
+        async function lanzar() {
+            const alias = document.getElementById('cfg-alias').value; if(!alias) { alert("Alias obligatorio"); return; }
+            const specs = {
+                cluster_alias: alias,
+                ssh_user: document.getElementById('cfg-ssh-user').value,
+                os_image: document.getElementById('cfg-os').value,
+                cpu: parseInt(document.getElementById('mod-cpu').value),
+                
+                // Enviar también el precio calculado para validación backend
+                price: parseFloat(document.getElementById('modal-total-price').innerText.replace('€','')),
+                
+                ram: parseInt(document.getElementById('mod-ram').value),
+                storage: 25,
+                db_enabled: document.getElementById('mod-check-db').checked,
+                web_enabled: document.getElementById('mod-check-web').checked,
+                db_custom_name: document.getElementById('mod-db-name').value,
+                web_custom_name: document.getElementById('mod-web-name').value,
+                subdomain: document.getElementById('mod-sub').value || 'interno',
+                db_type: document.getElementById('mod-db-type').value,
+                web_type: document.getElementById('mod-web-type').value,
+                tools: Array.from(document.querySelectorAll('input[name="sylo_tools"]:checked')).map(cb => cb.value)
+            };
+            hideM('configModal'); openM('progressModal');
+            try {
+                const res = await fetch('index.php', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:'comprar', plan:curPlan, specs:specs}) });
+                const j = await res.json();
+                if(j.status === 'success') startPolling(j.order_id, specs); else { hideM('progressModal'); alert(j.mensaje); }
+            } catch(e) { hideM('progressModal'); alert("Error"); }
+        }
+
+        function startPolling(oid, finalSpecs) {
+            let i = setInterval(async () => {
+                const r = await fetch(`index.php?check_status=${oid}`);
+                const s = await r.json();
+                document.getElementById('prog-bar').style.width = s.percent+"%";
+                document.getElementById('progress-text').innerText = s.message;
+                if(s.status === 'completed') {
+                    clearInterval(i); hideM('progressModal');
+                    document.getElementById('s-plan').innerText = curPlan;
+                    document.getElementById('s-os').innerText = finalSpecs.os_image;
+                    document.getElementById('s-cpu').innerText = finalSpecs.cpu;
+                    document.getElementById('s-ram').innerText = finalSpecs.ram;
+                    document.getElementById('s-tools').innerText = (s.installed_tools && s.installed_tools.length > 0) ? s.installed_tools.join(", ") : "Ninguna";
+                    document.getElementById('s-cmd').innerText = s.ssh_cmd;
+                    document.getElementById('s-pass').innerText = s.ssh_pass;
+                    openM('successModal');
+                }
+            }, 1500);
+        }
+
+        async function handleLogin() { const r=await fetch('index.php',{method:'POST',body:JSON.stringify({action:'login',email_user:document.getElementById('log_email').value,password:document.getElementById('log_pass').value})}); const d=await r.json(); if(d.status==='success') location.reload(); else alert(d.mensaje); }
+        async function handleRegister() { if(!document.getElementById('reg_terms').checked) return; const t = document.getElementById('t_a').checked ? 'autonomo' : 'empresa'; const d = { action:'register', username:document.getElementById('reg_u').value, email:document.getElementById('reg_e').value, password:document.getElementById('reg_p1').value, password_confirm:document.getElementById('reg_p2').value, telefono:document.getElementById('reg_tel').value, calle:document.getElementById('reg_cal').value, tipo_usuario:t }; if(t==='autonomo') { d.full_name=document.getElementById('reg_fn').value; d.dni=document.getElementById('reg_dni_a').value; } else { d.contact_name=document.getElementById('reg_contact').value; d.cif=document.getElementById('reg_cif').value; d.dni=d.cif; d.tipo_empresa=document.getElementById('reg_tipo_emp').value; if(d.tipo_empresa==='Otro') d.company_name=document.getElementById('reg_rs').value; } await fetch('index.php',{method:'POST',body:JSON.stringify(d)}); location.reload(); }
+        function logout() { fetch('index.php',{method:'POST',body:JSON.stringify({action:'logout'})}).then(()=>location.reload()); }
+        function copyData(){ navigator.clipboard.writeText(document.getElementById('ssh-details').innerText); }
+        function userMovedSlider(){ document.getElementById('calc-preset').value='custom'; updCalc(); }
+    </script>
+>>>>>>> Stashed changes:sylo-web/index.php
 </body>
 </html>

@@ -12,6 +12,7 @@ import time
 import signal
 import json
 import threading
+import asyncio
 from datetime import datetime
 
 # ================= BOOTSTRAPPER (AUTO-CONFIGURACIÓN) =================
@@ -303,7 +304,7 @@ class OktopusApp(ctk.CTk):
         ctk.CTkLabel(f, text="Servicios", font=FONT_HEAD, text_color=C_TEXT_WHITE).pack(anchor="w", pady=(20, 10))
         st = ModernCard(f); st.pack(fill="x", ipady=20, padx=5)
         
-        keys = ["API GATEWAY", "WEB SERVER", "DATABASE", "OPERATOR", "ORCHESTRATOR", "BRAIN", "DNS SERVER"]
+        keys = ["API GATEWAY", "WEB SERVER", "DATABASE", "OPERATOR", "ORCHESTRATOR", "BRAIN", "DNS SERVER", "KERNEL GHOST"]
         for i, s in enumerate(keys):
             sf = ctk.CTkFrame(st, fg_color="transparent"); sf.pack(side="left", expand=True)
             led = LEDIndicator(sf, s); led.pack()
@@ -316,10 +317,12 @@ class OktopusApp(ctk.CTk):
         ctk.CTkFrame(wf, fg_color=C_BORDER_GLOW, height=1).pack(fill="x", padx=20, pady=5)
         
         # --- WORKERS (INCLUYE DNS) ---
+        # --- WORKERS (INCLUYE DNS) ---
         self.create_worker_ctrl(wf, "operator_sylo.py", "OPERATOR")
         self.create_worker_ctrl(wf, "orchestrator_sylo.py", "ORCHESTRATOR")
-        self.create_worker_ctrl(wf, "sylo_brain.py", "BRAIN")
+        self.create_worker_ctrl(wf, "sylo_brain.py", "BRAIN", teleport=True) # Teleport habilitado para BRAIN
         self.create_worker_ctrl(wf, "sylo_dns.py", "DNS SERVER")
+        self.create_worker_ctrl(wf, "ghost_monitor.py", "KERNEL GHOST") # Nuevo servicio eBPF
 
     def create_kpi(self, p, t, v, c, i):
         fr = ModernCard(p, hover_effect=True); fr.pack(side="left", expand=True, fill="both", padx=5, ipady=5)
@@ -340,16 +343,63 @@ class OktopusApp(ctk.CTk):
         ctk.CTkButton(right, text="■", width=30, fg_color=C_DANGER, command=self.stop_api_server).pack(side="left", padx=2)
         self.worker_widgets["API_SRV"] = {"led": led, "txt": st}
 
-    def create_worker_ctrl(self, p, s, l):
+    def create_worker_ctrl(self, p, s, l, teleport=False):
         f = ctk.CTkFrame(p, fg_color="transparent"); f.pack(fill="x", padx=15, pady=8)
         left = ctk.CTkFrame(f, fg_color="transparent"); left.pack(side="left")
         led = LEDIndicator(left, l); led.pack(side="left")
         ctk.CTkLabel(left, text=l, font=FONT_BODY, text_color=C_TEXT_WHITE).pack(side="left", padx=10)
         right = ctk.CTkFrame(f, fg_color="transparent"); right.pack(side="right")
         st = ctk.CTkLabel(right, text="OFFLINE", font=FONT_MONO, text_color=C_DANGER, width=70); st.pack(side="left", padx=10)
+        
+        # Teleport Controls (Freeze/Thaw)
+        if teleport:
+            ctk.CTkButton(right, text="❄️", width=30, fg_color=C_ACCENT_CYAN, command=lambda: self.teleport_action("FREEZE", s)).pack(side="left", padx=2)
+            ctk.CTkButton(right, text="🔥", width=30, fg_color=C_WARNING, command=lambda: self.teleport_action("THAW", s)).pack(side="left", padx=2)
+
         ctk.CTkButton(right, text="▶", width=30, fg_color=C_SUCCESS, command=lambda: self.start_worker(s)).pack(side="left", padx=2)
         ctk.CTkButton(right, text="■", width=30, fg_color=C_DANGER, command=lambda: self.stop_worker(s)).pack(side="left", padx=2)
         self.worker_widgets[s] = {"led": led, "txt": st}
+    
+    def teleport_action(self, action, script_name):
+        pid = self.find_process(script_name)
+        
+        if action == "FREEZE":
+            if not pid:
+                messagebox.showerror("Error", f"{script_name} no está corriendo, no se puede congelar.")
+                return
+            
+            dialog = ctk.CTkInputDialog(text=f"Congelando PID {pid}. Password SUDO:", title="Teleport Freeze")
+            pwd = dialog.get_input()
+            if not pwd: return
+
+            cmd = ["sudo", "-S", sys.executable, os.path.join(WORKER_DIR, "teleport", "freeze_service.py"), str(pid)]
+            threading.Thread(target=self._run_teleport_cmd, args=(cmd, pwd, "Conjelado")).start()
+
+        elif action == "THAW":
+            # Para restaurar, necesitamos el PID o ID original que se usó como carpeta.
+            # Asumimos que el usuario sabe qué PID busca restaurar, o podríamos buscar en la carpeta checkpoints.
+            # Para simplificar UX, pediremos el ID.
+            dialog = ctk.CTkInputDialog(text="ID del proceso a restaurar (PID original):", title="Teleport Thaw")
+            ident = dialog.get_input()
+            if not ident: return
+            
+            pwd_dialog = ctk.CTkInputDialog(text="Password SUDO:", title="Sudo Required")
+            pwd = pwd_dialog.get_input()
+            if not pwd: return
+
+            cmd = ["sudo", "-S", sys.executable, os.path.join(WORKER_DIR, "teleport", "thaw_service.py"), ident]
+            threading.Thread(target=self._run_teleport_cmd, args=(cmd, pwd, "Restaurado")).start()
+
+    def _run_teleport_cmd(self, cmd, pwd, label):
+        try:
+            p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            out, err = p.communicate(input=pwd + "\n")
+            if p.returncode == 0:
+                self.log_to_console("TELEPORT", f"Operación Exitosa: {label}", C_SUCCESS)
+            else:
+                self.log_to_console("TELEPORT", f"Fallo: {err}", C_DANGER)
+        except Exception as e:
+            self.log_to_console("TELEPORT", f"Error Ejecucción: {e}", C_DANGER)
 
     # --- API TAB ---
     def create_api_tab(self):
@@ -361,6 +411,10 @@ class OktopusApp(ctk.CTk):
         con = ModernCard(f, border_color=C_ACCENT_CYAN); con.pack(fill="both", expand=True)
         self.api_console = ctk.CTkTextbox(con, font=FONT_MONO, fg_color=C_CONSOLE_BG, text_color=C_API_TXT, wrap="word", border_width=0)
         self.api_console.pack(fill="both", expand=True, padx=2, pady=2)
+        # Configurar tags para NeuroShield
+        self.api_console.tag_config("SHIELD_WARN", foreground=C_WARNING)
+        self.api_console.tag_config("SHIELD_CRIT", foreground=C_DANGER)
+        
         self.api_console.insert("end", "--- ESPERANDO CONEXIONES AL CEREBRO ---\n"); self.api_console.configure(state="disabled")
         ctk.CTkButton(f, text="LIMPIAR LOG", fg_color=C_BG_CARD, command=lambda: self.clear_console(self.api_console)).pack(anchor="e", pady=10)
 
@@ -392,6 +446,8 @@ class OktopusApp(ctk.CTk):
         con = ModernCard(f, border_color=C_WARNING); con.pack(fill="both", expand=True)
         self.master_console = ctk.CTkTextbox(con, font=FONT_MONO, fg_color=C_CONSOLE_BG, text_color=C_SYS_TXT, wrap="word", border_width=0)
         self.master_console.pack(fill="both", expand=True, padx=2, pady=2)
+        self.master_console.tag_config("SHIELD_WARN", foreground=C_WARNING)
+        self.master_console.tag_config("SHIELD_CRIT", foreground=C_DANGER)
         self.master_console.configure(state="disabled")
 
     def clear_console(self, w): w.configure(state="normal"); w.delete("1.0", "end"); w.configure(state="disabled")
@@ -400,7 +456,15 @@ class OktopusApp(ctk.CTk):
         try:
             self.master_console.configure(state="normal")
             ts = datetime.now().strftime('%H:%M:%S'); tag = f"[{source.upper()}]"
-            self.master_console.insert("end", f"[{ts}] {tag} {message}\n"); self.master_console.see("end"); self.master_console.configure(state="disabled")
+            
+            # Detect NeuroShield tags
+            tags = "normal"
+            if "SYLO_NEURO_SHIELD" in source or "SECURITY BREACH" in message:
+                tags = "SHIELD_CRIT"
+            elif "THREAT DETECTED" in message:
+                tags = "SHIELD_WARN"
+
+            self.master_console.insert("end", f"[{ts}] {tag} {message}\n", tags); self.master_console.see("end"); self.master_console.configure(state="disabled")
         except: pass
 
     # ================= LOGIC LOOPS =================
@@ -413,7 +477,15 @@ class OktopusApp(ctk.CTk):
                     try:
                         with open("/tmp/sylo_api.log", "r") as f:
                             f.seek(api_cursor); new = f.read()
-                            if new: api_cursor = f.tell(); self.append_widget(self.api_console, new)
+                            if new: 
+                                api_cursor = f.tell()
+                                # Highlight logic for API console
+                                if "SYLO_NEURO_SHIELD" in new:
+                                    if "CRITICAL" in new or "SECURITY BREACH" in new: self.append_widget(self.api_console, new, "SHIELD_CRIT")
+                                    elif "WARNING" in new: self.append_widget(self.api_console, new, "SHIELD_WARN")
+                                    else: self.append_widget(self.api_console, new)
+                                else:
+                                    self.append_widget(self.api_console, new)
                     except: pass
                 # WORKERS
                 for s in self.worker_widgets.keys():
@@ -422,6 +494,10 @@ class OktopusApp(ctk.CTk):
                     if not path: continue
                     if s not in worker_cursors: worker_cursors[s] = 0
                     if os.path.exists(path):
+                        # FIX: Si el archivo se truncó (reinicio de worker), resetear cursor
+                        if os.path.getsize(path) < worker_cursors[s]:
+                            worker_cursors[s] = 0
+                            
                         try:
                             with open(path, "r") as f:
                                 f.seek(worker_cursors[s]); lines = f.readlines()
@@ -435,7 +511,11 @@ class OktopusApp(ctk.CTk):
                 time.sleep(0.5)
         threading.Thread(target=_read, daemon=True).start()
 
-    def append_widget(self, w, txt): w.configure(state="normal"); w.insert("end", txt); w.see("end"); w.configure(state="disabled")
+    def append_widget(self, w, txt, tags=None): 
+        w.configure(state="normal")
+        w.insert("end", txt, tags)
+        w.see("end")
+        w.configure(state="disabled")
 
     def check_system_health(self):
         if not self.running: return
@@ -461,14 +541,15 @@ class OktopusApp(ctk.CTk):
             "operator_sylo.py": "OPERATOR", 
             "orchestrator_sylo.py": "ORCHESTRATOR", 
             "sylo_brain.py": "BRAIN",
-            "sylo_dns.py": "DNS SERVER" # <--- INTEGRACION VISUAL
+            "sylo_dns.py": "DNS SERVER",
+            "ghost_monitor.py": "KERNEL GHOST"  # <--- INTEGRACION VISUAL
         }
         for s, w in self.worker_widgets.items():
             if s == "API_SRV": continue
             on = self.find_process(s) is not None
             wc = C_SUCCESS if on else C_DANGER
             w["led"].set_status(on); w["txt"].configure(text="ONLINE" if on else "OFFLINE", text_color=wc)
-            if s in km: self.status_indicators[km[s]].set_status(on)
+            if s in km and km[s] in self.status_indicators: self.status_indicators[km[s]].set_status(on)
         self.after(2000, self.check_system_health)
 
     def calculate_finance(self):
@@ -501,17 +582,21 @@ class OktopusApp(ctk.CTk):
         return None
 
     def start_worker(self, s):
-        # --- 🔥 LÓGICA ESPECIAL PARA DNS (REQUIERE SUDO) 🔥 ---
-        if s == "sylo_dns.py":
-            dialog = ctk.CTkInputDialog(text="Este servicio requiere permisos de ROOT (Puerto 53).\nIntroduce contraseña de SUDO:", title="Autenticación Requerida")
+        # --- 🔥 LÓGICA ESPECIAL PARA DNS Y GHOST (REQUIERE SUDO) 🔥 ---
+        if s in ["sylo_dns.py", "ghost_monitor.py"]:
+            dialog = ctk.CTkInputDialog(text=f"El servicio {s} requiere permisos de ROOT.\nIntroduce contraseña de SUDO:", title="Autenticación Requerida")
             pwd = dialog.get_input()
             if not pwd: return
             
             try:
                 l = open(f"/tmp/sylo_{s}.log", "w")
+                
+                # FIX: ghost_monitor necesita librerías del sistema (BCC), no del venv.
+                python_exec = "/usr/bin/python3" if s == "ghost_monitor.py" else sys.executable
+                
                 # Ejecutamos sudo -S (lee password de stdin)
                 proc = subprocess.Popen(
-                    ["sudo", "-S", sys.executable, "-u", os.path.join(WORKER_DIR, s)],
+                    ["sudo", "-S", python_exec, "-u", os.path.join(WORKER_DIR, s)],
                     stdin=subprocess.PIPE,
                     stdout=l,
                     stderr=subprocess.STDOUT,
@@ -519,9 +604,9 @@ class OktopusApp(ctk.CTk):
                 )
                 proc.stdin.write(pwd + "\n")
                 proc.stdin.flush()
-                self.log_to_console("SISTEMA", "Iniciando Servidor DNS con privilegios elevados...", C_ACCENT_PURPLE)
+                self.log_to_console("SISTEMA", f"Iniciando {s} con privilegios elevados...", C_ACCENT_PURPLE)
             except Exception as e:
-                self.log_to_console("ERROR", f"Fallo al elevar DNS: {e}", C_DANGER)
+                self.log_to_console("ERROR", f"Fallo al elevar {s}: {e}", C_DANGER)
             return
 
         # --- LÓGICA ESTÁNDAR ---
@@ -534,8 +619,8 @@ class OktopusApp(ctk.CTk):
     def stop_worker(self, s):
         pid = self.find_process(s); 
         if pid: 
-            if s == "sylo_dns.py": # Matar con sudo si es DNS
-                os.system(f"echo 'Matando DNS' && sudo kill {pid}")
+            if s in ["sylo_dns.py", "ghost_monitor.py"]: # Matar con sudo si es DNS o Ghost
+                os.system(f"echo 'Matando {s}' && sudo kill {pid}")
             else:
                 os.kill(pid, signal.SIGTERM)
 
@@ -552,8 +637,10 @@ class OktopusApp(ctk.CTk):
     def _remove_card(self, n):
         if n in self.client_cards: self.client_cards[n]['frame'].destroy(); del self.client_cards[n]
     def open_webshell(self, n):
-        self.log_to_console("SEC", f"Shell {n}", C_ACCENT_CYAN)
-        subprocess.Popen(f"gnome-terminal -- bash -c 'minikube -p {n} kubectl -- exec -it $(minikube -p {n} kubectl -- get pods -o name | head -1) -- /bin/sh'", shell=True)
+        self.log_to_console("SEC", f"Opening Bastion Terminal for {n}...", C_ACCENT_CYAN)
+        w = SSHTerminalWindow(self, n)
+        w.focus()
+        # subprocess.Popen(f"gnome-terminal -- bash -c 'minikube -p {n} kubectl -- exec -it $(minikube -p {n} kubectl -- get pods -o name | head -1) -- /bin/sh'", shell=True)
     def edit_config(self, n):
         self.log_to_console("ADMIN", f"Config {n}", C_WARNING)
         subprocess.Popen(f"gnome-terminal -- bash -c 'minikube -p {n} kubectl -- edit cm web-content-config || minikube -p {n} kubectl -- edit cm custom-web-content'", shell=True)
@@ -567,6 +654,34 @@ class OktopusApp(ctk.CTk):
         except: pass
         self.destroy(); sys.exit(0)
     
+    def open_native_shell(self, container_id):
+        """Abre una terminal nativa (gnome-terminal) conectada al contenedor"""
+        import subprocess
+        import shutil
+        
+        # Comando para conectar
+        cmd = f"docker exec -it {container_id} bash"
+        
+        try:
+            # Detectar terminal disponible
+            if shutil.which("gnome-terminal"):
+                subprocess.Popen(["gnome-terminal", f"--title=Sylo Bastion - {container_id}", "--", "bash", "-c", f"{cmd}; exec bash"])
+            elif shutil.which("xterm"):
+                subprocess.Popen(["xterm", "-T", f"Sylo Bastion - {container_id}", "-e", f"{cmd}; exec bash"])
+            elif shutil.which("konsole"):
+                 subprocess.Popen(["konsole", "-e", "bash", "-c", f"{cmd}; exec bash"])
+            else:
+                # Fallback genérico
+                subprocess.Popen(["x-terminal-emulator", "-e", f"bash -c '{cmd}; exec bash'"])
+                
+        except Exception as e:
+            print(f"Error lanzando terminal nativa: {e}")
+
+    # ================= SSH CLIENT WINDOW (LEGACY) =================
+    # Mantengo esto por si se quiere revertir, pero ya no se usa.
+    def open_webshell(self, container_id):
+        SSHTerminalWindow(self, container_id)
+
     def force_refresh_infra(self): threading.Thread(target=self._manual_scan).start()
     def refresh_clients_loop(self): self._manual_scan(); self.after(5000, self.refresh_clients_loop)
     def _manual_scan(self):
@@ -592,8 +707,143 @@ class OktopusApp(ctk.CTk):
         ctk.CTkLabel(c, text=n.upper(), font=FONT_SUBHEAD).pack(side="left")
         ctk.CTkButton(c, text="ELIMINAR", fg_color=C_DANGER, width=80, command=lambda: self.kill_machine_direct(n)).pack(side="right", padx=10)
         ctk.CTkButton(c, text="⚙️ CONF", fg_color=C_ACCENT_BLUE, width=80, command=lambda: self.edit_config(n)).pack(side="right", padx=5)
-        ctk.CTkButton(c, text=">_ SHELL", fg_color=C_ACCENT_PURPLE, width=80, command=lambda: self.open_webshell(n)).pack(side="right", padx=5)
+        ctk.CTkButton(c, text=">_ SHELL", fg_color=C_ACCENT_PURPLE, width=80, command=lambda: self.open_native_shell(n)).pack(side="right", padx=5)
         self.client_cards[n] = {'frame': c}
+
+# ================= SSH CLIENT WINDOW =================
+class SSHTerminalWindow(ctk.CTkToplevel):
+    def __init__(self, parent, container_id):
+        super().__init__(parent)
+        self.title(f"Sylo Bastion - {container_id}")
+        self.geometry("900x600")
+        self.configure(fg_color="#000000")
+        self.container_id = container_id
+        
+        # Terminal Display
+        # FIX: State normal para recibir foco, y "break" para interceptar input
+        # Terminal Display
+        # FIX: State normal para recibir foco, y "break" para interceptar input
+        self.term = ctk.CTkTextbox(self, font=("Consolas", 12), fg_color="#000000", text_color="#cccccc", wrap="char")
+        self.term.pack(fill="both", expand=True, padx=5, pady=5)
+        self.term.bind("<Key>", self.on_key)
+        self.after(100, lambda: self.term.focus_set())
+        
+        # Configurar colores ANSI
+        self.ansi_colors = {
+            '30': 'black', '31': '#ef4444', '32': '#10b981', '33': '#f59e0b',
+            '34': '#3b82f6', '35': '#a855f7', '36': '#06b6d4', '37': '#f8fafc',
+            '90': 'gray', '91': '#f87171', '92': '#34d399', '93': '#fbbf24',
+            '94': '#60a5fa', '95': '#c084fc', '96': '#22d3ee', '97': 'white'
+        }
+        for code, color in self.ansi_colors.items():
+            self.term.tag_config(f"ansi_{code}", foreground=color)
+        
+        self.current_ansi_tag = None # Persistir color entre chunks
+
+        # Pre-compilar Regex para rendimiento
+        import re
+        self.re_osc = re.compile(r'\x1b\].*?\x07')
+        self.re_ansi = re.compile(r'^\x1b\[([0-9;]*)m')
+        self.re_trash = re.compile(r'\x1b\[\?2004[hl]') # Bracketed paste mode
+
+        # Conexión
+        self.websocket = None
+        self.loop = asyncio.new_event_loop()
+        self.running = True
+        
+        self.term.insert("end", " Conectando a Sylo Bastion Secure Protocol...\n")
+        threading.Thread(target=self.start_ws, daemon=True).start()
+
+    def start_ws(self):
+        asyncio.set_event_loop(self.loop)
+        self.loop.run_until_complete(self.connect())
+
+    async def connect(self):
+        uri = f"ws://localhost:8001/api/console/{self.container_id}"
+        import websockets # Lazy import
+        try:
+            async with websockets.connect(uri) as ws:
+                self.websocket = ws
+                self.update_term(" [CONECTADO] - Acceso Root Concedido.\n")
+                
+                while self.running:
+                    try:
+                        msg = await ws.recv()
+                        self.update_term(msg)
+                    except: break
+        except Exception as e:
+            self.update_term(f" [ERROR] {e}\n")
+
+    def update_term(self, text):
+        def _u():
+            self.term.configure(state="normal")
+            
+            # 1. Limpieza rápida
+            txt = self.re_osc.sub('', text)
+            txt = self.re_trash.sub('', txt)
+            
+            # Iterador manual
+            i = 0
+            n = len(txt)
+            
+            while i < n:
+                char = txt[i]
+                
+                # Backspace (\x08)
+                if char == '\x08':
+                    self.term.delete("end-2c", "end-1c")
+                    i += 1
+                    continue
+                
+                # ANSI Escape: \x1b
+                if char == '\x1b':
+                    match = self.re_ansi.match(txt, i) # match desde pos i
+                    if match:
+                        code_seq = match.group(1)
+                        i = match.end() # Saltar toda la secuencia
+                        
+                        if code_seq == '0' or code_seq == '':
+                            self.current_ansi_tag = None
+                        else:
+                            coords = code_seq.split(';')
+                            for c in coords:
+                                if c in self.ansi_colors:
+                                    self.current_ansi_tag = f"ansi_{c}"
+                        continue
+                        
+                # Caracter normal
+                if char == '\r':
+                    i+=1
+                    continue
+                    
+                self.term.insert("end", char, self.current_ansi_tag)
+                i += 1
+                
+            self.term.see("end")
+            self.term.configure(state="disabled")
+
+        self.after(0, _u)
+
+    def on_key(self, event):
+        if not self.websocket: return "break"
+        
+        char = event.char
+        if event.keysym == "Return": char = "\n"
+        elif event.keysym == "BackSpace": char = "\x08"
+        elif event.keysym == "Tab": char = "\t"
+        
+        # Filtrar teclas de control o vacías
+        if (len(char) > 0 and ord(char) < 255) or char in ["\n", "\x08", "\t"]:
+            self.loop.call_soon_threadsafe(lambda: asyncio.create_task(self.send_char(char)))
+            
+        return "break" # IMPEDIR escritura local (el backend hará el echo)
+
+
+    async def send_char(self, char):
+        if self.websocket:
+            await self.websocket.send(char)
+
+
 
 if __name__ == "__main__":
     OktopusApp().mainloop()

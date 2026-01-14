@@ -99,8 +99,10 @@ class OrdenIA(BaseModel):
 def guardar_json(nombre, data):
     try:
         ruta = os.path.join(BUZON_PEDIDOS, nombre)
-        with open(ruta, 'w') as f: json.dump(data, f)
-        os.chmod(ruta, 0o666)
+        ruta_tmp = ruta + ".tmp"
+        with open(ruta_tmp, 'w') as f: json.dump(data, f)
+        os.chmod(ruta_tmp, 0o666)
+        os.replace(ruta_tmp, ruta)
     except Exception as e: print(f"❌ Error escritura JSON: {e}", flush=True)
 
 def guardar_html(nombre, contenido):
@@ -167,27 +169,29 @@ async def recibir_metricas(datos: ReporteMetrica):
     # Guardamos el estado final que envía el script bash/python
     archivo_status = os.path.join(BUZON_PEDIDOS, f"status_{datos.id_cliente}.json")
     
-    # Intentar leer estado anterior para no perder 'installed_tools' si este reporte viene del bash
-    tools_previas = []
+    # Leer estado completo anterior para no perder NADA (status, msg, tools...)
+    data = {}
     if os.path.exists(archivo_status):
         try: 
             with open(archivo_status, 'r') as f: 
-                old_data = json.load(f)
-                tools_previas = old_data.get('installed_tools', [])
+                data = json.load(f)
         except: pass
 
-    # Si el reporte actual no trae tools, mantener las previas
-    final_tools = datos.installed_tools if datos.installed_tools else tools_previas
+    # Actualizar campos de métricas (Siempre)
+    data["metrics"] = datos.metrics
+    
+    # Solo actualizar info estática si viene dato real
+    if datos.ssh_cmd: data["ssh_cmd"] = datos.ssh_cmd
+    if datos.web_url: data["web_url"] = datos.web_url
+    if datos.os_info: data["os_info"] = datos.os_info
+    
+    # Solo sobrescribir tools si vienen nuevas
+    if datos.installed_tools:
+        data["installed_tools"] = datos.installed_tools
+        
+    data["last_update"] = time.time()
 
-    payload = {
-        "metrics": datos.metrics, 
-        "ssh_cmd": datos.ssh_cmd, 
-        "web_url": datos.web_url, 
-        "os_info": datos.os_info, 
-        "installed_tools": final_tools,
-        "last_update": time.time()
-    }
-    guardar_json(f"status_{datos.id_cliente}.json", payload)
+    guardar_json(f"status_{datos.id_cliente}.json", data)
     return {"status": "recibido"}
 
 @router.post("/reportar/progreso")

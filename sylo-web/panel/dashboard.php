@@ -51,96 +51,119 @@ require_once 'php/data.php';
         <div class="text-center py-5"><i class="bi bi-cloud-slash display-1 text-muted opacity-25"></i><h3 class="mt-3 text-muted">Sin servicios activos</h3><a href="../public/index.php" class="btn btn-primary mt-2">Desplegar Infraestructura</a></div>
     <?php else: ?>
     
-    <div class="row g-4">
-        <div class="col-lg-8">
-            <div class="d-flex align-items-center justify-content-between mb-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex align-items-center justify-content-between p-4 card-clean bg-gradient-dark">
                 <div class="d-flex align-items-center gap-3">
-                    <div class="bg-black bg-opacity-25 p-3 rounded-circle border border-secondary">
+                    <div class="bg-black bg-opacity-25 p-3 rounded-circle border border-secondary shadow-lg">
                         <?=getOSIconHtml($os_image)?>
                     </div>
                     <div>
                         <h4 class="fw-bold mb-0 text-white">Servidor #<?=$current['id']?></h4>
-                        <small class="text-light-muted font-monospace"><i class="bi bi-hdd-network me-1"></i> <?=getOSNamePretty($os_image)?></small>
+                        <div class="d-flex gap-2 align-items-center mt-1">
+                            <small class="text-light-muted font-monospace"><i class="bi bi-hdd-network me-1"></i> <?=getOSNamePretty($os_image)?></small>
+                            <span class="text-secondary">|</span>
+                            <small class="text-light-muted"><?=htmlspecialchars($current['cluster_alias'])?></small>
+                        </div>
                     </div>
                 </div>
                 
-                <div class="d-flex gap-2">
-                    <span class="badge bg-success bg-opacity-10 text-success border border-success px-3 py-2 rounded-pill">ONLINE</span>
-                    <span class="badge px-3 py-2 rounded-pill" style="<?=getPlanStyle($current['plan_name'])?>">
+                <div class="d-flex gap-2 align-items-center">
+                    <span class="badge bg-success bg-opacity-10 text-success border border-success px-3 py-2 rounded-pill shadow-sm"><i class="bi bi-circle-fill small me-2"></i>ONLINE</span>
+                    <span class="badge px-3 py-2 rounded-pill shadow-sm" style="<?=getPlanStyle($current['plan_name'])?>">
                         PLAN <?=strtoupper($current['plan_name'])?>
                     </span>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- LEFT COLUMN: Metrics, Terminal, Tools, Logs -->
+        <div class="col-lg-8">
             
+            <!-- METRICS ROW -->
             <div class="row g-4 mb-4">
                 <div class="col-md-6">
-                    <div class="metric-card">
-                        <div class="d-flex justify-content-between"><span class="text-light-muted text-uppercase small fw-bold">Uso CPU</span><i class="bi bi-cpu text-primary"></i></div>
-                        <div class="metric-value text-white mt-2"><span id="cpu-val">0</span>%</div>
-                        <div class="progress-thin"><div id="cpu-bar" class="progress-bar bg-primary" style="width:0%"></div></div>
+                    <div class="metric-card h-100 p-4">
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <span class="text-light-muted text-uppercase small fw-bold tracking-wider">Uso CPU</span>
+                            <i class="bi bi-cpu text-primary fs-4"></i>
+                        </div>
+                        <div class="metric-value text-white display-6 fw-bold"><span id="cpu-val">0</span>%</div>
+                        <div class="progress-thin mt-3" style="height: 6px;"><div id="cpu-bar" class="progress-bar bg-primary shadow-glow" style="width:0%"></div></div>
                     </div>
                 </div>
                 <div class="col-md-6">
-                    <div class="metric-card">
-                        <div class="d-flex justify-content-between"><span class="text-light-muted text-uppercase small fw-bold">Memoria RAM</span><i class="bi bi-memory text-success"></i></div>
-                        <div class="metric-value text-white mt-2"><span id="ram-val">0</span>%</div>
-                        <div class="progress-thin"><div id="ram-bar" class="progress-bar bg-success" style="width:0%"></div></div>
+                    <div class="metric-card h-100 p-4">
+                        <div class="d-flex justify-content-between align-items-start mb-3">
+                            <span class="text-light-muted text-uppercase small fw-bold tracking-wider">Memoria RAM</span>
+                            <i class="bi bi-memory text-success fs-4"></i>
+                        </div>
+                        <div class="metric-value text-white display-6 fw-bold"><span id="ram-val">0</span>%</div>
+                        <div class="progress-thin mt-3" style="height: 6px;"><div id="ram-bar" class="progress-bar bg-success shadow-glow" style="width:0%"></div></div>
                     </div>
                 </div>
             </div>
             
-            <div class="card-clean">
-                <div class="d-flex justify-content-between mb-3 align-items-center">
+            <div class="card-clean mb-4">
+                <div class="d-flex justify-content-between mb-3 align-items-center border-bottom border-secondary border-opacity-10 pb-3">
                     <h6 class="fw-bold m-0 text-white"><i class="bi bi-terminal me-2 text-warning"></i>Accesos de Sistema</h6>
-                    <button onclick="copyAllCreds()" class="btn btn-sm btn-outline-secondary"><i class="bi bi-copy me-1"></i> Copiar</button>
+                    <button onclick="copyAllCreds()" class="btn btn-sm btn-dark border-secondary hover-white"><i class="bi bi-copy me-1"></i> Copiar</button>
                 </div>
-                <div class="terminal-container" id="all-creds-box">
-                    <?php if($has_web): ?><div><span class="term-label">WEB:</span> <a href="<?=htmlspecialchars($web_url??'#')?>" target="_blank" class="term-val text-decoration-none hover-white" id="disp-web-url"><?=htmlspecialchars($web_url??'Esperando IP...')?></a></div><?php endif; ?>
-                    <?php if($has_db): ?>
-                        <div class="mt-2 text-light-muted small">// DATABASE CLUSTER</div>
-                        <div><span class="term-label">MASTER:</span> <span class="term-val">mysql-master-0 (Write)</span></div>
-                        <div><span class="term-label">SLAVE:</span>  <span class="term-val">mysql-slave-0 (Read)</span></div>
+                <div class="terminal-container p-3 rounded bg-black" id="all-creds-box" style="font-family: 'Fira Code', monospace; font-size: 0.9rem;">
+                    <?php if($has_web): ?>
+                        <div class="mb-2"><span class="text-secondary select-none">WEB:</span> <a href="<?=htmlspecialchars($web_url??'#')?>" target="_blank" class="text-info text-decoration-none hover-underline" id="disp-web-url"><?=htmlspecialchars($web_url??'Esperando IP...')?></a></div>
                     <?php endif; ?>
-                    <div class="mt-2 text-light-muted small">// SSH ROOT ACCESS</div>
-                    <div><span class="term-label">CMD:</span>  <span class="term-val text-success" id="disp-ssh-cmd"><?=htmlspecialchars($creds['ssh_cmd'] ?? 'Connecting...')?></span></div>
-                    <div><span class="term-label">PASS:</span> <span class="term-val text-warning" id="disp-ssh-pass"><?=htmlspecialchars($creds['ssh_pass'] ?? 'sylo1234')?></span></div>
-                </div>
+                    <?php if($has_db): ?>
+                        <div class="mt-3 text-secondary small select-none"># DATABASE CLUSTER</div>
+                        <div><span class="text-secondary select-none">MASTER:</span> <span class="text-white">mysql-master-0 (Write)</span></div>
+                        <div><span class="text-secondary select-none">SLAVE:</span>  <span class="text-white">mysql-slave-0 (Read)</span></div>
+                    <?php endif; ?>
+                    <div class="mt-3 text-secondary small select-none"># SSH ROOT ACCESS</div>
+                    <div><span class="text-secondary select-none">CMD:</span>  <span class="text-success" id="disp-ssh-cmd"><?=htmlspecialchars($creds['ssh_cmd'] ?? 'Connecting...')?></span></div>
+                    <div><span class="text-secondary select-none">PASS:</span> <span class="text-warning" id="disp-ssh-pass"><?=htmlspecialchars($creds['ssh_pass'] ?? 'sylo1234')?></span></div>
                 </div>
             </div>
 
             <!-- SYLO TOOLBELT SECTION -->
-            <div class="card-clean mt-4">
+            <div class="card-clean mb-4">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h6 class="fw-bold m-0 text-white"><i class="bi bi-tools me-2 text-info"></i>Software Instalado</h6>
                 </div>
                 <div class="d-flex flex-wrap gap-2">
                     <?php if(!empty($installed_tools)): ?>
                         <?php foreach($installed_tools as $tool): ?>
-                            <span class="badge bg-dark border border-secondary text-white py-2 px-3 fw-normal">
-                                <i class="bi bi-check2-circle text-success me-1"></i> <?=htmlspecialchars($tool)?>
+                            <span class="badge bg-dark border border-secondary text-white py-2 px-3 fw-normal d-flex align-items-center shadow-sm">
+                                <i class="bi bi-check2-circle text-success me-2"></i> <?=htmlspecialchars($tool)?>
                             </span>
                         <?php endforeach; ?>
                     <?php else: ?>
-                        <small class="text-light-muted">No se han detectado herramientas instaladas.</small>
+                        <div class="p-3 w-100 text-center border border-dashed border-secondary rounded text-muted small bg-black bg-opacity-25">
+                            <i class="bi bi-box-seam me-2"></i>No se han detectado herramientas instaladas.
+                        </div>
                     <?php endif; ?>
                 </div>
             </div>
 
-            <div class="card-clean mt-4">
-                <h6 class="fw-bold mb-3 text-white"><i class="bi bi-clock-history me-2 text-info"></i>Historial de Actividad (Sesión)</h6>
-                <table class="log-table">
-                    <tbody id="activity-log-body">
-                        <tr><td class="text-light-muted text-center">Esperando eventos...</td></tr>
-                    </tbody>
-                </table>
+            <div class="card-clean">
+                <h6 class="fw-bold mb-3 text-white"><i class="bi bi-clock-history me-2 text-info"></i>Historial de Actividad</h6>
+                <div class="table-responsive rounded border border-secondary border-opacity-25">
+                    <table class="table table-dark table-hover mb-0 small">
+                        <tbody id="activity-log-body">
+                            <tr><td class="text-light-muted text-center py-3">Esperando eventos...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
+        <!-- RIGHT COLUMN: Web, Energy, Backups, Destroy -->
         <div class="col-lg-4">
-            <div class="card-clean">
-                <div class="d-flex justify-content-between mb-3 align-items-center">
+            <div class="card-clean h-100">
+                <div class="d-flex justify-content-between mb-4 align-items-center border-bottom border-secondary border-opacity-10 pb-3">
                     <h6 class="fw-bold m-0 text-white">Centro de Mando</h6>
-                    <button onclick="manualRefresh()" id="btn-refresh" class="btn btn-sm btn-dark border border-secondary text-light-muted"><i class="bi bi-arrow-clockwise"></i></button>
+                    <button onclick="manualRefresh()" id="btn-refresh" class="btn btn-sm btn-dark border border-secondary text-light-muted hover-white"><i class="bi bi-arrow-clockwise"></i></button>
                 </div>
                 
                 <?php if($has_web): ?>
@@ -158,7 +181,7 @@ require_once 'php/data.php';
                 <label class="small text-light-muted mb-2 d-block">Control de Energía</label>
                 <form method="POST" action="php/data.php" id="energyForm">
                     <input type="hidden" name="order_id" value="<?=$current['id']?>">
-                    <?php if($current['status']=='active'): ?>
+                    <?php if(in_array($current['status'], ['active', 'running', 'completed', 'online'])): ?>
                         <button type="submit" name="action" value="restart" class="btn-action" onclick="showToast('Reiniciando sistema...', 'info')"><i class="bi bi-arrow-repeat text-warning me-3 fs-5"></i><div><div class="fw-bold text-white">Reiniciar</div><small>Aplicar cambios</small></div></button>
                         <button type="submit" name="action" value="stop" class="btn-action" onclick="showToast('Deteniendo sistema...', 'warning')"><i class="bi bi-stop-circle text-danger me-3 fs-5"></i><div><div class="fw-bold text-white">Apagar</div><small>Modo hibernación</small></div></button>
                     <?php else: ?>

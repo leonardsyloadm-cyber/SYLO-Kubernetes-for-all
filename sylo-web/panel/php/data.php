@@ -64,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 if (isset($_GET['ajax_data'])) {
     header('Content-Type: application/json');
     $oid = $_GET['id'];
-    $ctx = stream_context_create(['http'=> ['timeout' => 1]]);
+    $ctx = stream_context_create(['http'=> ['timeout' => 3]]);
     
     // Leer Chat si hay respuesta
     $chat_reply = null;
@@ -72,7 +72,7 @@ if (isset($_GET['ajax_data'])) {
     if($res_chat) { $j=json_decode($res_chat,true); if($j && $j['reply']) $chat_reply=$j['reply']; }
 
     $json = @file_get_contents(API_URL_BASE . "/estado/$oid", false, $ctx);
-    $final_data = $json ? json_decode($json, true) : ['error' => 'API Offline', 'metrics' => ['cpu'=>0,'ram'=>0]];
+    $final_data = $json ? json_decode($json, true) : ['error' => 'API Offline'];
     if($chat_reply) $final_data['chat_reply'] = $chat_reply;
     
     echo json_encode($final_data); 
@@ -85,7 +85,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $conn->prepare($sql)->execute([$_POST['full_name'], $_POST['email'], $_POST['dni'], $_POST['telefono'], $_POST['company_name'], $_POST['calle'], $user_id]);
     header("Location: ../dashboard.php"); exit;
 }
-$stmt = $conn->prepare("SELECT * FROM users WHERE id = ?"); $stmt->execute([$user_id]); $user_info = $stmt->fetch(PDO::FETCH_ASSOC);
+$stmt = $conn->prepare("SELECT * FROM users WHERE id = ?"); $stmt->execute([$user_id]); 
+$user_info = $stmt->fetch(PDO::FETCH_ASSOC);
+if (!$user_info) $user_info = [];
 
 // HELPERS
 function calculateWeeklyPrice($r) { 
@@ -120,7 +122,7 @@ function getOSNamePretty($os) {
 }
 
 // --- INIT DATA ---
-$sql = "SELECT o.*, p.name as plan_name, p.cpu_cores as p_cpu, p.ram_gb as p_ram, os.cpu_cores as custom_cpu, os.ram_gb as custom_ram, os.db_enabled, os.web_enabled, os.os_image, os.tools FROM orders o JOIN plans p ON o.plan_id=p.id LEFT JOIN order_specs os ON o.id = os.order_id WHERE user_id=? AND status!='cancelled' ORDER BY o.id DESC";
+$sql = "SELECT o.*, p.name as plan_name, p.cpu_cores as p_cpu, p.ram_gb as p_ram, os.cpu_cores as custom_cpu, os.ram_gb as custom_ram, os.db_enabled, os.web_enabled, os.os_image, os.tools, os.cluster_alias FROM orders o JOIN plans p ON o.plan_id=p.id LEFT JOIN order_specs os ON o.id = os.order_id WHERE user_id=? AND status!='cancelled' ORDER BY o.id DESC";
 $stmt = $conn->prepare($sql); $stmt->execute([$_SESSION['user_id']]); $clusters = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $current = null; 
@@ -142,7 +144,7 @@ if($clusters) {
     $has_db = ($current['plan_name'] === 'Oro' || (!empty($current['db_enabled']) && $current['db_enabled'] == 1));
     $os_image = $current['os_image'] ?? 'ubuntu';
     
-    $ctx = stream_context_create(['http'=> ['timeout' => 1]]);
+    $ctx = stream_context_create(['http'=> ['timeout' => 3]]);
     $api_init = @file_get_contents(API_URL_BASE . "/estado/{$current['id']}", false, $ctx);
     
     if($api_init) { 
@@ -154,8 +156,10 @@ if($clusters) {
             if(isset($d['html_source']) && !empty($d['html_source'])) { $html_code = $d['html_source']; }
             
             // SYLO TOOLBELT (DB PRIORITY)
-            if(!empty($current['tools'])) {
-                $installed_tools = json_decode($current['tools'], true) ?? [];
+            // SYLO TOOLBELT (DB PRIORITY, BUT ALLOW FALLBACK)
+            $tools_db = (!empty($current['tools'])) ? json_decode($current['tools'], true) : [];
+            if(!empty($tools_db)) {
+                $installed_tools = $tools_db;
             } else {
                 $installed_tools = $d['installed_tools'] ?? [];
             }

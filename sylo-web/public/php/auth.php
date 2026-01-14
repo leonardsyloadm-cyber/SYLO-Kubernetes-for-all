@@ -5,6 +5,7 @@
 ini_set('display_errors', 1);
 error_reporting(E_ALL);
 if (session_status() === PHP_SESSION_NONE) session_start();
+require_once __DIR__ . '/csrf.php';
 
 define('API_URL', 'http://172.17.0.1:8001/api/clientes');
 
@@ -47,6 +48,16 @@ if (isset($_GET['check_status'])) {
 // --- 3. POST HANDLER ---
 if ($_SERVER["REQUEST_METHOD"] == "POST") {
     $input = json_decode(file_get_contents('php://input'), true);
+    
+    // CSRF Check
+    $headers = getallheaders();
+    $token = $headers['X-CSRF-Token'] ?? ($input['csrf_token'] ?? '');
+    if (!verifyCsrfToken($token)) {
+        http_response_code(403);
+        echo json_encode(["status"=>"error", "mensaje"=>"CSRF Token Invalid"]);
+        exit;
+    }
+
     $action = $input['action'] ?? '';
     header('Content-Type: application/json');
 
@@ -74,6 +85,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
         $stmt->execute([$input['email_user'], $input['email_user']]);
         $u = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($u && password_verify($input['password'], $u['password_hash'])) {
+            session_regenerate_id(true); // Security: Prevent Session Fixation
             $_SESSION['user_id'] = $u['id']; $_SESSION['username'] = $u['username']; $_SESSION['company'] = $u['company_name']; 
             $_SESSION['role'] = $u['role']; // CRITICAL: PRESERVED ROLE
             echo json_encode(["status"=>"success"]);

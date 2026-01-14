@@ -11,8 +11,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 import docker # Sylo Toolbelt Dependency
 
-try: import requests
-except: pass
+import requests
 
 # ==========================================
 # ORQUESTADOR SYLO V22 (FINAL STATUS FIX)
@@ -59,11 +58,13 @@ def signal_handler(signum, frame):
 def report_progress(oid, percent, msg, status="creating"):
     if shutdown_event.is_set(): return
     file_path = os.path.join(BUZON, f"status_{oid}.json")
+    tmp_path = file_path + ".tmp"
     # Usamos el status que nos pasen, si no, usa 'creating' para bloquear al Operator
     data = {"percent": percent, "message": msg, "status": status}
     try:
-        with open(file_path, 'w') as f: json.dump(data, f)
-        os.chmod(file_path, 0o666)
+        with open(tmp_path, 'w') as f: json.dump(data, f)
+        os.chmod(tmp_path, 0o666)
+        os.replace(tmp_path, file_path)
     except: pass
 
 def update_db_state(oid, status):
@@ -165,7 +166,7 @@ data:
         subprocess.run(["minikube", "-p", profile, "kubectl", "--", "apply", "-f", tmp_mlb], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run(["minikube", "-p", profile, "kubectl", "--", "patch", "svc", "ingress-nginx-controller", "-n", "ingress-nginx", "-p", '{"spec": {"type": "LoadBalancer"}}'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        full_domain = f"{subdomain}.sylobi.org"
+        full_domain = f"{subdomain.lower()}.sylobi.org"
         ingress_yaml = f"""apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -336,7 +337,8 @@ def process_order(json_file):
     
     try:
         with open(processing_file, 'r') as f: data = json.load(f)
-        oid = data.get("id"); plan_raw = data.get("plan")
+        try: oid = int(data.get("id")); plan_raw = data.get("plan")
+        except: return # Malformed ID
         specs = data.get("specs", {})
         
         # OBTENER DUEÑO
@@ -494,7 +496,7 @@ def main():
             for json_file in files:
                 if shutdown_event.is_set(): break
                 executor.submit(process_order, json_file)
-            time.sleep(2)
+            time.sleep(5)
         executor.shutdown(wait=False, cancel_futures=True)
 
 if __name__ == "__main__": main()

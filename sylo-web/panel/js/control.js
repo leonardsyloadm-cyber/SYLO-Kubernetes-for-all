@@ -147,7 +147,7 @@ function restoreBackup(file, name) {
         setBtnState(true, 'Restaurando...', 5);
         fetch('php/data.php?ajax_action=1', { method: 'POST', body: new URLSearchParams({ action: 'restore_backup', order_id: orderId, filename: file }) });
         showToast(`Restaurando...`, "warning");
-        setTimeout(() => { isManualLoading = false; }, 4000);
+        setTimeout(() => { isManualLoading = false; }, 60000);
     } else alert("Cancelado.");
 }
 
@@ -175,7 +175,7 @@ function saveWeb() {
     if (window.editorModal) window.editorModal.hide();
     fetch('php/data.php?ajax_action=1', { method: 'POST', body: new URLSearchParams({ action: 'update_web', order_id: orderId, html_content: aceEditor.getValue() }) });
     showToast("Publicando web...", "info");
-    setTimeout(() => { isManualLoading = false; }, 4000);
+    setTimeout(() => { isManualLoading = false; }, 60000);
 }
 
 const upForm = document.getElementById('uploadForm');
@@ -207,23 +207,20 @@ function loadData() {
                 if (d.metrics) {
                     let rawCpu = parseFloat(d.metrics.cpu); let visualCpu = (rawCpu / planCpus); if (visualCpu > 100) visualCpu = 100;
                     const cVal = document.getElementById('cpu-val'); if (cVal) cVal.innerText = visualCpu.toFixed(1);
-                    const cBar = document.getElementById('cpu-bar'); if (cBar) cBar.style.width = visualCpu + '%';
+                    const cBar = document.getElementById('cpu-bar'); if (cBar) { cBar.style.transition = 'width 0.5s ease'; cBar.style.width = visualCpu + '%'; }
                     const rVal = document.getElementById('ram-val'); if (rVal) rVal.innerText = parseFloat(d.metrics.ram).toFixed(1);
-                    const rBar = document.getElementById('ram-bar'); if (rBar) rBar.style.width = parseFloat(d.metrics.ram) + '%';
+                    const rBar = document.getElementById('ram-bar'); if (rBar) { rBar.style.transition = 'width 0.5s ease'; rBar.style.width = parseFloat(d.metrics.ram) + '%'; }
                 }
             } catch (e) { }
 
-            const cmd = document.getElementById('disp-ssh-cmd'); if (cmd) cmd.innerText = d.ssh_cmd || '...';
-            const pass = document.getElementById('disp-ssh-pass'); if (pass) pass.innerText = d.ssh_pass || '...';
+            const cmd = document.getElementById('disp-ssh-cmd'); if (cmd && d.ssh_cmd && d.ssh_cmd.length > 2) cmd.innerText = d.ssh_cmd;
+            const pass = document.getElementById('disp-ssh-pass'); if (pass && d.ssh_pass && d.ssh_pass.length > 2) pass.innerText = d.ssh_pass;
 
             const wUrl = d.web_url;
             try {
                 if (wUrl) {
                     const dispUrl = document.getElementById('disp-web-url');
                     if (dispUrl) { dispUrl.innerText = wUrl; dispUrl.href = wUrl; }
-                } else {
-                    const dispUrl = document.getElementById('disp-web-url');
-                    if (dispUrl) dispUrl.innerText = "Esperando IP...";
                 }
             } catch (e) { }
 
@@ -287,4 +284,4 @@ function loadData() {
 
         }).catch(err => { console.log("Esperando datos...", err); });
 }
-setInterval(loadData, 1500);
+setInterval(loadData, 500);

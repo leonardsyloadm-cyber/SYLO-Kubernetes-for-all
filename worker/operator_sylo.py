@@ -99,16 +99,7 @@ def find_web_pod(profile):
     return None
 
 def find_active_configmap(profile, pod_name):
-    try:
-        res = run_command(f"minikube -p {profile} kubectl -- get pod {pod_name} -o json", silent=True)
-        pod_data = json.loads(res)
-        if 'spec' in pod_data and 'volumes' in pod_data['spec']:
-            for vol in pod_data['spec']['volumes']:
-                if 'configMap' in vol:
-                    cm_name = vol['configMap']['name']
-                    if "kube" not in cm_name and ("web" in cm_name or "html" in cm_name or "custom" in cm_name):
-                        return cm_name
-    except: pass
+    # En la nueva arquitectura, siempre es custom-web-content
     return "custom-web-content"
 
 # ==============================================================================
@@ -141,7 +132,18 @@ def update_web_content(oid, profile, html_content, is_restore_process=False):
         report_progress(oid, t_type, t_stat, 70, "Reiniciando...")
         run_command(f"minikube -p {profile} kubectl -- delete pod {pod} --wait=false", silent=False)
         if os.path.exists(temp_file): os.remove(temp_file)
-        time.sleep(3)
+        if os.path.exists(temp_file): os.remove(temp_file)
+        
+        # Esperar a que el Pod esté realmente Running (hasta 40s)
+        time.sleep(5) # Grace period
+        new_pod = None
+        for i in range(20):
+            report_progress(oid, t_type, t_stat, 80, f"Verificando... ({i*2}s)")
+            new_pod = find_web_pod(profile)
+            if new_pod:
+                s = run_command(f"minikube -p {profile} kubectl -- get pod {new_pod} -o jsonpath='{{.status.phase}}'", silent=True)
+                if "Running" in s: break
+            time.sleep(2)
         
         report_progress(oid, t_type, "completed" if is_restore_process else "web_completed", 100, "Online")
         log("✅ WEB ACTUALIZADA", C_GREEN)
@@ -218,7 +220,7 @@ def destroy_k8s_resources(oid, profile):
         log(f"⚰️ ELIMINADO", C_RED)
     except: pass
 
-# 6. 🔥 CONTROL DE ENERGÍA
+# 6. 🔥 CONTROL DE ENERGÍA (NUEVO)
 def handle_power(oid, profile, action):
     action = action.upper()
     log(f"🔌 ENERGÍA: {action} Cliente {oid}", C_YELLOW)
@@ -226,24 +228,34 @@ def handle_power(oid, profile, action):
     try:
         if action == "STOP":
             report_progress(oid, "power", "stopping", 20, "Deteniendo servicios...")
+            # Escalar a 0 réplicas (apagar)
             run_command(f"minikube -p {profile} kubectl -- scale deployment --all --replicas=0")
-            log("💤 Marcando como STOPPED...", C_GREY)
+            
+            # Actualizar DB a 'stopped' para que el Dashboard lo sepa
+            log("💤 Marcando como STOPPED en DB...", C_GREY)
             run_command(f'docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D kylo_main_db -e "UPDATE orders SET status=\'stopped\' WHERE id={oid}"')
+            
             report_progress(oid, "power", "stopped", 100, "Hibernando")
             log(f"🛑 CLIENTE {oid} DETENIDO", C_RED)
 
         elif action == "START":
             report_progress(oid, "power", "starting", 20, "Iniciando servicios...")
+            # Escalar a 1 réplica (encender)
             run_command(f"minikube -p {profile} kubectl -- scale deployment --all --replicas=1")
-            log("⚡ Marcando como ACTIVE...", C_GREY)
+            
+            # Actualizar DB a 'active'
+            log("⚡ Marcando como ACTIVE en DB...", C_GREY)
             run_command(f'docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D kylo_main_db -e "UPDATE orders SET status=\'active\' WHERE id={oid}"')
-            time.sleep(5) 
+            
+            time.sleep(5) # Esperar arranque
             report_progress(oid, "power", "started", 100, "Online")
             log(f"🟢 CLIENTE {oid} INICIADO", C_GREEN)
 
         elif action == "RESTART":
             report_progress(oid, "power", "restarting", 20, "Reiniciando pods...")
+            # Rollout restart (Reinicio suave)
             run_command(f"minikube -p {profile} kubectl -- rollout restart deployment")
+            
             report_progress(oid, "power", "restarted", 100, "Reiniciado")
             log(f"🔄 CLIENTE {oid} REINICIADO", C_CYAN)
 
@@ -270,40 +282,22 @@ def process_task_queue():
                 elif act == "UPDATE_WEB": threading.Thread(target=update_web_content, args=(oid, prof, d.get('html_content'))).start()
                 elif act == "DELETE_BACKUP": threading.Thread(target=delete_backup, args=(oid, d.get('filename_to_delete'))).start()
                 elif act == "DESTROY_K8S": threading.Thread(target=destroy_k8s_resources, args=(oid, prof)).start()
-                elif act in ["STOP", "START", "RESTART"]: threading.Thread(target=handle_power, args=(oid, prof, act)).start()
+                
+                # 🔥 NUEVOS COMANDOS DE ENERGÍA
+                elif act in ["STOP", "START", "RESTART"]:
+                    threading.Thread(target=handle_power, args=(oid, prof, act)).start()
                 
             except Exception as e: log(f"⚠️ Error: {e}", C_RED)
         time.sleep(0.5)
 
-# ==============================================================================
-# 📊 METRICAS (CORREGIDO: NO TOCA SI ESTÁ RUNNING)
-# ==============================================================================
 def process_metrics():
-    log("📊 Métricas activas (Safe Mode).", C_GREEN)
+    log("📊 Métricas activas.", C_GREEN)
     while not shutdown_event.is_set():
         try:
             raw = run_command("docker ps --format '{{.Names}}'", silent=True)
             for line in raw.splitlines():
                 if "sylo-cliente-" in line:
                     oid = line.replace("sylo-cliente-", "")
-                    
-                    # 🔥 PROTECCIÓN ANTIESTROPEO: Leemos el status actual
-                    status_file = os.path.join(BUZON, f"status_{oid}.json")
-                    skip = False
-                    
-                    if os.path.exists(status_file):
-                        try:
-                            with open(status_file, 'r') as f:
-                                current_data = json.load(f)
-                                status_txt = current_data.get("status", "")
-                                # Si el orquestador dice "running", "creating" o "pending", NO TOCAMOS
-                                if status_txt in ["running", "creating", "pending"]:
-                                    skip = True
-                        except: pass
-                    
-                    if skip: continue # 🛡️ Saltamos al siguiente si está en proceso de creación
-
-                    # Si llegamos aquí, es seguro escribir
                     stats = run_command(f"docker stats {line} --no-stream --format '{{{{.CPUPerc}}}},{{{{.MemPerc}}}}'", silent=True)
                     c,r = 0,0
                     if "," in stats:
@@ -314,7 +308,7 @@ def process_metrics():
                     sub = run_command(db_cmd, silent=True).strip()
                     url = f"http://{sub}.sylobi.org" if sub and sub!="NULL" and len(sub)>0 else "..."
                     
-                    requests.post(f"{API_URL}/reportar/metricas", json={"id_cliente":int(oid), "metrics":{"cpu":c,"ram":r}, "ssh_cmd": "root@sylo", "web_url": url}, timeout=1)
+                    requests.post(f"{API_URL}/reportar/metricas", json={"id_cliente":int(oid), "metrics":{"cpu":c,"ram":r}, "ssh_cmd": "root@sylo", "web_url": url, "os_info": "Linux Container", "installed_tools": []}, timeout=1)
                     report_backups_list(oid)
         except: pass
         time.sleep(2)
@@ -322,7 +316,7 @@ def process_metrics():
 if __name__ == "__main__":
     signal.signal(signal.SIGTERM, signal_handler); signal.signal(signal.SIGINT, signal_handler)
     if not os.path.exists(BUZON): os.makedirs(BUZON)
-    log("=== OPERATOR V54 (RUNNING PROTECTION) ===", C_GREEN)
+    log("=== OPERATOR V51 (POWER CONTROL) ===", C_GREEN)
     t1=threading.Thread(target=process_task_queue, daemon=True); t2=threading.Thread(target=process_metrics, daemon=True)
     t1.start(); t2.start()
     while True: time.sleep(1)

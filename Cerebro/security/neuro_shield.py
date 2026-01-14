@@ -57,6 +57,10 @@ class NeuroShieldMiddleware(BaseHTTPMiddleware):
         ]
 
     def _check_rate_limit(self, ip: str) -> bool:
+        # WHITELIST: Localhost & Docker Bridge (All 172.x ranges)
+        if ip == "127.0.0.1" or ip.startswith("172."):
+            return True
+            
         if ip not in self._buckets:
             self._buckets[ip] = TokenBucket(self.RATE_LIMIT, self.CAPACITY)
         return self._buckets[ip].consume()

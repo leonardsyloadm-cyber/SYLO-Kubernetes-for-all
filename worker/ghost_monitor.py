@@ -154,7 +154,7 @@ try:
 
     while True:
         try:
-            b.perf_buffer_poll()
+            b.perf_buffer_poll(timeout=100) # Poll with 100ms timeout
         except KeyboardInterrupt:
             sys.exit()
 

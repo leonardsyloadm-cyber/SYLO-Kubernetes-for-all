@@ -99,10 +99,12 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $stmt = $conn->prepare("INSERT INTO orders (user_id, plan_id, status) VALUES (?, ?, 'pending')");
             $stmt->execute([$_SESSION['user_id'], $plan_id]);
             $oid = $conn->lastInsertId();
+            
+            $tools_str = json_encode($s['tools'] ?? []);
 
-            $sqlS = "INSERT INTO order_specs (order_id, cpu_cores, ram_gb, storage_gb, db_enabled, db_type, web_enabled, web_type, cluster_alias, subdomain, ssh_user, os_image, db_custom_name, web_custom_name) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            $sqlS = "INSERT INTO order_specs (order_id, cpu_cores, ram_gb, storage_gb, db_enabled, db_type, web_enabled, web_type, cluster_alias, subdomain, ssh_user, os_image, db_custom_name, web_custom_name, tools) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             $stmtS = $conn->prepare($sqlS);
-            $stmtS->execute([$oid, $s['cpu'], $s['ram'], $s['storage'], $s['db_enabled']?1:0, $s['db_type'], $s['web_enabled']?1:0, $s['web_type'], $s['cluster_alias'], $s['subdomain'], $s['ssh_user'], $s['os_image'], $s['db_custom_name'], $s['web_custom_name']]);
+            $stmtS->execute([$oid, $s['cpu'], $s['ram'], $s['storage'], $s['db_enabled']?1:0, $s['db_type'], $s['web_enabled']?1:0, $s['web_type'], $s['cluster_alias'], $s['subdomain'], $s['ssh_user'], $s['os_image'], $s['db_custom_name'], $s['web_custom_name'], $tools_str]);
             
             $payload = ["id_cliente" => (int)$oid, "plan" => $plan, "cliente_nombre" => $_SESSION['username'], "specs" => $s, "id_usuario_real" => (string)$_SESSION['user_id']];
             $ch = curl_init(API_URL . "/crear");

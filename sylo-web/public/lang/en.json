@@ -1,0 +1,283 @@
+{
+    "nav": {
+        "company": "Company",
+        "performance": "Performance",
+        "calc": "Calculator",
+        "plans": "Plans",
+        "login": "CLIENT",
+        "console": "CONSOLE"
+    },
+    "hero": {
+        "title": "Ryzen™ Infrastructure",
+        "subtitle": "Kubernetes V21 Orchestration from Alicante, Spain."
+    },
+    "company": {
+        "mission": "OUR MISSION",
+        "title": "Real Engineering",
+        "desc": "Sylo was born in Alicante to eliminate complexity. We use real Threadripper hardware and Gen5 NVMe."
+    },
+    "bench": {
+        "title": "Raw Performance",
+        "desc": "Cinebench R23 Single Core."
+    },
+    "pricing": {
+        "bronze": "Bronze",
+        "silver": "Silver",
+        "gold": "Gold",
+        "custom": "-- Custom --",
+        "choose": "Choose",
+        "configure": "Configure",
+        "v21_title": "V21 PLANS",
+        "scale_title": "Scale with Confidence",
+        "specs_title": "Specifications",
+        "backend_title": "Backend DB",
+        "prod_title": "Production",
+        "arch_title": "Architecture",
+        "feat": {
+            "alpine_only": "Alpine Only",
+            "no_db_web": "No DB / Web",
+            "mysql_cluster": "MySQL Cluster",
+            "no_web": "No Web",
+            "full_stack": "Full Stack",
+            "domain": ".cloud Domain",
+            "hardware": "Ryzen Hardware",
+            "topology": "Mixed Topology"
+        },
+        "vals": {
+            "fixed": "Fixed",
+            "none": "None",
+            "persistent": "Persistent",
+            "included": "Included",
+            "any": "Any"
+        },
+        "ideal_label": "Ideal for:",
+        "desc": {
+            "bronze": "Bastion Host, VPN, CLI Tests.",
+            "silver": "Microservices, Internal Databases.",
+            "gold": "Production Apps, E-commerce.",
+            "custom": "Big Data, AI, Complex Projects."
+        }
+    },
+    "calc": {
+        "title": "Configurator",
+        "estimate": "Estimation",
+        "savings": "SAVINGS:",
+        "db_label": "DB (+5€)",
+        "web_label": "Web (+5€)"
+    },
+    "footer": {
+        "academy": "Sylo Academy",
+        "docs_desc": "Official technical documentation.",
+        "read_docs": "Read Docs",
+        "terms": "TERMS & CONDITIONS"
+    },
+    "modal": {
+        "config_title": "Configure",
+        "alias": "Cluster Alias",
+        "ssh_user": "SSH User",
+        "resources": "Custom Resources",
+        "db": "Database",
+        "web": "Web Server",
+        "db_engine": "DB Engine",
+        "web_server": "Web Server",
+        "toolbelt": "Sylo Toolbelt",
+        "tier_msg": "Tools injected into your container (Cost included in Tier).",
+        "estimated_budget": "Estimated Budget",
+        "deploy_btn": "DEPLOY INFRASTRUCTURE"
+    },
+    "legal": {
+        "title": "Service Agreement",
+        "t1": "1. Identity and Object",
+        "d1": "SYLO CORP S.L. is a Limited Liability Company registered in Alicante (CIF B-12345678). This contract regulates the use of the Oktopus™ V21 platform. By contracting, you accept these conditions.",
+        "t2": "2. Guaranteed Ryzen Hardware",
+        "d2": "We guarantee exclusive use of latest-gen AMD Ryzen™ Threadripper™ processors. Contracted resources (vCPU) correspond to physical execution threads, not virtual ones. No aggressive overselling.",
+        "t3": "3. Acceptable Use Policy (AUP) - Kubernetes",
+        "d3": "Use for: Cryptocurrency mining, DDoS attacks, intrusions into foreign networks, and hosting illegal content is strictly prohibited. Detection will result in immediate resolution of the usage contract.",
+        "t4": "4. Privacy and Data Protection",
+        "d4": "In compliance with GDPR (EU 2016/679): Your data is stored encrypted at rest (AES-256) in Alicante. No Deep Packet Inspection (DPI) performed. All data is stored and encrypted locally.",
+        "t5": "5. Service Level Agreement (SLA)",
+        "d5": "We guarantee 99.9% monthly availability. In case of breach, service credits will be issued. Full refund of any kubernete in case of breach causing inconvenience.",
+        "t6": "6. Payments and Suspension",
+        "d6": "Service is prepaid. Non-payment will result in service suspension after 48 hours and deletion of service after said period.",
+        "t7": "7. Liability",
+        "d7": "Sylo shall not be liable for data loss derived from user misconfiguration or software vulnerabilities.",
+        "t8": "8. Jurisdiction and Dispute Resolution",
+        "d8": "The parties expressly submit to the courts and tribunals of the city of Alicante, Spain, waiving any other jurisdiction that might correspond to them, for the resolution of any controversy derived from this contract."
+    },
+    "auth": {
+        "login_tab": "Login",
+        "register_tab": "Sign Up",
+        "user_email": "User/Email",
+        "password": "Password",
+        "login_btn": "Log In",
+        "freelancer": "Freelancer",
+        "company": "Company",
+        "username": "Username",
+        "email": "Email",
+        "repeat_pass": "Repeat",
+        "full_name": "Full Name",
+        "dni": "ID/DNI",
+        "contact_person": "Contact Person",
+        "cif": "VAT ID/CIF",
+        "company_name": "Legal Name",
+        "phone": "Phone",
+        "address": "Address",
+        "accept_terms": "I accept the",
+        "terms_link": "Terms",
+        "create_account": "Create Account",
+        "sl": "Ltd. (S.L.)",
+        "sa": "Inc. (S.A.)",
+        "coop": "Cooperative",
+        "other": "Other"
+    },
+    "dashboard": {
+        "title": "Control Panel",
+        "welcome": "Welcome",
+        "new_service": "New Service",
+        "billing": "Billing",
+        "my_clusters": "MY CLUSTERS",
+        "logout": "Logout",
+        "online": "ONLINE",
+        "cpu_usage": "CPU Usage",
+        "ram_usage": "RAM Usage",
+        "system_access": "System Access",
+        "installed_software": "Installed Software",
+        "activity_log": "Activity Log",
+        "command_center": "Command Center",
+        "web_deploy": "Web Deploy",
+        "view_site": "View Website",
+        "energy_control": "Energy Control",
+        "restart": "Restart",
+        "stop": "Stop",
+        "stopped": "STOPPED",
+        "start": "Power On",
+        "snapshots": "Snapshots",
+        "create_snapshot": "Create Snapshot",
+        "destroy_k8s": "Destroy Kubernetes",
+        "delete_service": "Delete Service",
+        "empty_state_title": "No active services",
+        "empty_state_btn": "Deploy Infrastructure",
+        "waiting_events": "Waiting for events...",
+        "server_prefix": "Server",
+        "edit_web": "Edit Web",
+        "upload_web": "Upload Web",
+        "no_snapshots": "No snapshots available.",
+        "restart_desc": "Apply changes",
+        "stop_desc": "Hibernation mode",
+        "start_desc": "Return to online"
+    },
+    "chat": {
+        "title": "Sylo Support",
+        "greeting": "Hello, if you have questions, here are the most frequent ones:",
+        "q1": "1️⃣ How do I access my server? (SSH)",
+        "q2": "2️⃣ What is my website URL?",
+        "q3": "3️⃣ Database Credentials",
+        "q4": "4️⃣ How many backups can I make?",
+        "q5": "5️⃣ Health Status (CPU/RAM)",
+        "instruction": "Type the number to see the answer.",
+        "placeholder": "Type here...",
+        "sending": "Sending...",
+        "received": "Support message received"
+    },
+    "js": {
+        "toast_notification": "Notification",
+        "copy_success": "Copied!",
+        "destroy_confirm": "☢️ ARE YOU SURE?\nThis will delete all Pods and Kubernetes data.\n\nType: DELETE",
+        "destroy_keyword": "DELETE",
+        "destroying": "Destroying resources...",
+        "backup_start": "Starting Backup",
+        "restoring": "Restoring...",
+        "deleting": "Deleting...",
+        "updated": "Data updated",
+        "publishing": "Publishing web...",
+        "uploaded": "File uploaded",
+        "restarting": "Restarting system...",
+        "stopping": "Stopping system...",
+        "starting": "Starting system...",
+        "loader_processing": "Processing request...",
+        "loader_wait": "Please wait while we contact the cluster."
+    },
+    "console": {
+        "title": "DEPLOYMENT COMPLETED",
+        "initializing": "Initializing Plan",
+        "booting": "Booting Kernel",
+        "allocating": "Allocating Resources...",
+        "cpu": "CPU:",
+        "ram": "RAM:",
+        "installed_tools": "# INSTALLED TOOLS",
+        "access_creds": "# ACCESS CREDENTIALS",
+        "dashboard_btn": "ACCESS DASHBOARD"
+    },
+    "plan": {
+        "personalizado": "CUSTOM",
+        "bronce": "BRONZE",
+        "plata": "SILVER",
+        "oro": "GOLD"
+    },
+    "snapshot": {
+        "title": "New Snapshot",
+        "name_label": "Backup Name",
+        "placeholder": "Ex: Before changes...",
+        "type_full": "Full Backup",
+        "desc_full": "Total disk copy.",
+        "type_diff": "Differential",
+        "desc_diff": "Changes since last Full.",
+        "type_incr": "Incremental",
+        "desc_incr": "Only new data today.",
+        "limit_reached": "Limit reached.",
+        "limit": "Limit:",
+        "copies": "copies",
+        "start_btn": "Start Backup"
+    },
+    "editor": {
+        "title": "HTML Editor",
+        "publish": "Publish"
+    },
+    "upload": {
+        "title": "Upload Web",
+        "btn": "Upload"
+    },
+    "profile": {
+        "title": "Profile",
+        "name": "Name",
+        "email": "Email"
+    },
+    "billing": {
+        "title": "Billing"
+    },
+    "power": {
+        "title": "Power Control",
+        "requesting": "Requesting action...",
+        "stopping": "Stopping system...",
+        "starting": "Starting system...",
+        "restarting": "Restarting...",
+        "progress_stopping": "Stopping cluster (this may take a while)...",
+        "progress_starting": "Starting cluster (this may take a while)...",
+        "progress_restarting": "Restarting cluster (this may take a while)...",
+        "completed": "Action completed."
+    },
+    "common": {
+        "cancel": "Cancel",
+        "close": "Close",
+        "save": "Save",
+        "total": "Total"
+    },
+    "backend": {
+        "starting": "Starting...",
+        "reading": "Reading data...",
+        "compressing": "Compressing...",
+        "saving": "Saving to disk...",
+        "completed": "Completed",
+        "deleting": "Deleting...",
+        "deleted": "Deleted",
+        "locating": "Locating file...",
+        "restoring": "Restoring...",
+        "processing": "Processing...",
+        "cleaning": "Cleaning config...",
+        "uploading": "Uploading new content...",
+        "applying": "Applying changes...",
+        "verifying": "Verifying...",
+        "web_updated": "Web Updated",
+        "software_empty": "No installed tools detected."
+    }
+}

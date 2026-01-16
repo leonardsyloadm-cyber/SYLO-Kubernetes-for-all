@@ -19,7 +19,7 @@ import requests
 
 WORKER_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(WORKER_DIR) # Subimos un nivel desde worker/
-BUZON = os.path.join(BASE_DIR, "buzon-pedidos")
+BUZON = os.path.join(BASE_DIR, "sylo-web", "buzon-pedidos")
 SECURITY_DIR = os.path.join(WORKER_DIR, "security")
 
 API_URL = "http://127.0.0.1:8001/api/clientes"
@@ -94,6 +94,25 @@ def save_cluster_data(oid, profile, web_port_tf=None, ssh_port_tf=None):
 
 def enable_monitoring(profile):
     subprocess.run(["minikube", "addons", "enable", "metrics-server", "-p", profile], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+def get_next_free_ip():
+    """Genera una IP única en el rango de Minikube (192.168.49.X)"""
+    try:
+        # Obtenemos IPs usadas
+        cmd = ["docker", "exec", "-i", DB_CONTAINER, "mysql", f"-u{DB_USER}", f"-p{DB_PASS}", "-D", DB_NAME, "--silent", "--skip-column-names", "-e", "SELECT ip_address FROM orders WHERE status NOT IN ('terminated','cancelled')"]
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, text=True)
+        used_ips = [line.strip() for line in res.stdout.splitlines() if line.strip()]
+        
+        # Rango .2 a .200 (Reservamos .1 para Gateway y .254 para otros usos)
+        base = "192.168.49"
+        for i in range(2, 200):
+            candidate = f"{base}.{i}"
+            if candidate not in used_ips:
+                return candidate
+        return None
+    except Exception as e:
+        log(f"⚠️ Error calculando IP libre: {e}", Colors.RED)
+        return None
 
 # --- SEGURIDAD: APLICAR NETWORK POLICIES ---
 def apply_security_policy(profile, owner_id):
@@ -360,12 +379,39 @@ def process_order(json_file):
         # 🧠 ROUTER DE LÓGICA DE NEGOCIO (THEMATIC ENFORCEMENT)
         # ==============================================================================
 
+        # HELPER: Configuración Determinista de IP (Subnet Sharding)
+        def reserve_ip(oid):
+            # Subnet Sharding: Usamos el tercer octeto para aislar redes.
+            # Base 50. Si ID es muy grande, hacemos wrap around o saltamos.
+            try:
+                third_octet = 50 + int(oid)
+                
+                # Protección para IDs gigantes (>200)
+                if third_octet > 250: 
+                    # Fallback a rango 10.10.x.x si tenemos más de 200 clientes
+                    third_octet = int(oid) % 200
+                    fixed_ip = f"10.10.{third_octet}.2"
+                else:
+                    fixed_ip = f"192.168.{third_octet}.2"
+                    
+                log(f"📌 IP Inmortal (Subnet Sharding) asignada para ID {oid}: {fixed_ip}", Colors.CYAN)
+                
+                # Persistir en DB
+                sql = f"UPDATE orders SET ip_address='{fixed_ip}' WHERE id={oid};"
+                subprocess.run(["docker", "exec", "-i", DB_CONTAINER, "mysql", f"-u{DB_USER}", f"-p{DB_PASS}", "-D", DB_NAME, "--silent", "--skip-column-names", "-e", sql], stdout=subprocess.DEVNULL)
+                
+                return fixed_ip
+            except Exception as e:
+                log(f"❌ Error calculando IP: {e}", Colors.RED)
+                return ""
+
         # --- PLAN BRONCE ---
         # Temática: Siempre Alpine, Solo SSH. Ignoramos lo que venga en el JSON de Web/DB.
         if plan_raw == "Bronce":
-            report_progress(oid, 10, "Iniciando Plan Bronce (Alpine Terminal)...")
-            # Argumentos: ID, User, OS(Forzado), DB(Ignorado), Web(Ignorado), Subdomain
-            args = [oid, ssh_user, "alpine", "no-db", "no-web", subdomain]
+            fixed_ip = reserve_ip(oid)
+            report_progress(oid, 10, f"Iniciando Plan Bronce (Alpine) en {fixed_ip}...")
+            # Argumentos: ID, User, OS(Forzado), DB(Ignorado), Web(Ignorado), Subdomain, FIXED_IP
+            args = [oid, ssh_user, "alpine", "no-db", "no-web", subdomain, fixed_ip]
             success = run_bash_script(SCRIPT_BRONCE, args, env_vars)
             
             # Variable para reporte final (La real, no la pedida)
@@ -375,9 +421,10 @@ def process_order(json_file):
         # Temática: Alpine o Ubuntu. DB Obligatoria (MySQL). Sin Web.
         elif plan_raw == "Plata":
             db_name = specs.get("db_custom_name", "sylo_db")
-            report_progress(oid, 10, f"Iniciando Plan Plata ({os_requested})...")
-            # Argumentos del script: ID, User, OS, DB_Name, Subdomain
-            args = [oid, ssh_user, os_requested, db_name, subdomain]
+            fixed_ip = reserve_ip(oid)
+            report_progress(oid, 10, f"Iniciando Plan Plata ({os_requested}) en {fixed_ip}...")
+            # Argumentos del script: ID, User, OS, DB_Name, Subdomain, FIXED_IP
+            args = [oid, ssh_user, os_requested, db_name, subdomain, fixed_ip]
             success = run_bash_script(f"./{os.path.basename(SCRIPT_PLATA)}", args, env_vars, cwd=os.path.dirname(SCRIPT_PLATA))
             
             os_final = os_requested
@@ -387,9 +434,10 @@ def process_order(json_file):
         elif plan_raw == "Oro":
             db_name = specs.get("db_custom_name", "sylo_db")
             web_name = specs.get("web_custom_name", "sylo_web")
-            report_progress(oid, 10, f"Iniciando Plan Oro ({os_requested} Full Stack)...")
-            # Argumentos: ID, User, OS, DB_Name, Web_Name, Subdomain
-            args = [oid, ssh_user, os_requested, db_name, web_name, subdomain]
+            fixed_ip = reserve_ip(oid)
+            report_progress(oid, 10, f"Iniciando Plan Oro ({os_requested}) en {fixed_ip}...")
+            # Argumentos: ID, User, OS, DB_Name, Web_Name, Subdomain, FIXED_IP
+            args = [oid, ssh_user, os_requested, db_name, web_name, subdomain, fixed_ip]
             success = run_bash_script(SCRIPT_ORO, args, env_vars)
             
             os_final = os_requested
@@ -403,9 +451,10 @@ def process_order(json_file):
             db_name = specs.get("db_custom_name", "custom_db")
             web_name = specs.get("web_custom_name", "custom_web")
             
-            report_progress(oid, 10, f"Iniciando Custom ({os_requested})...")
+            fixed_ip = reserve_ip(oid)
+            report_progress(oid, 10, f"Iniciando Custom ({os_requested}) en {fixed_ip}...")
             
-            args = [oid, cpu, ram, storage, db_en, db_type, web_en, web_type, ssh_user, os_requested, db_name, web_name, subdomain]
+            args = [oid, cpu, ram, storage, db_en, db_type, web_en, web_type, ssh_user, os_requested, db_name, web_name, subdomain, fixed_ip]
             success = run_bash_script(SCRIPT_CUSTOM, args, env_vars)
             
             os_final = os_requested

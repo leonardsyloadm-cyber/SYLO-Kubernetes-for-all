@@ -1,0 +1,282 @@
+{
+    "nav": {
+        "company": "Empresa",
+        "performance": "Rendimiento",
+        "calc": "Calculadora",
+        "plans": "Planes",
+        "login": "CLIENTE",
+        "console": "CONSOLA"
+    },
+    "hero": {
+        "title": "Infraestructura Ryzen™",
+        "subtitle": "Orquestación Kubernetes V21 desde Alicante, España."
+    },
+    "company": {
+        "mission": "NUESTRA MISIÓN",
+        "title": "Ingeniería Real",
+        "desc": "Sylo nació en Alicante para eliminar la complejidad. Usamos hardware Threadripper y NVMe Gen5 real."
+    },
+    "bench": {
+        "title": "Rendimiento Bruto",
+        "desc": "Cinebench R23 Single Core."
+    },
+    "pricing": {
+        "bronze": "Bronce",
+        "silver": "Plata",
+        "gold": "Oro",
+        "custom": "-- A Medida --",
+        "choose": "Elegir",
+        "configure": "Configurar",
+        "v21_title": "PLANES V21",
+        "scale_title": "Escala con Confianza",
+        "specs_title": "Especificaciones",
+        "backend_title": "Backend DB",
+        "prod_title": "Producción",
+        "arch_title": "Arquitectura",
+        "feat": {
+            "alpine_only": "Solo Alpine",
+            "no_db_web": "Sin DB / Web",
+            "mysql_cluster": "Cluster MySQL",
+            "no_web": "Sin Web",
+            "full_stack": "Full Stack",
+            "domain": "Dominio .cloud",
+            "hardware": "Hardware Ryzen",
+            "topology": "Topología Mixta"
+        },
+        "vals": {
+            "fixed": "Fijo",
+            "none": "Ninguno",
+            "persistent": "Persistente",
+            "included": "Incluido",
+            "any": "Cualquiera"
+        },
+        "ideal_label": "Ideal para:",
+        "desc": {
+            "bronze": "Bastion Host, VPN, Pruebas CLI.",
+            "silver": "Microservicios, Bases de datos internas.",
+            "gold": "Apps en Producción, E-commerce.",
+            "custom": "Big Data, IA, Proyectos complejos."
+        }
+    },
+    "calc": {
+        "title": "Configurador",
+        "estimate": "Estimación",
+        "savings": "AHORRO:",
+        "db_label": "DB (+5€)",
+        "web_label": "Web (+5€)"
+    },
+    "footer": {
+        "academy": "Sylo Academy",
+        "docs_desc": "Documentación técnica oficial.",
+        "read_docs": "Leer Docs",
+        "terms": "TÉRMINOS Y CONDICIONES"
+    },
+    "modal": {
+        "config_title": "Configurar",
+        "alias": "Alias Cluster",
+        "ssh_user": "Usuario SSH",
+        "resources": "Recursos Personalizados",
+        "db": "Base de Datos",
+        "web": "Servidor Web",
+        "db_engine": "Motor DB",
+        "web_server": "Servidor Web",
+        "toolbelt": "Sylo Toolbelt",
+        "tier_msg": "Herramientas inyectadas en tu contenedor (Coste incluido en el Tier).",
+        "estimated_budget": "Presupuesto Estimado",
+        "deploy_btn": "DESPLEGAR INFRAESTRUCTURA"
+    },
+    "legal": {
+        "title": "Contrato de Servicios",
+        "t1": "1. Identidad y Objeto",
+        "d1": "SYLO CORP S.L. es una Sociedad Limitada registrada en Alicante (CIF B-12345678). El presente contrato regula el uso de la plataforma Oktopus™ V21. Al contratar, acepta estas condiciones.",
+        "t2": "2. Hardware Ryzen Garantizado",
+        "d2": "Garantizamos el uso exclusivo de procesadores AMD Ryzen™ Threadripper™ de última generación. Los recursos contratados (vCPU) corresponden a hilos de ejecución físicos y no virtuales. No realizamos 'overselling' agresivo.",
+        "t3": "3. Política de Uso Aceptable (AUP) - Kubernetes",
+        "d3": "Queda terminantemente prohibido el uso para: Minería de criptomonedas, ataques DDoS, intrusiones en redes ajenas, y alojamiento de contenido ilegal. La detección resultará en la resolución inmediata del contrato de uso.",
+        "t4": "4. Privacidad y Protección de Datos",
+        "d4": "En cumplimiento con el RGPD (UE 2016/679): Sus datos se almacenan cifrados en reposo (AES-256) en Alicante. No realizamos inspección profunda de paquetes (DPI). Todos los datos se guardan y se cifran localmente.",
+        "t5": "5. Acuerdo de Nivel de Servicio (SLA)",
+        "d5": "Garantizamos un 99.9% de disponibilidad mensual. En caso de incumplimiento, se compensará con créditos de servicio. Reembolso íntegro de cualquier kubernete en caso de incumplimiento por molestia.",
+        "t6": "6. Pagos y Suspensión",
+        "d6": "El servicio es prepago. El impago resultará en la suspensión del servicio a las 48 horas y la eliminación del servicio tras dicho periodo.",
+        "t7": "7. Responsabilidad",
+        "d7": "Sylo no será responsable de pérdidas de datos derivadas de una mala configuración por parte del usuario o vulnerabilidades en su software.",
+        "t8": "8. Jurisdicción y Resolución de Conflictos",
+        "d8": "Las partes se someten expresamente a los juzgados y tribunales de la ciudad de Alicante, España, renunciando a cualquier otro fuero que pudiera corresponderles, para la resolución de cualquier controversia derivada de este contrato."
+    },
+    "auth": {
+        "login_tab": "Login",
+        "register_tab": "Registro",
+        "user_email": "Usuario/Email",
+        "password": "Contraseña",
+        "login_btn": "Entrar",
+        "freelancer": "Autónomo",
+        "company": "Empresa",
+        "username": "Usuario",
+        "email": "Email",
+        "repeat_pass": "Repetir",
+        "full_name": "Nombre Completo",
+        "dni": "DNI",
+        "contact_person": "Persona Contacto",
+        "cif": "CIF",
+        "company_name": "Razón Social",
+        "phone": "Teléfono",
+        "address": "Dirección",
+        "accept_terms": "Acepto los",
+        "terms_link": "Términos",
+        "create_account": "Crear Cuenta",
+        "sl": "S.L.",
+        "sa": "S.A.",
+        "coop": "Cooperativa",
+        "other": "Otro"
+    },
+    "dashboard": {
+        "title": "Panel de Control",
+        "welcome": "Bienvenido",
+        "new_service": "Nuevo Servicio",
+        "billing": "Facturación",
+        "my_clusters": "MIS CLÚSTERES",
+        "logout": "Desconectar",
+        "online": "ONLINE",
+        "cpu_usage": "Uso CPU",
+        "ram_usage": "Memoria RAM",
+        "system_access": "Accesos de Sistema",
+        "installed_software": "Software Instalado",
+        "activity_log": "Historial de Actividad",
+        "command_center": "Centro de Mando",
+        "web_deploy": "Despliegue Web",
+        "view_site": "Ver Sitio Web",
+        "energy_control": "Control de Energía",
+        "restart": "Reiniciar",
+        "stop": "Apagar",
+        "stopped": "DETENIDO",
+        "start": "Encender",
+        "snapshots": "Snapshots",
+        "create_snapshot": "Crear Snapshot",
+        "destroy_k8s": "Destruir Kubernetes",
+        "delete_service": "Eliminar Servicio",
+        "empty_state_title": "Sin servicios activos",
+        "empty_state_btn": "Desplegar Infraestructura",
+        "waiting_events": "Esperando eventos...",
+        "server_prefix": "Servidor",
+        "edit_web": "Editar Web",
+        "upload_web": "Subir Web",
+        "no_snapshots": "Sin copias disponibles.",
+        "restart_desc": "Aplicar cambios",
+        "stop_desc": "Modo hibernación",
+        "start_desc": "Volver a online"
+    },
+    "chat": {
+        "title": "Soporte Sylo",
+        "greeting": "Hola, si tienes preguntas, estas son las más frecuentes:",
+        "q1": "1️⃣ ¿Cómo entro a mi servidor? (SSH)",
+        "q2": "2️⃣ ¿Cuál es mi página web?",
+        "q3": "3️⃣ Datos de Base de Datos",
+        "q4": "4️⃣ ¿Cuántas copias puedo hacer?",
+        "q5": "5️⃣ Estado de Salud (CPU/RAM)",
+        "instruction": "Escribe el número para ver la respuesta.",
+        "placeholder": "Escribe...",
+        "sending": "Enviando...",
+        "received": "Mensaje de soporte recibido"
+    },
+    "js": {
+        "toast_notification": "Notificación",
+        "copy_success": "¡Copiado!",
+        "destroy_confirm": "☢️ ¿ESTÁS SEGURO?\nEsto borrará todos los Pods y datos de Kubernetes.\n\nEscribe: BORRAR",
+        "destroying": "Destruyendo recursos...",
+        "backup_start": "Iniciando Backup",
+        "restoring": "Restaurando...",
+        "deleting": "Eliminando...",
+        "updated": "Datos actualizados",
+        "publishing": "Publicando web...",
+        "uploaded": "Archivo subido",
+        "restarting": "Reiniciando sistema...",
+        "stopping": "Deteniendo sistema...",
+        "starting": "Iniciando sistema...",
+        "loader_processing": "Procesando solicitud...",
+        "loader_wait": "Por favor espere mientras contactamos con el clúster."
+    },
+    "console": {
+        "title": "DESPLIEGUE COMPLETADO",
+        "initializing": "Inicializando Plan",
+        "booting": "Arrancando Kernel",
+        "allocating": "Asignando Recursos...",
+        "cpu": "CPU:",
+        "ram": "RAM:",
+        "installed_tools": "# HERRAMIENTAS INSTALADAS",
+        "access_creds": "# CREDENCIALES DE ACCESO",
+        "dashboard_btn": "ACCEDER AL PANEL"
+    },
+    "plan": {
+        "personalizado": "PERSONALIZADO",
+        "bronce": "BRONCE",
+        "plata": "PLATA",
+        "oro": "ORO"
+    },
+    "snapshot": {
+        "title": "Nueva Snapshot",
+        "name_label": "Nombre de la copia",
+        "placeholder": "Ej: Antes de cambios...",
+        "type_full": "Completa (Full)",
+        "desc_full": "Copia total del disco.",
+        "type_diff": "Diferencial",
+        "desc_diff": "Cambios desde última Full.",
+        "type_incr": "Incremental",
+        "desc_incr": "Solo lo nuevo hoy.",
+        "limit_reached": "Límite alcanzado.",
+        "limit": "Límite:",
+        "copies": "copias",
+        "start_btn": "Iniciar Copia"
+    },
+    "editor": {
+        "title": "Editor HTML",
+        "publish": "Publicar"
+    },
+    "upload": {
+        "title": "Subir Web",
+        "btn": "Subir"
+    },
+    "profile": {
+        "title": "Perfil",
+        "name": "Nombre",
+        "email": "Email"
+    },
+    "billing": {
+        "title": "Facturación"
+    },
+    "power": {
+        "title": "Control de Energía",
+        "requesting": "Solicitando acción...",
+        "stopping": "Deteniendo sistema...",
+        "starting": "Iniciando sistema...",
+        "restarting": "Reiniciando...",
+        "progress_stopping": "Deteniendo clúster (esto puede tardar)...",
+        "progress_starting": "Iniciando clúster (esto puede tardar)...",
+        "progress_restarting": "Reiniciando clúster (esto puede tardar)...",
+        "completed": "Acción completada."
+    },
+    "common": {
+        "cancel": "Cancelar",
+        "close": "Cerrar",
+        "save": "Guardar",
+        "total": "Total"
+    },
+    "backend": {
+        "starting": "Iniciando...",
+        "reading": "Leyendo datos...",
+        "compressing": "Comprimiendo...",
+        "saving": "Guardando en disco...",
+        "completed": "Completado",
+        "deleting": "Eliminando...",
+        "deleted": "Eliminado",
+        "locating": "Localizando archivo...",
+        "restoring": "Restaurando...",
+        "processing": "Procesando...",
+        "cleaning": "Limpiando configuración...",
+        "uploading": "Subiendo nuevo contenido...",
+        "applying": "Aplicando cambios...",
+        "verifying": "Verificando...",
+        "web_updated": "Web Actualizada",
+        "software_empty": "No se han detectado herramientas instaladas."
+    }
+}

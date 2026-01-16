@@ -14,7 +14,7 @@ PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 handle_error() {
     local exit_code=$?
     echo -e "\n\033[0;31m❌ ERROR CRÍTICO ORO (Exit: $exit_code). Ver logs: $LOG_FILE\033[0m"
-    BUZON_ERR="$PROJECT_ROOT/buzon-pedidos/status_$1.json"
+    BUZON_ERR="$PROJECT_ROOT/sylo-web/buzon-pedidos/status_$1.json"
     if [ -d "$(dirname "$BUZON_ERR")" ]; then
         echo "{\"percent\": 100, \"message\": \"Fallo Crítico en el despliegue Oro.\", \"status\": \"error\"}" > "$BUZON_ERR"
     fi
@@ -29,6 +29,7 @@ OS_IMAGE_ARG=$3
 DB_NAME_ARG=$4
 WEB_NAME_ARG=$5
 SUBDOMAIN_ARG=$6
+STATIC_IP_ARG=$7
 
 # --- GESTIÓN DE IDENTIDAD ---
 OWNER_ID="${TF_VAR_owner_id:-admin}"
@@ -47,7 +48,7 @@ if [ "$OS_IMAGE_ARG" == "alpine" ]; then IMAGE_WEB="nginx:alpine"; fi
 if [ "$OS_IMAGE_ARG" == "redhat" ]; then IMAGE_WEB="registry.access.redhat.com/ubi8/nginx-120"; fi
 
 CLUSTER_NAME="sylo-cliente-$ORDER_ID"
-BUZON_STATUS="$PROJECT_ROOT/buzon-pedidos/status_$ORDER_ID.json"
+BUZON_STATUS="$PROJECT_ROOT/sylo-web/buzon-pedidos/status_$ORDER_ID.json"
 SSH_PASS=$(openssl rand -hex 8) # Hexadecimal seguro
 
 update_status() {
@@ -71,14 +72,20 @@ done
 docker volume prune -f >> "$LOG_FILE" 2>&1 || true
 
 # --- LEVANTAR CLUSTER ---
-update_status 15 "Arrancando Cluster High-Spec..."
+# --- LEVANTAR CLUSTER ---
+update_status 15 "Arrancando Cluster High-Spec [$STATIC_IP_ARG]..."
+
+# COMANDO DETERMINISTA
 minikube start -p "$CLUSTER_NAME" \
     --driver=docker \
     --cni=calico \
-    --cpus=3 \
-    --memory=4000m \
+    --static-ip "$STATIC_IP_ARG" \
+    --cpus=3 --memory=4000m \
     --addons=default-storageclass,ingress,metrics-server \
     --force >> "$LOG_FILE" 2>&1
+
+# FIX: Update context immediately
+minikube -p "$CLUSTER_NAME" update-context >> "$LOG_FILE" 2>&1
 
 # CARGA REDHAT (Optimización)
 if [ "$OS_IMAGE_ARG" == "redhat" ]; then

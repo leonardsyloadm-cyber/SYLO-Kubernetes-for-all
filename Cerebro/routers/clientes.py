@@ -10,7 +10,7 @@ router = APIRouter()
 
 # Rutas relativas para encontrar el buzón
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) 
-BUZON_PEDIDOS = os.path.join(os.path.dirname(BASE_DIR), "buzon-pedidos")
+BUZON_PEDIDOS = os.path.join(os.path.dirname(BASE_DIR), "sylo-web", "buzon-pedidos")
 if not os.path.exists(BUZON_PEDIDOS): os.makedirs(BUZON_PEDIDOS, exist_ok=True)
 
 # ==========================================
@@ -141,6 +141,13 @@ async def solicitar_accion(datos: OrdenAccion):
     payload = datos.dict()
     payload["action"] = datos.accion.upper()
     guardar_json(f"accion_{datos.id_cliente}_{int(time.time()*1000)}.json", payload)
+    
+    # 🔥 RESETEAR STATUS para evitar "falsos positivos" de acciones anteriores
+    # Si pedimos un power action, limpiamos el power_status anterior
+    if datos.accion.upper() in ["STOP", "START", "RESTART"]:
+         reset_payload = {"status": "pending", "progress": 5, "msg": "Enviando orden..."}
+         guardar_json(f"power_status_{datos.id_cliente}.json", reset_payload)
+
 class ReporteTools(BaseModel):
     id_cliente: int
     tools: List[str]
@@ -196,7 +203,13 @@ async def recibir_metricas(datos: ReporteMetrica):
 
 @router.post("/reportar/progreso")
 async def recibir_progreso(datos: ReporteProgreso):
-    nombre_archivo = f"web_status_{datos.id_cliente}.json" if datos.tipo == "web" else f"backup_status_{datos.id_cliente}.json"
+    if datos.tipo == "web":
+        nombre_archivo = f"web_status_{datos.id_cliente}.json"
+    elif datos.tipo == "power":
+        nombre_archivo = f"power_status_{datos.id_cliente}.json"
+    else:
+        nombre_archivo = f"backup_status_{datos.id_cliente}.json"
+
     estado = datos.status_text
     if datos.percent >= 100: estado = "completed"
     
@@ -226,6 +239,7 @@ async def leer_estado(id_cliente: int):
         "backups_list": [], 
         "backup_progress": None, 
         "web_progress": None,
+        "power_progress": None,
         "html_source": "" 
     }
     
@@ -244,6 +258,10 @@ async def leer_estado(id_cliente: int):
     
     try:
         with open(os.path.join(BUZON_PEDIDOS, f"web_status_{id_cliente}.json"), 'r') as f: data["web_progress"] = json.load(f)
+    except: pass
+
+    try:
+        with open(os.path.join(BUZON_PEDIDOS, f"power_status_{id_cliente}.json"), 'r') as f: data["power_progress"] = json.load(f)
     except: pass
     
     try:

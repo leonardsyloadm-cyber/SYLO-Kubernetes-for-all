@@ -13,7 +13,7 @@ PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 handle_error() {
     local exit_code=$?
     echo -e "\n\033[0;31m❌ ERROR BRONCE (Exit: $exit_code). Ver log: $LOG_FILE\033[0m"
-    BUZON_ERR="$PROJECT_ROOT/buzon-pedidos/status_$1.json"
+    BUZON_ERR="$PROJECT_ROOT/sylo-web/buzon-pedidos/status_$1.json"
     if [ -d "$(dirname "$BUZON_ERR")" ]; then
         echo "{\"percent\": 100, \"message\": \"Fallo crítico Bronce.\", \"status\": \"error\"}" > "$BUZON_ERR"
     fi
@@ -26,6 +26,7 @@ ORDER_ID=$1
 SSH_USER_ARG=$2 
 OS_IMAGE_REQ=$3 
 SUBDOMAIN_ARG=$6
+STATIC_IP_ARG=$7
 
 OWNER_ID="${TF_VAR_owner_id:-admin}"
 OS_REAL="alpine"
@@ -36,7 +37,7 @@ if [ -z "$SSH_USER_ARG" ]; then SSH_USER="cliente"; else SSH_USER="$SSH_USER_ARG
 if [ -z "$SUBDOMAIN_ARG" ]; then SUBDOMAIN="bronce$ORDER_ID"; else SUBDOMAIN="$SUBDOMAIN_ARG"; fi
 
 CLUSTER_NAME="sylo-cliente-$ORDER_ID"
-BUZON_STATUS="$PROJECT_ROOT/buzon-pedidos/status_$ORDER_ID.json"
+BUZON_STATUS="$PROJECT_ROOT/sylo-web/buzon-pedidos/status_$ORDER_ID.json"
 
 # --- 🔥 FIX: USAR HEX PARA EVITAR SÍMBOLOS QUE ROMPEN LA CADENA ---
 # Antes: base64 (daba problemas con = + /)
@@ -64,16 +65,23 @@ ZOMBIES=$(minikube profile list 2>/dev/null | grep "\-$ORDER_ID" | awk '{print $
 for ZOMBIE in $ZOMBIES; do
     minikube delete -p "$ZOMBIE" >> "$LOG_FILE" 2>&1 || true
 done
+docker network prune -f >> "$LOG_FILE" 2>&1 || true
 
 # --- MINIKUBE ---
-update_status 20 "Arrancando Minikube (Low Spec)..."
+# --- MINIKUBE ---
+update_status 20 "Arrancando Minikube (Low Spec) [$STATIC_IP_ARG]..."
+
+# COMANDO DETERMINISTA
 minikube start -p "$CLUSTER_NAME" \
     --driver=docker \
     --cni=calico \
-    --cpus=1 \
-    --memory=1100m \
+    --static-ip "$STATIC_IP_ARG" \
+    --cpus=1 --memory=1100m \
     --addons=default-storageclass,metrics-server \
     --force >> "$LOG_FILE" 2>&1
+
+# FIX: Update context immediately
+minikube -p "$CLUSTER_NAME" update-context >> "$LOG_FILE" 2>&1
 
 update_status 40 "Configurando Tofu..."
 kubectl config use-context "$CLUSTER_NAME" >> "$LOG_FILE" 2>&1

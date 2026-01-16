@@ -1,0 +1,280 @@
+{
+    "nav": {
+        "company": "Entreprise",
+        "performance": "Performance",
+        "calc": "Calculatrice",
+        "plans": "Plans",
+        "login": "CLIENT",
+        "console": "CONSOLE"
+    },
+    "hero": {
+        "title": "Infrastructure Ryzen™",
+        "subtitle": "Orchestration Kubernetes V21 depuis Alicante, Espagne."
+    },
+    "company": {
+        "mission": "NOTRE MISSION",
+        "title": "Ingénierie Réelle",
+        "desc": "Sylo est né à Alicante pour éliminer la complexité. Nous utilisons du matériel Threadripper réel et NVMe Gen5."
+    },
+    "bench": {
+        "title": "Performance Brute",
+        "desc": "Cinebench R23 Single Core."
+    },
+    "pricing": {
+        "bronze": "Bronze",
+        "silver": "Argent",
+        "gold": "Or",
+        "custom": "-- Personnalisé --",
+        "choose": "Choisir",
+        "configure": "Configurer",
+        "v21_title": "PLANS V21",
+        "scale_title": "Évoluez en Confiance",
+        "specs_title": "Spécifications",
+        "backend_title": "Backend DB",
+        "prod_title": "Production",
+        "arch_title": "Architecture",
+        "feat": {
+            "alpine_only": "Alpine Uniquement",
+            "no_db_web": "Pas de DB / Web",
+            "mysql_cluster": "Cluster MySQL",
+            "no_web": "Pas de Web",
+            "full_stack": "Full Stack",
+            "domain": "Domaine .cloud",
+            "hardware": "Matériel Ryzen",
+            "topology": "Topologie Mixte"
+        },
+        "vals": {
+            "fixed": "Fixe",
+            "none": "Aucun",
+            "persistent": "Persistant",
+            "included": "Inclus",
+            "any": "Tout"
+        },
+        "ideal_label": "Idéal pour:",
+        "desc": {
+            "bronze": "Hôte Bastion, VPN, Tests CLI.",
+            "silver": "Microservices, Bases de données internes.",
+            "gold": "Apps en Prod, E-commerce.",
+            "custom": "Big Data, IA, Projets complexes."
+        }
+    },
+    "calc": {
+        "title": "Configurateur",
+        "estimate": "Estimation",
+        "savings": "ÉCONOMIE:",
+        "db_label": "DB (+5€)",
+        "web_label": "Web (+5€)"
+    },
+    "footer": {
+        "academy": "Sylo Academy",
+        "docs_desc": "Documentation technique officielle.",
+        "read_docs": "Lire Docs",
+        "terms": "TERMES ET CONDITIONS"
+    },
+    "modal": {
+        "config_title": "Configurer",
+        "alias": "Alias Cluster",
+        "ssh_user": "Utilisateur SSH",
+        "resources": "Ressources Personnalisées",
+        "db": "Base de Données",
+        "web": "Serveur Web",
+        "db_engine": "Moteur DB",
+        "web_server": "Serveur Web",
+        "toolbelt": "Sylo Toolbelt",
+        "tier_msg": "Outils injectés dans votre conteneur (Coût inclus).",
+        "estimated_budget": "Budget Estimé",
+        "deploy_btn": "DÉPLOYER INFRASTRUCTURE"
+    },
+    "legal": {
+        "title": "Contrat de Service",
+        "t1": "1. Identité et Objet",
+        "d1": "SYLO CORP S.L. est une société à responsabilité limitée enregistrée à Alicante (CIF B-12345678). Ce contrat régit l'utilisation de la plateforme Oktopus™ V21. En contractant, vous acceptez ces conditions.",
+        "t2": "2. Matériel Ryzen Garanti",
+        "d2": "Nous garantissons l'utilisation exclusive de processeurs AMD Ryzen™ Threadripper™ de dernière génération. Les ressources contractées (vCPU) correspondent à des threads physiques. Pas de 'overselling' agressif.",
+        "t3": "3. Politique d'Utilisation Acceptable (AUP)",
+        "d3": "Strictement interdit : Minage de crypto, attaques DDoS, intrusions réseaux, et contenu illégal. La détection entraînera la résolution immédiate du contrat d'utilisation.",
+        "t4": "4. Confidentialité et Protection des Données",
+        "d4": "Conforme au RGPD (UE 2016/679) : Vos données sont stockées chiffrées (AES-256) à Alicante. Pas d'inspection profonde des paquets (DPI). Toutes les données sont stockées et chiffrées localement.",
+        "t5": "5. Accord de Niveau de Service (SLA)",
+        "d5": "Nous garantissons une disponibilité mensuelle de 99,9%. En cas de non-respect, des crédits de service seront émis. Remboursement intégral de tout kubernetes en cas de manquement causant des désagréments.",
+        "t6": "6. Paiements et Suspension",
+        "d6": "Le service est prépayé. Le non-paiement entraînera la suspension du service après 48 heures et la suppression du service après cette période.",
+        "t7": "7. Responsabilité",
+        "d7": "Sylo ne sera pas responsable des pertes de données dues à une mauvaise configuration de l'utilisateur ou des vulnérabilités logicielles.",
+        "t8": "8. Juridiction et Résolution des Litiges",
+        "d8": "Les parties se soumettent expressément aux cours et tribunaux de la ville d'Alicante, en Espagne, renonçant à toute autre juridiction qui pourrait leur correspondre, pour la résolution de tout litige découlant de ce contrat."
+    },
+    "auth": {
+        "login_tab": "Connexion",
+        "register_tab": "Inscription",
+        "user_email": "Utilisateur/Email",
+        "password": "Mot de passe",
+        "login_btn": "Entrer",
+        "freelancer": "Freelance",
+        "company": "Entreprise",
+        "username": "Utilisateur",
+        "email": "Email",
+        "repeat_pass": "Répéter",
+        "full_name": "Nom Complet",
+        "dni": "CNI",
+        "contact_person": "Contact",
+        "cif": "Numéro TVA/CIF",
+        "company_name": "Raison Sociale",
+        "phone": "Téléphone",
+        "address": "Adresse",
+        "accept_terms": "J'accepte",
+        "terms_link": "les termes",
+        "create_account": "Créer un Compte",
+        "sl": "SARL (S.L.)",
+        "sa": "SA (S.A.)",
+        "coop": "Coopérative",
+        "other": "Autre"
+    },
+    "dashboard": {
+        "title": "Panneau de Contrôle",
+        "welcome": "Bienvenue",
+        "new_service": "Nouveau Service",
+        "billing": "Facturation",
+        "my_clusters": "MES CLUSTERS",
+        "logout": "Déconnexion",
+        "online": "EN LIGNE",
+        "cpu_usage": "Usage CPU",
+        "ram_usage": "Usage RAM",
+        "system_access": "Accès Système",
+        "installed_software": "Logiciels Installés",
+        "activity_log": "Journal d'Activité",
+        "command_center": "Centre de Commande",
+        "web_deploy": "Déploiement Web",
+        "view_site": "Voir le Site",
+        "energy_control": "Contrôle d'Énergie",
+        "restart": "Redémarrer",
+        "stop": "Arrêter",
+        "stopped": "ARRÊTÉ",
+        "start": "Démarrer",
+        "snapshots": "Snapshots",
+        "create_snapshot": "Créer un Snapshot",
+        "destroy_k8s": "Détruire Kubernetes",
+        "delete_service": "Supprimer le Service",
+        "empty_state_title": "Aucun service actif",
+        "empty_state_btn": "Déployer l'Infrastructure",
+        "waiting_events": "En attente d'événements...",
+        "server_prefix": "Serveur",
+        "edit_web": "Éditer Web",
+        "upload_web": "Envoyer Web",
+        "no_snapshots": "Aucun snapshot disponible.",
+        "restart_desc": "Appliquer les changements",
+        "stop_desc": "Mode hibernation",
+        "start_desc": "Retour en ligne"
+    },
+    "chat": {
+        "title": "Support Sylo",
+        "greeting": "Bonjour, si vous avez des questions, voici les plus fréquentes :",
+        "q1": "1️⃣ Comment accéder à mon serveur ? (SSH)",
+        "q2": "2️⃣ Quel est mon site web ?",
+        "q3": "3️⃣ Identifiants Base de Données",
+        "q4": "4️⃣ Combien de sauvegardes puis-je faire ?",
+        "q5": "5️⃣ État de Santé (CPU/RAM)",
+        "instruction": "Écrivez le numéro pour voir la réponse.",
+        "placeholder": "Écrivez...",
+        "sending": "Envoi en cours...",
+        "received": "Message de support reçu"
+    },
+    "js": {
+        "toast_notification": "Notification",
+        "copy_success": "Copié !",
+        "destroy_confirm": "☢️ ÊTES-VOUS SÛR ?\nCela supprimera tous les Pods et les données Kubernetes.\n\nÉcrivez : SUPPRIMER",
+        "destroy_keyword": "SUPPRIMER",
+        "destroying": "Destruction des ressources...",
+        "backup_start": "Démarrage de la sauvegarde",
+        "restoring": "Restauration...",
+        "deleting": "Suppression...",
+        "updated": "Données mises à jour",
+        "publishing": "Publication web...",
+        "uploaded": "Fichier téléchargé",
+        "restarting": "Redémarrage du système...",
+        "stopping": "Arrêt du système...",
+        "starting": "Démarrage du système...",
+        "loader_processing": "Traitement de la demande...",
+        "loader_wait": "Veuillez patienter pendant que nous contactons le cluster."
+    },
+    "console": {
+        "title": "DÉPLOIEMENT TERMINÉ",
+        "initializing": "Initialisation du Plan",
+        "booting": "Démarrage du Noyau",
+        "allocating": "Allocation des Ressources...",
+        "cpu": "CPU :",
+        "ram": "RAM :",
+        "installed_tools": "# LOGICIELS INSTALLÉS",
+        "access_creds": "# IDENTIFIANTS D'ACCÈS",
+        "dashboard_btn": "ACCÉDER AU TABLEAU DE BORD"
+    },
+    "plan": {
+        "personalizado": "PERSONNALISÉ",
+        "bronce": "BRONZE",
+        "plata": "ARGENT",
+        "oro": "OR"
+    },
+    "snapshot": {
+        "title": "Nouveau Snapshot",
+        "name_label": "Nom de la sauvegarde",
+        "placeholder": "Ex : Avant changements...",
+        "type_full": "Complète (Full)",
+        "desc_full": "Copie totale du disque.",
+        "type_diff": "Différentielle",
+        "desc_diff": "Changements depuis la dernière Full.",
+        "type_incr": "Incrémentielle",
+        "desc_incr": "Seulement les nouveautés.",
+        "limit_reached": "Limite atteinte.",
+        "limit": "Limite :",
+        "copies": "copies",
+        "start_btn": "Lancer Sauvegarde"
+    },
+    "editor": {
+        "title": "Éditeur HTML",
+        "publish": "Publier"
+    },
+    "upload": {
+        "title": "Mettre en ligne",
+        "btn": "Envoyer"
+    },
+    "profile": {
+        "title": "Profil",
+        "name": "Nom",
+        "email": "Email"
+    },
+    "billing": {
+        "title": "Facturation"
+    },
+    "power": {
+        "title": "Contrôle d'Énergie",
+        "requesting": "Demande en cours...",
+        "stopping": "Arrêt du système...",
+        "starting": "Démarrage du système...",
+        "restarting": "Redémarrage...",
+        "completed": "Action terminée."
+    },
+    "common": {
+        "cancel": "Annuler",
+        "close": "Fermer",
+        "save": "Enregistrer",
+        "total": "Total"
+    },
+    "backend": {
+        "starting": "Démarrage...",
+        "reading": "Lecture...",
+        "compressing": "Compression...",
+        "saving": "Sauvegarde...",
+        "completed": "Terminé",
+        "deleting": "Suppression...",
+        "deleted": "Supprimé",
+        "locating": "Localisation...",
+        "restoring": "Restauration...",
+        "processing": "Traitement...",
+        "cleaning": "Nettoyage...",
+        "uploading": "Téléchargement...",
+        "applying": "Application...",
+        "verifying": "Vérification...",
+        "web_updated": "Web Mise à jour",
+        "software_empty": "Aucun logiciel installé détecté."
+    }
+}

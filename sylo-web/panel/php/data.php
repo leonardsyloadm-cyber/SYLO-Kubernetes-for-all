@@ -31,17 +31,83 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         "html_content" => ""
     ];
 
-    if ($act == 'backup') {
+    // --- BACKUP ACTIONS WITH VISUAL FEEDBACK ---
+    if ($act == 'backup' || $act == 'restore_backup' || $act == 'delete_backup') {
         $data['backup_type'] = $_POST['backup_type'] ?? 'full';
         $data['backup_name'] = $_POST['backup_name'] ?? 'Manual';
+        if ($act == 'restore_backup') $data['filename_to_restore'] = $_POST['filename'];
+        if ($act == 'delete_backup') $data['filename_to_delete'] = $_POST['filename'];
+
+        // transient status setup
+        $dir = __DIR__ . "/../../buzon-pedidos/";
+        $f_back = $dir . "backup_status_{$oid}.json";
+        $f_web = $dir . "web_status_{$oid}.json";   // CONFLICTO
+        $f_pow = $dir . "power_status_{$oid}.json"; // CONFLICTO
+        $f_gen = $dir . "status_{$oid}.json";       // CONFLICTO
+        
+        // Clean ALL old files to avoid priority conflicts (Fix: "Web Restaurada 100%" infinite loop)
+        // If we don't delete web_status, data.php reads it first and ignores backup_status!
+        if (file_exists($f_gen)) @unlink($f_gen);
+        if (file_exists($f_web)) @unlink($f_web);
+        if (file_exists($f_pow)) @unlink($f_pow);
+        
+        // Prepare Message
+        $msg = "Procesando...";
+        if ($act == 'backup') $msg = "Creando Snapshot...";
+        if ($act == 'restore_backup') $msg = "Restaurando...";
+        if ($act == 'delete_backup') $msg = "Eliminando...";
+
+        // Write Transient
+        $transient = ['status' => 'backup_processing', 'percent' => 0, 'msg' => $msg];
+        file_put_contents($f_back, json_encode($transient));
     }
-    if ($act == 'restore_backup') $data['filename_to_restore'] = $_POST['filename'];
-    if ($act == 'delete_backup') $data['filename_to_delete'] = $_POST['filename'];
-    if ($act == 'update_web') $data['html_content'] = $_POST['html_content'];
     
-    // 🔥 NUEVA ACCIÓN: DESTROY K8S
+    // ACTION: Dismiss Backup (Frontend confirma que ya vio el 100%)
+    if ($act == 'dismiss_backup') {
+        $f_back = __DIR__ . "/../../buzon-pedidos/backup_status_{$oid}.json";
+        if (file_exists($f_back)) @unlink($f_back);
+        echo json_encode(['status'=>'ok']); exit;
+    }
+
+    if ($act == 'update_web') {
+        $data['html_content'] = $_POST['html_content'];
+        // SMART LINKING (Fix Blinking & Status Flop)
+        // en vez de borrar todo (Reset), leemos el ultimo estado conocido
+        // y creamos un archivo temporal 'web_status' con status='active'.
+        // Asi el dashboard sigue viendo las metricas y el badge verde mientras arranca el Operator.
+        
+        $dir = __DIR__ . "/../../buzon-pedidos/";
+        $f_web = $dir . "web_status_{$oid}.json";
+        $f_gen = $dir . "status_{$oid}.json";
+        $f_pow = $dir . "power_status_{$oid}.json";
+        
+        // 1. Intentar rescatar datos viejos (para no perder SSH/Metrics visualmente)
+        $old_data = [];
+        if (file_exists($f_web)) $old_data = json_decode(file_get_contents($f_web), true);
+        else if (file_exists($f_gen)) $old_data = json_decode(file_get_contents($f_gen), true);
+        
+        // 2. Preparar el estado 'Transitorio'
+        $transient = [
+            'status' => 'active', // Mantiene el badge VERDE
+            'percent' => 0,
+            'msg' => 'Iniciando...', // Mensaje inicial
+            'metrics' => $old_data['metrics'] ?? null,   // Persistir Metricas
+            'ssh_cmd' => $old_data['ssh_cmd'] ?? null,   // Persistir SSH
+            'web_url' => $old_data['web_url'] ?? null,   // Persistir URL
+            'os_info' => $old_data['os_info'] ?? null,
+            'ssh_pass'=> $old_data['ssh_pass'] ?? null
+        ];
+        
+        // 3. Escribir el nuevo archivo web_status YA (para que data.php lo lea inmediatamente)
+        file_put_contents($f_web, json_encode($transient));
+        
+        // 4. Borrar el genérico y power para evitar conflictos de prioridad
+        if (file_exists($f_gen)) @unlink($f_gen);
+        if (file_exists($f_pow)) @unlink($f_pow);
+    }
+    
     if ($act == 'destroy_k8s') {
-        // No necesitamos parámetros extra, solo la acción
+        // No params needed
     }
     
     // CHAT
@@ -73,7 +139,106 @@ if (isset($_GET['ajax_data'])) {
 
     $json = @file_get_contents(API_URL_BASE . "/estado/$oid", false, $ctx);
     $final_data = $json ? json_decode($json, true) : ['error' => 'API Offline'];
+    
+    // FORCE UPDATE STATUS FROM DB (Source of Truth)
+    try {
+        $stmt = $conn->prepare("SELECT status FROM orders WHERE id = ?");
+        $stmt->execute([$oid]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row) {
+            $final_data['status'] = $row['status'];
+        }
+    } catch (Exception $e) {}
+
     if($chat_reply) $final_data['chat_reply'] = $chat_reply;
+
+    // =========================================================================
+    // 🛠️ FIX GEMINI: LECTURA DIRECTA DE DISCO (PRIORIDAD DE ARCHIVOS)
+    // =========================================================================
+    
+    // Ruta calculada hacia 'buzon-pedidos' subiendo desde /var/www/html/sylo-web/panel/php/
+    $buzon_dir = __DIR__ . "/../../buzon-pedidos/"; 
+    
+    // 1. LEER ARCHIVO DE PROGRESO CON PRIORIDAD
+    // La API escribe en archivos distintos según el tipo (power, web, backup).
+    // Debemos leer el más relevante.
+    $prog_data = null;
+    
+    // Priority 1: Power Ops (Critical)
+    if (file_exists($buzon_dir . "power_status_{$oid}.json")) {
+        $prog_data = json_decode(@file_get_contents($buzon_dir . "power_status_{$oid}.json"), true);
+    }
+    // Priority 2: Web Updates (High User Vis)
+    else if (file_exists($buzon_dir . "web_status_{$oid}.json")) {
+        $prog_data = json_decode(@file_get_contents($buzon_dir . "web_status_{$oid}.json"), true);
+    }
+    // Priority 3: Backups
+    else if (file_exists($buzon_dir . "backup_status_{$oid}.json")) {
+        $prog_data = json_decode(@file_get_contents($buzon_dir . "backup_status_{$oid}.json"), true);
+        if ($prog_data) $prog_data['source_type'] = 'backup'; // Tag for Frontend
+    }
+    // Priority 4: Generic/Legacy
+    else if (file_exists($buzon_dir . "status_{$oid}.json")) {
+        $prog_data = json_decode(@file_get_contents($buzon_dir . "status_{$oid}.json"), true);
+    }
+
+    if ($prog_data) {
+        $final_data['general_progress'] = $prog_data;
+        
+        // 🔥 MERGE CRITICO (Bypass API Cache/Errors): Sobrescribir datos raíz
+        if (isset($prog_data['metrics'])) $final_data['metrics'] = $prog_data['metrics'];
+        if (isset($prog_data['ssh_cmd'])) $final_data['ssh_cmd'] = $prog_data['ssh_cmd'];
+        if (isset($prog_data['web_url'])) $final_data['web_url'] = $prog_data['web_url'];
+        if (isset($prog_data['os_info'])) $final_data['os_info'] = $prog_data['os_info'];
+        
+        // Solo sobrescribir status si no es nulo
+        if (isset($prog_data['status']) && !empty($prog_data['status'])) {
+             // FIX: Prevent stale 'creating' status from file overriding 'active' status from DB
+             $db_is_active = in_array(strtolower($final_data['status'] ?? ''), ['active', 'running', 'online']);
+             $file_is_creating = in_array(strtolower($prog_data['status']), ['creating', 'provisioning']);
+             
+             if ($db_is_active && $file_is_creating) {
+                 // Ignore file status, keep DB status
+             } else {
+                 $final_data['status'] = $prog_data['status'];
+             }
+        } 
+    }
+
+    // 2. LEER LISTA DE BACKUPS (.tar.gz) DEL DISCO
+    // El orquestador guarda los backups aquí. PHP los lee directamente.
+    $files = glob($buzon_dir . "backup_v{$oid}_*.tar.gz");
+    $backups_list = [];
+    
+    if ($files) {
+        foreach ($files as $f) {
+            $base = basename($f);
+            $parts = explode('_', $base);
+            // Formato esperado: backup_vID_TYPE_NAME_DATE.tar.gz
+            // Ejemplo: backup_v47_FULL_Manual_20250115203000.tar.gz
+            if (count($parts) >= 4) {
+                // Adaptive Parsing: Handle legacy (5 parts) vs new (4 parts) filenames
+                // Legacy: backup_v_48_FULL_Name_Date (5 parts)
+                // New:    backup_v48_FULL_Name_Date (4 parts)
+                $idx_type = count($parts) == 5 ? 2 : 1;
+                $idx_name = count($parts) == 5 ? 3 : 2;
+                $idx_date = count($parts) == 5 ? 4 : 3;
+                
+                $ts = explode('.', $parts[$idx_date])[0];
+                $date_fmt = substr($ts,6,2)."/".substr($ts,4,2)." ".substr($ts,8,2).":".substr($ts,10,2);
+                
+                $backups_list[] = [
+                    "file" => $base,
+                    "name" => $parts[$idx_name],
+                    "type" => strtoupper($parts[$idx_type]),
+                    "date" => $date_fmt
+                ];
+            }
+        }
+    }
+    // Sobreescribimos la lista vacía de la API con la lista REAL del disco
+    $final_data['backups_list'] = $backups_list;
+    // =========================================================================
     
     echo json_encode($final_data); 
     exit;
@@ -130,7 +295,7 @@ $os_image = 'ubuntu';
 $total_weekly = 0; 
 $creds = ['ssh_cmd'=>'Esperando...', 'ssh_pass'=>'...'];
 $web_url = null;
-$html_code = "<!DOCTYPE html>\n<html>\n<body>\n<h1>Bienvenido a Sylo</h1>\n</body>\n</html>";
+$html_code = "<!DOCTYPE html>\n<html>\n<body>\n<h1>Welcome to Sylo</h1>\n</body>\n</html>";
 $installed_tools = [];
 
 foreach($clusters as $c) $total_weekly += calculateWeeklyPrice($c);
@@ -155,8 +320,6 @@ if($clusters) {
             $web_url = $d['web_url'] ?? null;
             if(isset($d['html_source']) && !empty($d['html_source'])) { $html_code = $d['html_source']; }
             
-            // SYLO TOOLBELT (DB PRIORITY)
-            // SYLO TOOLBELT (DB PRIORITY, BUT ALLOW FALLBACK)
             $tools_db = (!empty($current['tools'])) ? json_decode($current['tools'], true) : [];
             if(!empty($tools_db)) {
                 $installed_tools = $tools_db;

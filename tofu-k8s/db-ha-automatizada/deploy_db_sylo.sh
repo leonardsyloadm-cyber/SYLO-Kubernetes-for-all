@@ -13,7 +13,7 @@ PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 handle_error() {
     local exit_code=$?
     echo -e "\n\033[0;31m❌ ERROR PLATA (Exit: $exit_code). Ver log: $LOG_FILE\033[0m"
-    BUZON_ERR="$PROJECT_ROOT/buzon-pedidos/status_$1.json"
+    BUZON_ERR="$PROJECT_ROOT/sylo-web/buzon-pedidos/status_$1.json"
     if [ -d "$(dirname "$BUZON_ERR")" ]; then
         echo "{\"percent\": 100, \"message\": \"Fallo crítico Plata.\", \"status\": \"error\"}" > "$BUZON_ERR"
     fi
@@ -27,6 +27,7 @@ SSH_USER_ARG=$2
 OS_IMAGE_ARG=$3
 DB_NAME_ARG=$4
 SUBDOMAIN_ARG=$5
+STATIC_IP_ARG=$6
 
 OWNER_ID="${TF_VAR_owner_id:-admin}"
 
@@ -35,7 +36,7 @@ if [ -z "$SSH_USER_ARG" ]; then SSH_USER="admin_plata"; else SSH_USER="$SSH_USER
 if [ -z "$DB_NAME_ARG" ]; then DB_NAME="sylo_db"; else DB_NAME="$DB_NAME_ARG"; fi
 
 CLUSTER_NAME="sylo-cliente-$ORDER_ID"
-BUZON_STATUS="$PROJECT_ROOT/buzon-pedidos/status_$ORDER_ID.json"
+BUZON_STATUS="$PROJECT_ROOT/sylo-web/buzon-pedidos/status_$ORDER_ID.json"
 SSH_PASS=$(openssl rand -hex 8) 
 
 TF_VAR_nombre="$CLUSTER_NAME"
@@ -62,14 +63,20 @@ done
 docker volume prune -f >> "$LOG_FILE" 2>&1 || true
 
 # --- MINIKUBE ---
-update_status 20 "Levantando Minikube..."
+# --- MINIKUBE ---
+update_status 20 "Levantando Minikube [$STATIC_IP_ARG]..."
+
+# COMANDO DETERMINISTA
 minikube start -p "$CLUSTER_NAME" \
     --driver=docker \
     --cni=calico \
-    --cpus=2 \
-    --memory=2048m \
+    --static-ip "$STATIC_IP_ARG" \
+    --cpus=2 --memory=2048m \
     --addons=default-storageclass,metrics-server \
     --force >> "$LOG_FILE" 2>&1
+
+# FIX: Update context immediately
+minikube -p "$CLUSTER_NAME" update-context >> "$LOG_FILE" 2>&1
 
 update_status 40 "Configurando Tofu..."
 kubectl config use-context "$CLUSTER_NAME" >> "$LOG_FILE" 2>&1

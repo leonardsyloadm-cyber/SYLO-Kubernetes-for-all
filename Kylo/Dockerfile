@@ -29,6 +29,7 @@ COPY --from=build /app/target/kylo-db-1.0-SNAPSHOT.jar app.jar
 # Exponemos los puertos (8080 para la Web GUI, 5000 para datos)
 EXPOSE 8080
 EXPOSE 5000
+EXPOSE 3307
 
 # Comando de arranque
 CMD ["java", "-jar", "app.jar"]

@@ -57,7 +57,7 @@ class ConnectionHandler implements Runnable {
     public ConnectionHandler(Socket socket, int connectionId, ExecutionEngine engine) {
         this.socket = socket;
         this.connectionId = connectionId;
-        this.authManager = new AuthManager();
+        this.authManager = new AuthManager(engine);
         this.dispatcher = new CommandDispatcher(engine);
     }
 
@@ -109,6 +109,11 @@ class ConnectionHandler implements Runnable {
             // 3. Send OK
             MySQLPacket.writePacket(out, PacketBuilder.buildOk(0, 0), (byte) 2);
             System.out.println("✅ User '" + user + "' authenticated.");
+
+            // Setting Security Context for this Virtual Thread
+            // Host is mocked as 'localhost' or client IP for now
+            String host = socket.getInetAddress().getHostAddress(); // Or "localhost"
+            com.sylo.kylo.core.security.SecurityContext.set(user, host);
 
             // 4. Command Phase
             while (true) {

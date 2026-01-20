@@ -3,13 +3,7 @@ package com.sylo.kylo.core.index;
 import com.sylo.kylo.core.storage.BufferPoolManager;
 
 public class BPlusTreeIndex implements Index {
-    private final BufferPoolManager bufferPool;
-    private int rootPageId;
-
     public BPlusTreeIndex(BufferPoolManager bufferPool) {
-        this.bufferPool = bufferPool;
-        // Allocate root
-        this.rootPageId = bufferPool.newPage().getPageId().getPageNumber();
     }
 
     @Override

@@ -8,7 +8,6 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
-import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 public class ResultSetWriter {
@@ -28,12 +27,14 @@ public class ResultSetWriter {
     public static final int MYSQL_TYPE_VAR_STRING = 0xFD;
     public static final int MYSQL_TYPE_STRING = 0xFE;
 
-    public void writeResultSet(OutputStream out, List<Object[]> rows, Schema schema, byte sequenceId) throws IOException {
+    public void writeResultSet(OutputStream out, List<Object[]> rows, Schema schema, byte sequenceId)
+            throws IOException {
         // 1. Column Count Packet
         ByteBuffer countBuf = ByteBuffer.allocate(20).order(ByteOrder.LITTLE_ENDIAN);
         MySQLPacket.writeLenEncInt(countBuf, schema.getColumnCount());
         byte[] countPayload = new byte[countBuf.position()];
-        countBuf.flip(); countBuf.get(countPayload);
+        countBuf.flip();
+        countBuf.get(countPayload);
         MySQLPacket.writePacket(out, countPayload, ++sequenceId);
 
         // 2. Column Definitions
@@ -69,10 +70,10 @@ public class ResultSetWriter {
         MySQLPacket.writeLenEncString(buf, col.getName());
         // Org Name
         MySQLPacket.writeLenEncString(buf, col.getName());
-        
+
         // Length of fixed fields (0x0C)
         MySQLPacket.writeLenEncInt(buf, 0x0C);
-        
+
         // Charset (33 utf8)
         MySQLPacket.writeInt2(buf, 33);
         // Column Length (Max)
@@ -109,19 +110,31 @@ public class ResultSetWriter {
     }
 
     private int mapKyloTypeToMySQL(com.sylo.kylo.core.structure.KyloType type) {
-        if (type instanceof com.sylo.kylo.core.structure.KyloInt) return MYSQL_TYPE_LONG;
-        if (type instanceof com.sylo.kylo.core.structure.KyloBigInt) return MYSQL_TYPE_LONGLONG;
-        if (type instanceof com.sylo.kylo.core.structure.KyloFloat) return MYSQL_TYPE_FLOAT;
-        if (type instanceof com.sylo.kylo.core.structure.KyloDouble) return MYSQL_TYPE_DOUBLE;
-        if (type instanceof com.sylo.kylo.core.structure.KyloVarchar) return MYSQL_TYPE_VAR_STRING;
-        if (type instanceof com.sylo.kylo.core.structure.KyloText) return MYSQL_TYPE_STRING;
-        if (type instanceof com.sylo.kylo.core.structure.KyloBlob) return MYSQL_TYPE_BLOB;
-        if (type instanceof com.sylo.kylo.core.structure.KyloDate) return MYSQL_TYPE_DATE;
-        if (type instanceof com.sylo.kylo.core.structure.KyloTime) return MYSQL_TYPE_TIME;
-        if (type instanceof com.sylo.kylo.core.structure.KyloDateTime) return MYSQL_TYPE_DATETIME;
-        if (type instanceof com.sylo.kylo.core.structure.KyloTimestamp) return MYSQL_TYPE_TIMESTAMP;
-        if (type instanceof com.sylo.kylo.core.structure.KyloBoolean) return MYSQL_TYPE_LONG; // Tinyint?
-        
+        if (type instanceof com.sylo.kylo.core.structure.KyloInt)
+            return MYSQL_TYPE_LONG;
+        if (type instanceof com.sylo.kylo.core.structure.KyloBigInt)
+            return MYSQL_TYPE_LONGLONG;
+        if (type instanceof com.sylo.kylo.core.structure.KyloFloat)
+            return MYSQL_TYPE_FLOAT;
+        if (type instanceof com.sylo.kylo.core.structure.KyloDouble)
+            return MYSQL_TYPE_DOUBLE;
+        if (type instanceof com.sylo.kylo.core.structure.KyloVarchar)
+            return MYSQL_TYPE_VAR_STRING;
+        if (type instanceof com.sylo.kylo.core.structure.KyloText)
+            return MYSQL_TYPE_STRING;
+        if (type instanceof com.sylo.kylo.core.structure.KyloBlob)
+            return MYSQL_TYPE_BLOB;
+        if (type instanceof com.sylo.kylo.core.structure.KyloDate)
+            return MYSQL_TYPE_DATE;
+        if (type instanceof com.sylo.kylo.core.structure.KyloTime)
+            return MYSQL_TYPE_TIME;
+        if (type instanceof com.sylo.kylo.core.structure.KyloDateTime)
+            return MYSQL_TYPE_DATETIME;
+        if (type instanceof com.sylo.kylo.core.structure.KyloTimestamp)
+            return MYSQL_TYPE_TIMESTAMP;
+        if (type instanceof com.sylo.kylo.core.structure.KyloBoolean)
+            return MYSQL_TYPE_LONG; // Tinyint?
+
         return MYSQL_TYPE_VAR_STRING; // Default
     }
 }

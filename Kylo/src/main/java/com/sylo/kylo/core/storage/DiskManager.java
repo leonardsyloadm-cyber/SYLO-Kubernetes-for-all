@@ -3,14 +3,11 @@ package com.sylo.kylo.core.storage;
 import java.io.File;
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.nio.file.Paths;
 
 public class DiskManager {
-    private final String dbPath;
     private RandomAccessFile dbFile;
 
     public DiskManager(String dbPath) {
-        this.dbPath = dbPath;
         try {
             File f = new File(dbPath);
             if (!f.exists()) {
@@ -26,7 +23,7 @@ public class DiskManager {
         try {
             int offset = pageId.getPageNumber() * StorageConstants.PAGE_SIZE;
             if (offset + StorageConstants.PAGE_SIZE > dbFile.length()) {
-                 return; 
+                return;
             }
             dbFile.seek(offset);
             dbFile.readFully(page.getData());
@@ -44,7 +41,7 @@ public class DiskManager {
             throw new RuntimeException("Error writing page " + pageId, e);
         }
     }
-    
+
     public PageId allocatePage() {
         try {
             long len = dbFile.length();
@@ -53,7 +50,7 @@ public class DiskManager {
             dbFile.setLength(len + StorageConstants.PAGE_SIZE);
             return new PageId(pageNum);
         } catch (IOException e) {
-             throw new RuntimeException("Could not allocate page", e);
+            throw new RuntimeException("Could not allocate page", e);
         }
     }
 

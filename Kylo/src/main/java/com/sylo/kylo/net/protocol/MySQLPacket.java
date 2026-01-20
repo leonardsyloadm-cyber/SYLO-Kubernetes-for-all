@@ -4,9 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
 
 public class MySQLPacket {
 
@@ -14,16 +12,17 @@ public class MySQLPacket {
         // Header: 3 bytes length + 1 byte sequence
         byte[] header = new byte[4];
         int read = in.read(header);
-        if (read < 4) return null; // EOF or error
+        if (read < 4)
+            return null; // EOF or error
 
         int length = (header[0] & 0xFF) | ((header[1] & 0xFF) << 8) | ((header[2] & 0xFF) << 16);
-        int seq = header[3] & 0xFF;
 
         byte[] payload = new byte[length];
         int totalRead = 0;
         while (totalRead < length) {
             int r = in.read(payload, totalRead, length - totalRead);
-            if (r == -1) break;
+            if (r == -1)
+                break;
             totalRead += r;
         }
         return payload;
@@ -68,7 +67,7 @@ public class MySQLPacket {
     }
 
     // --- High Level Builders Helpers ---
-    
+
     // Length Encoded Integer
     public static void writeLenEncInt(ByteBuffer buffer, long value) {
         if (value < 251) {
@@ -100,7 +99,8 @@ public class MySQLPacket {
     }
 
     public static void writeStringNullTerminated(ByteBuffer buffer, String s) {
-        if (s != null) buffer.put(s.getBytes(StandardCharsets.UTF_8));
+        if (s != null)
+            buffer.put(s.getBytes(StandardCharsets.UTF_8));
         buffer.put((byte) 0x00);
     }
 }

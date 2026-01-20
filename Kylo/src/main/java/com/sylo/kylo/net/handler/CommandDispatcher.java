@@ -32,8 +32,8 @@ public class CommandDispatcher {
                 break;
 
             case COM_INIT_DB:
-                // String db = new String(payload, 1, payload.length-1, StandardCharsets.UTF_8);
-                // System.out.println("USE DB: " + db);
+                String db = new String(payload, 1, payload.length-1, StandardCharsets.UTF_8);
+                bridge.setCurrentDb(db);
                 MySQLPacket.writePacket(out, PacketBuilder.buildOk(0, 0), ++sequenceId);
                 break;
                 

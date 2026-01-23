@@ -26,13 +26,15 @@ public class SystemBootstrapper {
 
         // 2. Register in Catalog (Hardcoded persistence for now)
         Catalog catalog = Catalog.getInstance();
-        catalog.createTable("kylo_system:users", usersSchema);
-        catalog.createTable("kylo_system:db_privs", dbPrivsSchema);
-        catalog.createTable("kylo_system:tables_privs", tablesPrivsSchema);
+        catalog.createDatabase("SYSTEM"); // Register the DB explicitly for UI visibility
+        catalog.createTable("SYSTEM:users", usersSchema);
+        catalog.createTable("SYSTEM:db_privs", dbPrivsSchema);
+        catalog.createTable("SYSTEM:tables_privs", tablesPrivsSchema);
 
         // 3. Check if root user exists. If not, create it.
         if (!userExists("root", "localhost")) {
-            System.out.println("⚠️ No users found. Creating default 'root'@'localhost' (No password for initial setup).");
+            System.out
+                    .println("⚠️ No users found. Creating default 'root'@'localhost' (No password for initial setup).");
             createRootUser();
         } else {
             System.out.println("✅ System users verified.");
@@ -47,7 +49,7 @@ public class SystemBootstrapper {
         cols.add(new Column("Super_Priv", new KyloBoolean(), false));
         return new Schema(cols);
     }
-    
+
     private Schema defineDbPrivsSchema() {
         List<Column> cols = new ArrayList<>();
         cols.add(new Column("Host", new KyloVarchar(255), false));
@@ -56,9 +58,9 @@ public class SystemBootstrapper {
         cols.add(new Column("Access_Type", new KyloVarchar(50), false)); // SELECT, INSERT, etc.
         return new Schema(cols);
     }
-    
+
     private Schema defineTablePrivsSchema() {
-         List<Column> cols = new ArrayList<>();
+        List<Column> cols = new ArrayList<>();
         cols.add(new Column("Host", new KyloVarchar(255), false));
         cols.add(new Column("User", new KyloVarchar(255), false));
         cols.add(new Column("Db", new KyloVarchar(255), false));
@@ -71,7 +73,7 @@ public class SystemBootstrapper {
         // Need to scan kylo_system:users
         // This is inefficient but runs only at startup.
         try {
-            List<Object[]> users = executionEngine.scanTable("kylo_system:users");
+            List<Object[]> users = executionEngine.scanTable("SYSTEM:users");
             for (Object[] row : users) {
                 String u = (String) row[1];
                 String h = (String) row[0];
@@ -80,7 +82,7 @@ public class SystemBootstrapper {
                 }
             }
         } catch (Exception e) {
-             // Maybe table empty or first run
+            // Maybe table empty or first run
             return false;
         }
         return false;
@@ -90,19 +92,19 @@ public class SystemBootstrapper {
         // Insert root user
         // Cols: Host, User, Password_Hash, Super_Priv
         Object[] rootTuple = new Object[] {
-            "localhost",
-            "root",
-            null, // No password
-            true  // Super Priv
+                "localhost",
+                "root",
+                null, // No password
+                true // Super Priv
         };
-        executionEngine.insertTuple("kylo_system:users", rootTuple);
-        
-         Object[] rootWildcard = new Object[] {
-            "%",
-            "root",
-            null, // No password
-            true  // Super Priv
+        executionEngine.insertTuple("SYSTEM:users", rootTuple);
+
+        Object[] rootWildcard = new Object[] {
+                "%",
+                "root",
+                null, // No password
+                true // Super Priv
         };
-        executionEngine.insertTuple("kylo_system:users", rootWildcard);
+        executionEngine.insertTuple("SYSTEM:users", rootWildcard);
     }
 }

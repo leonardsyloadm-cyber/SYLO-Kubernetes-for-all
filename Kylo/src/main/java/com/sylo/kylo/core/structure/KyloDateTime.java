@@ -35,7 +35,7 @@ public class KyloDateTime extends KyloType {
 
     @Override
     public Object deserialize(byte[] data) {
-         return deserialize(ByteBuffer.wrap(data));
+        return deserialize(ByteBuffer.wrap(data));
     }
 
     @Override
@@ -50,5 +50,10 @@ public class KyloDateTime extends KyloType {
         LocalDateTime dt = (LocalDateTime) value;
         buffer.putInt((int) dt.toLocalDate().toEpochDay());
         buffer.putLong(dt.toLocalTime().toNanoOfDay());
+    }
+
+    @Override
+    public String toString() {
+        return "DATETIME";
     }
 }

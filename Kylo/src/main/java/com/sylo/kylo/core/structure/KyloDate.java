@@ -32,7 +32,7 @@ public class KyloDate extends KyloType {
 
     @Override
     public Object deserialize(byte[] data) {
-         return deserialize(ByteBuffer.wrap(data));
+        return deserialize(ByteBuffer.wrap(data));
     }
 
     @Override
@@ -44,5 +44,10 @@ public class KyloDate extends KyloType {
     @Override
     public void serialize(Object value, ByteBuffer buffer) {
         buffer.putInt((int) ((LocalDate) value).toEpochDay());
+    }
+
+    @Override
+    public String toString() {
+        return "DATE";
     }
 }

@@ -42,4 +42,9 @@ public class KyloBigInt extends KyloType {
     public void serialize(Object value, ByteBuffer buffer) {
         buffer.putLong((Long) value);
     }
+
+    @Override
+    public String toString() {
+        return "BIGINT";
+    }
 }

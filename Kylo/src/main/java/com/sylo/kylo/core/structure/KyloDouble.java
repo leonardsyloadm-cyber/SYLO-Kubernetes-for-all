@@ -42,4 +42,9 @@ public class KyloDouble extends KyloType {
     public void serialize(Object value, ByteBuffer buffer) {
         buffer.putDouble((Double) value);
     }
+
+    @Override
+    public String toString() {
+        return "DOUBLE";
+    }
 }

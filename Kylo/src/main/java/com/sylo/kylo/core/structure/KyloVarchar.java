@@ -27,7 +27,8 @@ public class KyloVarchar extends KyloType {
             throw new IllegalArgumentException("Expected String for KyloVarchar, got " + value.getClass().getName());
         }
         if (((String) value).length() > maxLength) {
-            throw new IllegalArgumentException("String length " + ((String)value).length() + " exceeds max " + maxLength);
+            throw new IllegalArgumentException(
+                    "String length " + ((String) value).length() + " exceeds max " + maxLength);
         }
     }
 
@@ -58,5 +59,10 @@ public class KyloVarchar extends KyloType {
         byte[] bytes = ((String) value).getBytes(StandardCharsets.UTF_8);
         buffer.putInt(bytes.length);
         buffer.put(bytes);
+    }
+
+    @Override
+    public String toString() {
+        return "VARCHAR";
     }
 }

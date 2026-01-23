@@ -19,7 +19,7 @@ public class HeapFile {
         this.lastPageId = new PageId(0);
     }
 
-    public void insertTuple(Tuple tuple, Schema schema) {
+    public long insertTuple(Tuple tuple, Schema schema) {
         // Try last page
         Page page = bufferPool.fetchPage(lastPageId);
         int slot = page.insertTuple(tuple, schema);
@@ -40,6 +40,9 @@ public class HeapFile {
             if (newSlot == -1) {
                 throw new RuntimeException("Tuple too large for a fresh page!");
             }
+            return ((long) newPage.getPageId().getPageNumber() << 32) | newSlot;
         }
+
+        return ((long) page.getPageId().getPageNumber() << 32) | slot;
     }
 }

@@ -33,7 +33,7 @@ public class KyloText extends KyloType {
 
     @Override
     public Object deserialize(byte[] data) {
-         return deserialize(ByteBuffer.wrap(data));
+        return deserialize(ByteBuffer.wrap(data));
     }
 
     @Override
@@ -49,5 +49,10 @@ public class KyloText extends KyloType {
         byte[] bytes = ((String) value).getBytes(StandardCharsets.UTF_8);
         buffer.putInt(bytes.length);
         buffer.put(bytes);
+    }
+
+    @Override
+    public String toString() {
+        return "TEXT";
     }
 }

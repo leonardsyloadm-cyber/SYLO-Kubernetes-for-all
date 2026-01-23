@@ -32,7 +32,7 @@ public class KyloBlob extends KyloType {
 
     @Override
     public Object deserialize(byte[] data) {
-         return deserialize(ByteBuffer.wrap(data));
+        return deserialize(ByteBuffer.wrap(data));
     }
 
     @Override
@@ -48,5 +48,10 @@ public class KyloBlob extends KyloType {
         byte[] bytes = (byte[]) value;
         buffer.putInt(bytes.length);
         buffer.put(bytes);
+    }
+
+    @Override
+    public String toString() {
+        return "BLOB";
     }
 }

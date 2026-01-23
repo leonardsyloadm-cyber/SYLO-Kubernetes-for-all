@@ -8,10 +8,19 @@ import java.util.BitSet;
 public class Tuple {
     private RowHeader rowHeader;
     private Object[] values;
+    private long rid; // Transient, not serialized
 
     public Tuple(RowHeader rowHeader, Object[] values) {
         this.rowHeader = rowHeader;
         this.values = values;
+    }
+
+    public void setRid(long rid) {
+        this.rid = rid;
+    }
+
+    public long getRid() {
+        return rid;
     }
 
     public RowHeader getRowHeader() {

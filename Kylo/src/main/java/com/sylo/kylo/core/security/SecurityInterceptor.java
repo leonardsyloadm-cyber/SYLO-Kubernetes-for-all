@@ -39,7 +39,7 @@ public class SecurityInterceptor {
 
     private boolean hasSuperPriv(String user) {
         try {
-            List<Object[]> users = executionEngine.scanTable("kylo_system:users");
+            List<Object[]> users = executionEngine.scanTable("SYSTEM:users");
             for (Object[] row : users) {
                 if (user.equals(row[1])) {
                     Object val = row[3];
@@ -54,7 +54,7 @@ public class SecurityInterceptor {
 
     private boolean hasDbPriv(String user, String db, String priv) {
         try {
-            List<Object[]> rows = executionEngine.scanTable("kylo_system:db_privs");
+            List<Object[]> rows = executionEngine.scanTable("SYSTEM:db_privs");
             for (Object[] row : rows) {
                 // Host ignored for now for simplicity
                 if (user.equals(row[1]) && db.equals(row[2])) {
@@ -71,7 +71,7 @@ public class SecurityInterceptor {
 
     private boolean hasTablePriv(String user, String db, String table, String priv) {
         try {
-            List<Object[]> rows = executionEngine.scanTable("kylo_system:tables_privs");
+            List<Object[]> rows = executionEngine.scanTable("SYSTEM:tables_privs");
             for (Object[] row : rows) {
                 if (user.equals(row[1]) && db.equals(row[2]) && table.equals(row[3])) {
                     String p = (String) row[4];

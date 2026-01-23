@@ -33,7 +33,7 @@ public class KyloUuid extends KyloType {
 
     @Override
     public Object deserialize(byte[] data) {
-         return deserialize(ByteBuffer.wrap(data));
+        return deserialize(ByteBuffer.wrap(data));
     }
 
     @Override
@@ -48,5 +48,10 @@ public class KyloUuid extends KyloType {
         UUID uuid = (UUID) value;
         buffer.putLong(uuid.getMostSignificantBits());
         buffer.putLong(uuid.getLeastSignificantBits());
+    }
+
+    @Override
+    public String toString() {
+        return "UUID";
     }
 }

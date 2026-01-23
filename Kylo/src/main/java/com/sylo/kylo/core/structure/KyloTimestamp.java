@@ -32,7 +32,7 @@ public class KyloTimestamp extends KyloType {
 
     @Override
     public Object deserialize(byte[] data) {
-         return deserialize(ByteBuffer.wrap(data));
+        return deserialize(ByteBuffer.wrap(data));
     }
 
     @Override
@@ -43,6 +43,11 @@ public class KyloTimestamp extends KyloType {
 
     @Override
     public void serialize(Object value, ByteBuffer buffer) {
-         buffer.putLong(((Instant) value).toEpochMilli());
+        buffer.putLong(((Instant) value).toEpochMilli());
+    }
+
+    @Override
+    public String toString() {
+        return "TIMESTAMP";
     }
 }

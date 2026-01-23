@@ -42,4 +42,9 @@ public class KyloBoolean extends KyloType {
     public void serialize(Object value, ByteBuffer buffer) {
         buffer.put((Boolean) value ? (byte) 1 : (byte) 0);
     }
+
+    @Override
+    public String toString() {
+        return "BOOLEAN";
+    }
 }

@@ -42,4 +42,9 @@ public class KyloFloat extends KyloType {
     public void serialize(Object value, ByteBuffer buffer) {
         buffer.putFloat((Float) value);
     }
+
+    @Override
+    public String toString() {
+        return "FLOAT";
+    }
 }

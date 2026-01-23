@@ -42,4 +42,9 @@ public class KyloInt extends KyloType {
     public void serialize(Object value, ByteBuffer buffer) {
         buffer.putInt((Integer) value);
     }
+
+    @Override
+    public String toString() {
+        return "INT";
+    }
 }

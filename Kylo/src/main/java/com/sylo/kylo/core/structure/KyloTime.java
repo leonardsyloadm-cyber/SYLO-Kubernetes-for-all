@@ -18,7 +18,7 @@ public class KyloTime extends KyloType {
     @Override
     public void validate(Object value) {
         if (!(value instanceof LocalTime)) {
-             throw new IllegalArgumentException("Expected LocalTime for KyloTime");
+            throw new IllegalArgumentException("Expected LocalTime for KyloTime");
         }
     }
 
@@ -32,7 +32,7 @@ public class KyloTime extends KyloType {
 
     @Override
     public Object deserialize(byte[] data) {
-         return deserialize(ByteBuffer.wrap(data));
+        return deserialize(ByteBuffer.wrap(data));
     }
 
     @Override
@@ -44,5 +44,10 @@ public class KyloTime extends KyloType {
     @Override
     public void serialize(Object value, ByteBuffer buffer) {
         buffer.putLong(((LocalTime) value).toNanoOfDay());
+    }
+
+    @Override
+    public String toString() {
+        return "TIME";
     }
 }

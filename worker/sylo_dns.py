@@ -3,12 +3,15 @@ import os
 import sys
 import mysql.connector
 
+sys.stdout.reconfigure(line_buffering=True)
+
 # CONFIGURACIÓN DB (Igual que el Orchestrator)
 DB_CONFIG = {
     "host": "127.0.0.1",
     "user": "sylo_app",
     "password": "sylo_app_pass",
-    "database": "kylo_main_db"
+    "database": "kylo_main_db",
+    "connection_timeout": 10
 }
 
 # CONFIGURACIÓN DNS

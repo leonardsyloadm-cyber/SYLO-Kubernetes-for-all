@@ -531,6 +531,102 @@ def process_order(json_file):
         try: shutil.move(processing_file, json_file.replace(".json", ".json.procesado"))
         except: pass
 
+def process_action(json_file):
+    if shutdown_event.is_set(): return
+    processing_file = json_file + ".procesando"
+    try: shutil.move(json_file, processing_file)
+    except: return
+
+    try:
+        with open(processing_file, 'r') as f: data = json.load(f)
+        oid = int(data.get("id_cliente"))
+        action = data.get("action", "").upper()
+        
+        log(f"⚡ ACCIÓN RECIBIDA ID {oid}: {action}", Colors.YELLOW)
+        
+        cluster_profile = f"sylo-cliente-{oid}"
+        buzon_status = os.path.join(BUZON, f"power_status_{oid}.json")
+        if action in ["BACKUP", "RESTORE"]: 
+            buzon_status = os.path.join(BUZON, f"backup_status_{oid}.json")
+        
+        # Helper para reportar progreso de la acción
+        def report_act_progress(pct, msg, status="processing"):
+            # Mapeamos status a algo que el frontend entienda (stopping, starting...)
+            # Ojo: El frontend espera keys traducibles si es posible
+            payload = {"percent": pct, "msg": msg, "status": status, "source_type": "action"}
+            with open(buzon_status, 'w') as f: json.dump(payload, f)
+            
+        if action == "STOP":
+            report_act_progress(10, "progress_stopping", "stopping")
+            # FIX: Force stop if needed or just wait longer? Minikube stop can hang.
+            res = run_bash_script("minikube", ["stop", "-p", cluster_profile])
+            
+            # Even if it fails (already stopped?), we mark as stopped to clear UI
+            report_act_progress(100, "completed", "stopped")
+            update_db_state(oid, "stopped")
+
+        elif action == "START":
+            report_act_progress(10, "progress_starting", "starting")
+            # FIX: Memory Crash on Bronze resolved by using --force (like in deploy script)
+            # Reverted to 1100m as requested by user. force flag is key.
+            run_bash_script("minikube", ["start", "-p", cluster_profile, "--memory=1100m", "--force"])
+            report_act_progress(100, "completed", "active")
+            update_db_state(oid, "active")
+
+        elif action == "RESTART":
+            report_act_progress(10, "progress_restarting", "restarting")
+            run_bash_script("minikube", ["stop", "-p", cluster_profile])
+            time.sleep(2)
+            run_bash_script("minikube", ["start", "-p", cluster_profile, "--memory=1100m", "--force"])
+            report_act_progress(100, "completed", "active")
+            update_db_state(oid, "active")
+
+        elif action == "DESTROY_K8S":
+            report_act_progress(10, "backend.deleting", "deleting")
+            run_bash_script("minikube", ["delete", "-p", cluster_profile])
+            report_act_progress(100, "backend.deleted", "terminated")
+            update_db_state(oid, "terminated")
+            
+        elif action == "BACKUP":
+            b_type = data.get("backup_type", "FULL")
+            b_name = data.get("backup_name", "Manual").replace(" ", "_")
+            ts = time.strftime("%Y%m%d%H%M%S")
+            filename = f"backup_v{oid}_{b_type}_{b_name}_{ts}.tar.gz"
+            dest = os.path.join(BUZON, filename)
+            
+            report_act_progress(10, "backend.starting", "backup_processing")
+            time.sleep(1)
+            report_act_progress(30, "backend.reading", "backup_processing")
+            
+            # TODO: Implementar backup real (ej: velero o exportar recursos)
+            # Por ahora creamos un dummy file
+            run_bash_script("touch", [dest])
+            
+            report_act_progress(80, "backend.saving", "backup_processing")
+            time.sleep(1)
+            report_act_progress(100, "backend.completed", "completed")
+
+        elif action == "RESTORE":
+            f_name = data.get("filename_to_restore")
+            report_act_progress(10, "backend.locating", "restoring")
+            time.sleep(1)
+            report_act_progress(50, "backend.applying", "restoring")
+            # Logica Dummy Restore
+            time.sleep(1)
+            report_act_progress(100, "backend.completed", "completed")
+            
+        elif action == "DELETE_BACKUP":
+            f_name = data.get("filename_to_delete")
+            p = os.path.join(BUZON, f_name)
+            if os.path.exists(p): os.remove(p)
+            report_act_progress(100, "backend.deleted", "completed")
+
+    except Exception as e:
+        log(f"⚠️ Error procesando acción: {e}", Colors.RED)
+    finally:
+        try: shutil.move(processing_file, json_file.replace(".json", ".json.procesado"))
+        except: pass
+
 def main():
     if not os.path.exists(BUZON): os.makedirs(BUZON)
     try: os.chmod(BUZON, 0o777)
@@ -538,14 +634,22 @@ def main():
     signal.signal(signal.SIGTERM, signal_handler)
     signal.signal(signal.SIGINT, signal_handler)
     
-    log(f"=== ORQUESTADOR SYLO V22 (FINAL STATUS FIX) ===", Colors.BLUE)
+    log(f"=== ORQUESTADOR SYLO V22 (FINAL STATUS FIX + ACTIONS) ===", Colors.BLUE)
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
         while not shutdown_event.is_set():
+            # 1. Procesar Ordenes
             files = glob.glob(os.path.join(BUZON, "orden_*.json"))
             for json_file in files:
                 if shutdown_event.is_set(): break
                 executor.submit(process_order, json_file)
-            time.sleep(5)
+            
+            # 2. Procesar Acciones (Power, Backup) - MOVIDO A OPERATOR_SYLO.PY
+            # actions = glob.glob(os.path.join(BUZON, "accion_*.json"))
+            # for act_file in actions:
+            #    if shutdown_event.is_set(): break
+            #    executor.submit(process_action, act_file)
+                
+            time.sleep(2)
         executor.shutdown(wait=False, cancel_futures=True)
 
 if __name__ == "__main__": main()

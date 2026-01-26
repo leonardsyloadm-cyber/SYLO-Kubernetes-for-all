@@ -619,10 +619,36 @@ class OktopusApp(ctk.CTk):
     def stop_worker(self, s):
         pid = self.find_process(s); 
         if pid: 
-            if s in ["sylo_dns.py", "ghost_monitor.py"]: # Matar con sudo si es DNS o Ghost
-                os.system(f"echo 'Matando {s}' && sudo kill {pid}")
+            # --- 🔥 LÓGICA ESPECIAL PARA DNS Y GHOST (REQUIERE SUDO) 🔥 ---
+            if s in ["sylo_dns.py", "ghost_monitor.py"]:
+                dialog = ctk.CTkInputDialog(text=f"Detener {s} requiere permisos de ROOT.\nIntroduce contraseña de SUDO:", title="Autenticación Requerida")
+                pwd = dialog.get_input()
+                if not pwd: return
+
+                try:
+                    # Ejecutamos sudo -S kill <pid>
+                    cmd = ["sudo", "-S", "kill", str(pid)]
+                    proc = subprocess.Popen(
+                        cmd,
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True
+                    )
+                    out, err = proc.communicate(input=pwd + "\n")
+                    
+                    if proc.returncode == 0:
+                        self.log_to_console("SISTEMA", f"{s} detenido correctamente.", C_WARNING)
+                    else:
+                        self.log_to_console("ERROR", f"Fallo al detener {s}: {err}", C_DANGER)
+                except Exception as e:
+                    self.log_to_console("ERROR", f"Excepción al detener {s}: {e}", C_DANGER)
             else:
-                os.kill(pid, signal.SIGTERM)
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                    self.log_to_console("SISTEMA", f"{s} detenido.", C_WARNING)
+                except Exception as e:
+                    self.log_to_console("ERROR", f"Error deteniendo {s}: {e}", C_DANGER)
 
     def kill_machine_direct(self, name):
         cid = name.lower().replace("sylo-cliente-", "").replace("cliente", "")

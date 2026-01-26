@@ -14,7 +14,7 @@ services:
 
     volumes:
       - ./sylo-web:/var/www/html
-      - ./buzon-pedidos:/buzon
+      - ./sylo-web/buzon-pedidos:/buzon
       - /var/run/docker.sock:/var/run/docker.sock # Para que PHP pueda usar Docker
     depends_on:
       - kylo-main-db
@@ -37,6 +37,17 @@ services:
       - db_data:/var/lib/mysql
     networks:
       - sylo-network
+
+  # --- 3. NUEVO: KYLO DB ENGINE (Tu Motor Java Propio) ---
+  kylo-db:
+    build: ./Kylo             # Busca el Dockerfile dentro de la carpeta Kylo
+    container_name: kylo-db-core
+    ports:
+      - "8082:8080"           # Mapeamos la GUI de Kylo al puerto 8082 de tu PC
+      - "5000:5000"           # Puerto de datos TCP de Kylo
+    networks:
+      - sylo-network          # Se conecta a la misma red para hablar con la web si hace falta
+    restart: unless-stopped
 
 volumes:
   db_data:

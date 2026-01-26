@@ -356,7 +356,12 @@ def _power_up_logic(oid, profile, is_restart=False):
     report_progress(oid, "power", op_type, 30, f"Asignando recursos ({alloc_mb}MB)...")
     
     # 4. ARRANQUE CON LA MEMORIA CALCULADA
-    cmd_start = f"minikube start -p {profile} --memory={alloc_mb}m --force"
+
+    # NUEVA LÍNEA DE ARRANQUE CON CPU PINNING Y RESERVA DE SISTEMA
+    # --extra-config=kubelet.cpu-manager-policy=static: Activa el aislamiento de núcleos.
+    # --extra-config=kubelet.kube-reserved=...: Protege recursos para el sistema (evita que el pinning rompa Minikube).
+    cmd_start = f"minikube start -p {profile} --memory={alloc_mb}m --force --extra-config=kubelet.cpu-manager-policy=static --extra-config=kubelet.kube-reserved=cpu=500m,memory=500Mi --extra-config=kubelet.system-reserved=cpu=500m,memory=500Mi"
+    
     if fixed_ip and len(fixed_ip) > 6:
         cmd_start += f" --static-ip {fixed_ip}"
     

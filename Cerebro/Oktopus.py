@@ -270,7 +270,7 @@ class OktopusApp(ctk.CTk):
         ctk.CTkLabel(self.sidebar, text="🐙 OKTOPUS", font=("Montserrat", 30, "bold"), text_color=C_ACCENT_CYAN).pack(pady=(30, 5))
         ctk.CTkLabel(self.sidebar, text="V23 ROOT ACCESS", font=FONT_MONO, text_color=C_ACCENT_BLUE).pack(pady=(0, 40))
 
-        menu = {"DASHBOARD": "📊", "CEREBRO API": "🧠", "INFRAESTRUCTURA": "🏗️", "FINANZAS": "💰", "LOGS GLOBALES": "📜"}
+        menu = {"DASHBOARD": "📊", "CEREBRO API": "🧠", "INFRAESTRUCTURA": "🏗️", "FINANZAS": "💰", "LOGS GLOBALES": "📜", "COMMS": "📡"}
         for s, icon in menu.items():
             btn = ctk.CTkButton(self.sidebar, text=f"  {icon}  {s}", height=50, fg_color="transparent", anchor="w", 
                                 font=FONT_SUBHEAD, hover_color=C_BG_CARD_HOVER, command=lambda x=s: self.show_tab(x))
@@ -283,7 +283,7 @@ class OktopusApp(ctk.CTk):
         self.main_container = ctk.CTkFrame(self, fg_color=C_BG_MAIN); self.main_container.grid(row=0, column=1, sticky="nsew", padx=20, pady=20)
         self.main_container.grid_rowconfigure(0, weight=1); self.main_container.grid_columnconfigure(0, weight=1)
 
-        self.create_dashboard_tab(); self.create_api_tab(); self.create_infra_tab(); self.create_finance_tab(); self.create_console_tab()
+        self.create_dashboard_tab(); self.create_api_tab(); self.create_infra_tab(); self.create_finance_tab(); self.create_console_tab(); self.create_chat_tab()
         self.show_tab("DASHBOARD")
 
     def show_tab(self, name):
@@ -323,6 +323,12 @@ class OktopusApp(ctk.CTk):
         self.create_worker_ctrl(wf, "sylo_brain.py", "BRAIN", teleport=True) # Teleport habilitado para BRAIN
         self.create_worker_ctrl(wf, "sylo_dns.py", "DNS SERVER")
         self.create_worker_ctrl(wf, "ghost_monitor.py", "KERNEL GHOST") # Nuevo servicio eBPF
+
+        # --- SYLO MESH OPS ---
+        ctk.CTkLabel(f, text="Sylo Mesh Ops", font=FONT_HEAD, text_color=C_ACCENT_BLUE).pack(anchor="w", pady=(30, 10))
+        mesh_frame = ModernCard(f); mesh_frame.pack(fill="x", ipady=10)
+        self.create_mesh_card(mesh_frame, "IVAN", "ivan", "100.97.47.100")
+        self.create_mesh_card(mesh_frame, "LEONARD", "leonard", "100.78.59.26")
 
     def create_kpi(self, p, t, v, c, i):
         fr = ModernCard(p, hover_effect=True); fr.pack(side="left", expand=True, fill="both", padx=5, ipady=5)
@@ -449,6 +455,70 @@ class OktopusApp(ctk.CTk):
         self.master_console.tag_config("SHIELD_WARN", foreground=C_WARNING)
         self.master_console.tag_config("SHIELD_CRIT", foreground=C_DANGER)
         self.master_console.configure(state="disabled")
+
+    # --- CHAT TAB ---
+    def create_chat_tab(self):
+        f = ctk.CTkFrame(self.main_container, fg_color="transparent"); self.frames["COMMS"] = f
+        h = ctk.CTkFrame(f, fg_color="transparent"); h.pack(fill="x", pady=20)
+        ctk.CTkLabel(h, text="📡 Sylo Mesh Comms", font=FONT_HEAD, text_color=C_ACCENT_PURPLE).pack(side="left")
+        
+        # Chat History
+        chat_frame = ModernCard(f, border_color=C_ACCENT_PURPLE); chat_frame.pack(fill="both", expand=True, pady=10)
+        self.chat_display = ctk.CTkTextbox(chat_frame, font=("Consolas", 14), fg_color=C_CONSOLE_BG, text_color=C_TEXT_WHITE, wrap="word")
+        self.chat_display.pack(fill="both", expand=True, padx=5, pady=5)
+        self.chat_display.configure(state="disabled")
+        
+        # Input Area
+        input_frame = ctk.CTkFrame(f, fg_color="transparent"); input_frame.pack(fill="x", pady=5)
+        self.chat_entry = ctk.CTkEntry(input_frame, placeholder_text="Escribe mensaje...", font=FONT_BODY, height=40)
+        self.chat_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        self.chat_entry.bind("<Return>", self.send_chat_msg)
+        
+        btn_send = ctk.CTkButton(input_frame, text="ENVIAR", fg_color=C_ACCENT_PURPLE, width=100, height=40, command=self.send_chat_msg)
+        btn_send.pack(side="right")
+
+        # Start Polling
+        self.last_msg_ts = 0.0
+        self.after(1000, self.poll_chat)
+
+    def send_chat_msg(self, event=None):
+        msg = self.chat_entry.get().strip()
+        if not msg: return
+        self.chat_entry.delete(0, "end")
+        
+        # Enviar a todos los conocidos (Broadcast simple)
+        peers = ["100.97.47.100", "100.78.59.26"] # Ivan, Leonard
+        # Tambien enviamos a nosotros mismos (localhost) para que salga en el chat
+        peers.append("127.0.0.1") 
+        
+        sender_id = "ADMIN" # Podriamos configurar el nombre del nodo
+        
+        def _send():
+            for ip in peers:
+                try:
+                    # Puerto API 8001
+                    url = f"http://{ip}:8001/internal/chat/receive"
+                    requests.post(url, json={"sender": sender_id, "text": msg}, timeout=2)
+                except: pass
+        threading.Thread(target=_send).start()
+
+    def poll_chat(self):
+        if not self.running: return
+        try:
+            # Consultar API local para nuevos mensajes
+            r = requests.get(f"http://127.0.0.1:8001/internal/chat/sync?since={self.last_msg_ts}", timeout=1)
+            if r.status_code == 200:
+                msgs = r.json()
+                if msgs:
+                    self.chat_display.configure(state="normal")
+                    for m in msgs:
+                        ts = datetime.fromtimestamp(m['timestamp']).strftime('%H:%M:%S')
+                        self.chat_display.insert("end", f"[{ts}] {m['sender']}: {m['text']}\n")
+                        self.last_msg_ts = max(self.last_msg_ts, m['timestamp'])
+                    self.chat_display.see("end")
+                    self.chat_display.configure(state="disabled")
+        except: pass
+        self.after(2000, self.poll_chat)
 
     def clear_console(self, w): w.configure(state="normal"); w.delete("1.0", "end"); w.configure(state="disabled")
     def log_to_console(self, source, message, color=None):
@@ -735,6 +805,45 @@ class OktopusApp(ctk.CTk):
         ctk.CTkButton(c, text="⚙️ CONF", fg_color=C_ACCENT_BLUE, width=80, command=lambda: self.edit_config(n)).pack(side="right", padx=5)
         ctk.CTkButton(c, text=">_ SHELL", fg_color=C_ACCENT_PURPLE, width=80, command=lambda: self.open_native_shell(n)).pack(side="right", padx=5)
         self.client_cards[n] = {'frame': c}
+
+    # ================= MESH TOOLS =================
+    def create_mesh_card(self, parent, label, user, ip):
+        f = ctk.CTkFrame(parent, fg_color="transparent"); f.pack(fill="x", padx=15, pady=(5, 10))
+        # Icono y Nombre
+        ctk.CTkLabel(f, text="🔗", font=("Arial", 18)).pack(side="left", padx=5)
+        ctk.CTkLabel(f, text=f"{label} ({ip})", font=FONT_BODY, text_color=C_TEXT_WHITE, width=200, anchor="w").pack(side="left", padx=10)
+        # Botones
+        ctk.CTkButton(f, text="PING", width=80, fg_color=C_BG_SIDEBAR, border_width=1, border_color=C_BORDER_GLOW, 
+                      command=lambda: self.run_mesh_ping(ip)).pack(side="right", padx=5)
+        ctk.CTkButton(f, text="SSH TERMINAL", width=120, fg_color=C_ACCENT_PURPLE, 
+                      command=lambda: self.open_mesh_ssh(user, ip)).pack(side="right", padx=5)
+
+    def run_mesh_ping(self, ip):
+        def _ping():
+            self.log_to_console("MESH", f"Pinging {ip}...", C_ACCENT_BLUE)
+            res = subprocess.run(["ping", "-c", "3", ip], capture_output=True, text=True)
+            if res.returncode == 0:
+                self.log_to_console("MESH", f"Ping {ip} SUCCESS", C_SUCCESS)
+                self.after(0, lambda: messagebox.showinfo("Ping Success", f"Conexión estable con {ip}\nLatencia avg: {res.stdout.split('/')[-3] if '/' in res.stdout else '?'} ms"))
+            else:
+                self.log_to_console("MESH", f"Ping {ip} FAILED: {res.stderr}", C_DANGER)
+                self.after(0, lambda: messagebox.showerror("Ping Failed", f"No se puede alcanzar a {ip}"))
+        threading.Thread(target=_ping).start()
+
+    def open_mesh_ssh(self, user, ip):
+        self.log_to_console("MESH", f"Opening SSH to {user}@{ip}...", C_ACCENT_PURPLE)
+        cmd = f"ssh {user}@{ip}"
+        import shutil
+        try:
+            if shutil.which("gnome-terminal"):
+                subprocess.Popen(["gnome-terminal", f"--title=SSH {user}@{ip}", "--", "bash", "-c", f"{cmd}; exec bash"])
+            elif shutil.which("xterm"):
+                subprocess.Popen(["xterm", "-T", f"SSH {user}@{ip}", "-e", f"{cmd}; exec bash"])
+            else:
+                # Fallback to simple x-terminal-emulator
+                 subprocess.Popen(["x-terminal-emulator", "-e", f"bash -c '{cmd}; exec bash'"])
+        except Exception as e:
+             messagebox.showerror("Error", f"No se pudo lanzar terminal: {e}")
 
 # ================= SSH CLIENT WINDOW =================
 class SSHTerminalWindow(ctk.CTkToplevel):

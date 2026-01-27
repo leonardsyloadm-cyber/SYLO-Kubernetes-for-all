@@ -486,20 +486,40 @@ class OktopusApp(ctk.CTk):
         if not msg: return
         self.chat_entry.delete(0, "end")
         
-        # Enviar a todos los conocidos (Broadcast simple)
-        peers = ["100.97.47.100", "100.78.59.26"] # Ivan, Leonard
-        # Tambien enviamos a nosotros mismos (localhost) para que salga en el chat
-        peers.append("127.0.0.1") 
+        # 1. Identidad dinámica
+        import socket
+        try:
+            sender_id = socket.gethostname()
+        except:
+            sender_id = "Unknown-Node"
         
-        sender_id = "ADMIN" # Podriamos configurar el nombre del nodo
+        # 2. Evitar duplicados: Obtener mi IP de Tailscale para no enviarme a mi mismo por la pública
+        my_ts_ip = ""
+        try:
+            my_ts_ip = subprocess.check_output(["tailscale", "ip", "-4"], text=True).strip()
+        except: pass
+
+        # Enviar a todos los conocidos (Broadcast simple)
+        # Lista fija de compañeros
+        known_peers = ["100.97.47.100", "100.78.59.26"] 
+        
+        targets = []
+        # Añadimos solo si NO es mi propia IP
+        for p in known_peers:
+            if p != my_ts_ip:
+                targets.append(p)
+        
+        # Siempre enviamos a localhost para feedback inmediato
+        targets.append("127.0.0.1")  
         
         def _send():
-            for ip in peers:
+            for ip in targets:
                 try:
                     # Puerto API 8001
                     url = f"http://{ip}:8001/internal/chat/receive"
-                    requests.post(url, json={"sender": sender_id, "text": msg}, timeout=2)
-                except: pass
+                    requests.post(url, json={"sender": sender_id, "text": msg}, timeout=3)
+                except Exception as e:
+                    self.log_to_console("CHAT ERROR", f"Fallo enviando a {ip}: {e}", C_DANGER)
         threading.Thread(target=_send).start()
 
     def poll_chat(self):

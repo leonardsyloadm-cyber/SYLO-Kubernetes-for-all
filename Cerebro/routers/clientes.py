@@ -211,7 +211,8 @@ async def recibir_progreso(datos: ReporteProgreso):
         nombre_archivo = f"backup_status_{datos.id_cliente}.json"
 
     estado = datos.status_text
-    if datos.percent >= 100: estado = "completed"
+    # FIX: Don't force 'completed' override, trust the reporter (e.g. stopped, started)
+    # if datos.percent >= 100: estado = "completed"
     
     payload = {"status": estado, "progress": datos.percent, "msg": datos.msg}
     guardar_json(nombre_archivo, payload)

@@ -115,15 +115,25 @@ function confirmTerminate() {
 
 function destroyK8s() {
     const msg = window.SyloLang?.get('js.destroy_confirm') || "☢️ ¿ESTÁS SEGURO?\nEsto borrará todos los Pods y datos de Kubernetes.\n\nEscribe: BORRAR";
-    const keyword = window.SyloLang?.get('js.destroy_keyword') || "BORRAR";
-    if (prompt(msg) === keyword) {
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = 'php/data.php';
-        form.innerHTML = `<input type="hidden" name="action" value="destroy_k8s"><input type="hidden" name="order_id" value="${orderId}">`;
-        document.body.appendChild(form);
-        form.submit();
-        showToast(window.SyloLang?.get('js.destroying') || "Destruyendo recursos...", "error");
+    const localKeyword = (window.SyloLang?.get('js.destroy_keyword') || "BORRAR").toUpperCase();
+
+    // Master Keywords (Always valid)
+    const validKeywords = ["DELETE", "BORRAR", "SUPPRIMER", "ZERSTÖREN", localKeyword];
+
+    let input = prompt(msg);
+    if (input) {
+        input = input.trim().toUpperCase();
+        if (validKeywords.includes(input)) {
+            const form = document.createElement('form');
+            form.method = 'POST';
+            form.action = 'php/data.php';
+            form.innerHTML = `<input type="hidden" name="action" value="destroy_k8s"><input type="hidden" name="order_id" value="${orderId}">`;
+            document.body.appendChild(form);
+            form.submit();
+            showToast(window.SyloLang?.get('js.destroying') || "Destruyendo recursos...", "error");
+        } else {
+            alert("Palabra incorrecta / Incorrect keyword.");
+        }
     }
 }
 
@@ -269,6 +279,11 @@ function loadData() {
             if (!d) return;
 
             try {
+                // Force metrics to 0 if status is offline/stopped
+                if (d.status === 'stopped' || d.status === 'terminated' || d.status === 'offline') {
+                    d.metrics = { cpu: 0, ram: 0 };
+                }
+
                 if (d.metrics && d.metrics.cpu !== undefined) {
                     const s = (d.status || '').toLowerCase();
                     // FIX: Operations like web_updating should NOT be considered 'stopped'
@@ -303,8 +318,13 @@ function loadData() {
                         if (d.general_progress) {
                             // Check if general_progress matches our power op intent
                             const gp = d.general_progress;
-                            if (gp.status && (gp.status.includes('stopping') || gp.status.includes('starting') || gp.status.includes('restarting'))) {
-                                targetProgress = parseInt(gp.progress) || 10;
+                            if (gp.status && (
+                                gp.status.includes('stopping') || gp.status.includes('starting') || gp.status.includes('restarting') ||
+                                gp.status === 'stopped' || gp.status === 'active' || gp.status === 'online' || gp.status === 'terminated' ||
+                                gp.status === 'started' || gp.status === 'restarted' || gp.status === 'completed'
+                            )) {
+                                // FIX: Backend sends 'percent', frontend used 'progress'
+                                targetProgress = parseInt(gp.percent) || parseInt(gp.progress) || 10;
                                 if (targetProgress >= 100) isComplete = true;
                                 if (gp.msg) customMsg = gp.msg;
                             }
@@ -425,7 +445,7 @@ function loadData() {
                     const statusSpan = document.getElementById('status-badge-text');
                     if (statusSpan) {
                         // FIX: Treat 'web_updating' as online so badge stays green
-                        const isOnline = ['active', 'running', 'online', 'completed', 'web_updating', 'web_completed', 'restoring'].includes(d.status);
+                        const isOnline = ['active', 'running', 'online', 'completed', 'web_updating', 'web_completed', 'restoring', 'started', 'restarted'].includes(d.status);
                         const statusKey = isOnline ? 'dashboard.online' : 'dashboard.stopped';
                         const statusText = window.SyloLang?.get(statusKey) || d.status.toUpperCase();
 
@@ -522,7 +542,7 @@ function loadData() {
                     // Completion Logic
                     if (p >= 100) {
                         if (bar) { bar.className = 'progress-bar bg-success'; bar.style.width = '100%'; }
-                        if (txt && !isDelete) txt.innerText = "Completado";
+                        if (txt && !isDelete) txt.innerText = window.SyloLang?.get('backend.completed') || "Completado";
 
                         // AUTO-DISMISS & CLEANUP (Frontend-Driven)
                         // Wait 4s, then tell backend to delete file AND hide locally

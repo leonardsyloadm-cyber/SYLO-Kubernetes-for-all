@@ -44,6 +44,47 @@ app.include_router(clientes.router, prefix="/api/clientes", tags=["Clientes"])
 def root():
     return {"sistema": "Sylo Brain", "estado": "ONLINE (FILE-BASED)"}
 
+# --- SMART SCHEDULER INTEGRATION (V2) ---
+from pydantic import BaseModel
+from scheduler_v2 import inventory, chat_db
+
+class HeartbeatModel(BaseModel):
+    node_id: str
+    ip: str
+    total_ram_mb: int
+    used_ram_mb: int
+    cpu_load_percent: float
+
+class ChatMessage(BaseModel):
+    sender: str
+    text: str
+
+@app.post("/internal/heartbeat")
+def receive_heartbeat(data: HeartbeatModel):
+    """Recibe latidos de los nodos trabajadores y actualiza el inventario."""
+    inventory.update_node(data.dict())
+    return {"status": "ok", "tracked_nodes": len(inventory.get_alive_nodes())}
+
+@app.get("/internal/schedule")
+def schedule_task(ram_mb: int = 512):
+    """Endpoint de prueba para el Scheduler."""
+    try:
+        ip, node_id = inventory.find_best_node(ram_mb)
+        return {"decision": "allocate", "node_ip": ip, "node_id": node_id}
+    except Exception as e:
+        return {"decision": "reject", "reason": str(e)}
+
+@app.post("/internal/chat/receive")
+def chat_receive(msg: ChatMessage):
+    """Recibe mensaje de otros nodos."""
+    chat_db.add_message(msg.sender, msg.text)
+    return {"status": "received"}
+
+@app.get("/internal/chat/sync")
+def chat_sync(since: float = 0.0):
+    """Devuelve mensajes recientes."""
+    return chat_db.get_messages(since)
+
 # --- SYLO BASTION: WEBSOCKET CONSOLE ---
 @app.websocket("/api/console/{container_id}")
 async def websocket_console(websocket: WebSocket, container_id: str):

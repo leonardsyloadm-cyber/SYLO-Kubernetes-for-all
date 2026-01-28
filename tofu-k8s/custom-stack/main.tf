@@ -62,6 +62,17 @@ resource "kubernetes_deployment_v1" "db_mysql" {
         container {
           name  = "mysql"
           image = "mysql:5.7"
+
+          resources {
+            requests = {
+              memory = "${var.ram}Gi"
+              cpu    = var.cpu
+            }
+            limits = {
+              memory = "${var.ram}Gi"
+              cpu    = var.cpu
+            }
+          }
           
           port {
             container_port = 3306
@@ -147,6 +158,17 @@ resource "kubernetes_deployment_v1" "db_postgres" {
         container {
           name  = "postgres"
           image = "postgres:14"
+
+          resources {
+            requests = {
+              memory = "${var.ram}Gi"
+              cpu    = var.cpu
+            }
+            limits = {
+              memory = "${var.ram}Gi"
+              cpu    = var.cpu
+            }
+          }
           
           port {
             container_port = 5432
@@ -224,6 +246,17 @@ resource "kubernetes_deployment_v1" "db_mongo" {
         container {
           name  = "mongo"
           image = "mongo:latest"
+
+          resources {
+            requests = {
+              memory = "${var.ram}Gi"
+              cpu    = var.cpu
+            }
+            limits = {
+              memory = "${var.ram}Gi"
+              cpu    = var.cpu
+            }
+          }
           
           port {
             container_port = 27017
@@ -321,6 +354,17 @@ resource "kubernetes_deployment_v1" "web_server" {
         container {
           name  = "web-server"
           image = var.image_web
+
+          resources {
+            requests = {
+              memory = "${var.ram}Gi"
+              cpu    = var.cpu
+            }
+            limits = {
+              memory = "${var.ram}Gi"
+              cpu    = var.cpu
+            }
+          }
           
           port {
             container_port = var.web_port_internal

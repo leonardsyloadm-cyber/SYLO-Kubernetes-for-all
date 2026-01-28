@@ -251,7 +251,10 @@
         "stopping": "Arrêt du système...",
         "starting": "Démarrage du système...",
         "restarting": "Redémarrage...",
-        "completed": "Action terminée."
+        "completed": "Action terminée.",
+        "progress_stopping": "Arrêt du cluster (cela peut prendre du temps)...",
+        "progress_starting": "Démarrage du cluster (cela peut prendre du temps)...",
+        "progress_restarting": "Redémarrage du cluster (cela peut prendre du temps)..."
     },
     "common": {
         "cancel": "Annuler",

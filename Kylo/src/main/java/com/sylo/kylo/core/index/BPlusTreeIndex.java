@@ -8,6 +8,7 @@ import com.sylo.kylo.core.storage.StorageConstants;
 public class BPlusTreeIndex implements Index {
     private final BufferPoolManager bufferPool;
     private int rootPageId;
+    private boolean isUnique = false;
 
     public BPlusTreeIndex(BufferPoolManager bufferPool, int rootPageId) {
         this.bufferPool = bufferPool;
@@ -26,16 +27,34 @@ public class BPlusTreeIndex implements Index {
         // bufferPool.unpinPage(root.getPageId(), true); // Real systems unpin
     }
 
+    public void setUnique(boolean unique) {
+        this.isUnique = unique;
+    }
+
     public int getRootPageId() {
         return rootPageId;
     }
 
     @Override
     public void insert(Object key, long rid) {
-        if (!(key instanceof Integer)) {
-            throw new IllegalArgumentException("BPlusTree only supports Integer keys currently.");
+        int intKey;
+        if (key instanceof Integer) {
+            intKey = (Integer) key;
+        } else if (key instanceof String) {
+            // Support for System Tables/Legacy String Indices via HashCode
+            intKey = key.hashCode();
+        } else {
+            // Log the type for debugging
+            throw new IllegalArgumentException("BPlusTree only supports Integer/String keys. Got: "
+                    + (key == null ? "null" : key.getClass().getName()));
         }
-        int intKey = (Integer) key;
+
+        if (isUnique) {
+            long existing = search(key);
+            if (existing != -1) {
+                throw new RuntimeException("Duplicate entry '" + key + "' for key 'PRIMARY'"); // Simplified msg
+            }
+        }
 
         Page root = bufferPool.fetchPage(new PageId(rootPageId));
         // We need to read correct type
@@ -129,6 +148,11 @@ public class BPlusTreeIndex implements Index {
                 childPageId = idxPage.getPageId(0);
             } else {
                 childPageId = idxPage.getPageId(childIdx);
+            }
+
+            if (childPageId == currentPageId) {
+                throw new RuntimeException(
+                        "Circular Wait detected in B+ Tree: Page " + currentPageId + " points to itself.");
             }
 
             insertIntoTree(childPageId, key, rid);
@@ -350,9 +374,14 @@ public class BPlusTreeIndex implements Index {
 
     @Override
     public long search(Object key) {
-        if (!(key instanceof Integer))
+        int intKey;
+        if (key instanceof Integer) {
+            intKey = (Integer) key;
+        } else if (key instanceof String) {
+            intKey = key.hashCode();
+        } else {
             return -1;
-        int intKey = (Integer) key;
+        }
 
         int currentPageId = rootPageId;
         while (currentPageId != StorageConstants.INVALID_PAGE_ID) {

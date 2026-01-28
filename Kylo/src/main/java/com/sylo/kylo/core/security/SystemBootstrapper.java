@@ -26,10 +26,17 @@ public class SystemBootstrapper {
 
         // 2. Register in Catalog (Hardcoded persistence for now)
         Catalog catalog = Catalog.getInstance();
-        catalog.createDatabase("SYSTEM"); // Register the DB explicitly for UI visibility
-        catalog.createTable("SYSTEM:users", usersSchema);
-        catalog.createTable("SYSTEM:db_privs", dbPrivsSchema);
-        catalog.createTable("SYSTEM:tables_privs", tablesPrivsSchema);
+        catalog.createDatabase("kylo_system"); // Register the DB explicitly for UI visibility
+        catalog.createTable("kylo_system:users", usersSchema);
+        catalog.createTable("kylo_system:db_privs", dbPrivsSchema);
+        catalog.createTable("kylo_system:table_privs", tablesPrivsSchema); // corrected name
+
+        // 2b. Sanitize System Constraints (Prevent corruption from bad previous runs)
+        com.sylo.kylo.core.constraint.ConstraintManager cm = com.sylo.kylo.core.constraint.ConstraintManager
+                .getInstance();
+        cm.clearConstraints("kylo_system:users");
+        cm.clearConstraints("kylo_system:db_privs");
+        cm.clearConstraints("kylo_system:tables_privs");
 
         // 3. Check if root user exists. If not, create it.
         if (!userExists("root", "localhost")) {
@@ -73,7 +80,7 @@ public class SystemBootstrapper {
         // Need to scan kylo_system:users
         // This is inefficient but runs only at startup.
         try {
-            List<Object[]> users = executionEngine.scanTable("SYSTEM:users");
+            List<Object[]> users = executionEngine.scanTable("kylo_system:users");
             for (Object[] row : users) {
                 String u = (String) row[1];
                 String h = (String) row[0];
@@ -97,7 +104,7 @@ public class SystemBootstrapper {
                 null, // No password
                 true // Super Priv
         };
-        executionEngine.insertTuple("SYSTEM:users", rootTuple);
+        executionEngine.insertTuple("kylo_system:users", rootTuple);
 
         Object[] rootWildcard = new Object[] {
                 "%",
@@ -105,6 +112,6 @@ public class SystemBootstrapper {
                 null, // No password
                 true // Super Priv
         };
-        executionEngine.insertTuple("SYSTEM:users", rootWildcard);
+        executionEngine.insertTuple("kylo_system:users", rootWildcard);
     }
 }

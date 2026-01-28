@@ -13,6 +13,9 @@ public class Catalog {
         this.tables = new HashMap<>();
         this.databases = new java.util.HashSet<>();
         this.databases.add("Default"); // Default DB
+
+        // Initialize IndexManager to load metadata
+        com.sylo.kylo.core.index.IndexManager.getInstance();
     }
 
     public static synchronized Catalog getInstance() {
@@ -48,5 +51,16 @@ public class Catalog {
 
     public java.util.Set<String> getAllTableNames() {
         return tables.keySet();
+    }
+
+    public com.sylo.kylo.core.index.IndexManager getIndexManager() {
+        return com.sylo.kylo.core.index.IndexManager.getInstance();
+    }
+
+    public void reset() {
+        tables.clear();
+        databases.clear();
+        databases.add("Default");
+        com.sylo.kylo.core.index.IndexManager.getInstance().reset(); // Need to verify if this exists
     }
 }

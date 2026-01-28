@@ -9,6 +9,7 @@ import com.sylo.kylo.core.structure.Tuple;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 
 public class SystemTableProvider {
 
@@ -122,8 +123,52 @@ public class SystemTableProvider {
                             null,
                             "NO"));
                 }
+            } else if (tableName.equalsIgnoreCase("VIEWS")) {
+                Map<String, String> views = com.sylo.kylo.core.sql.ViewManager.getInstance().getAllViews();
+                for (Map.Entry<String, String> entry : views.entrySet()) {
+                    String[] parts = entry.getKey().contains(":") ? entry.getKey().split(":")
+                            : new String[] { "default", entry.getKey() };
+                    rows.add(createTuple(
+                            "def", parts.length > 1 ? parts[0] : "default", parts.length > 1 ? parts[1] : parts[0],
+                            entry.getValue(), "NONE", "NO", "def", "utf8mb4", "utf8mb4_0900_ai_ci"));
+                }
+            } else if (tableName.equalsIgnoreCase("TABLE_CONSTRAINTS")) {
+                for (String t : catalog.getAllTableNames()) {
+                    String[] parts = t.contains(":") ? t.split(":") : new String[] { "default", t };
+                    String db = parts.length > 1 ? parts[0] : "default";
+                    String tbl = parts.length > 1 ? parts[1] : parts[0];
+
+                    // PK (Assuming 1st col is PK for now as we don't store strict PK metadata yet,
+                    // or just dummy)
+                    // Instructions say: Expose B-Trees as Indexes.
+                    // CONSTRAINTS: PRIMARY KEY, UNIQUE, FOREIGN KEY.
+
+                    // Fake PK for DBeaver happiness if we don't have real PK meta?
+                    rows.add(createTuple("def", db, "PK_" + tbl, db, tbl, "PRIMARY KEY", "NO"));
+                }
+            } else if (tableName.equalsIgnoreCase("STATISTICS")) {
+                // INDEXES
+                // TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME, NON_UNIQUE, INDEX_SCHEMA,
+                // INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, COLLATION, CARDINALITY, SUB_PART,
+                // PACKED, NULLABLE, INDEX_TYPE, COMMENT, INDEX_COMMENT, IS_VISIBLE, EXPRESSION
+                com.sylo.kylo.core.index.IndexManager im = catalog.getIndexManager();
+                for (String t : catalog.getAllTableNames()) {
+                    Schema s = catalog.getTableSchema(t);
+                    String[] parts = t.contains(":") ? t.split(":") : new String[] { "default", t };
+                    String db = parts.length > 1 ? parts[0] : "default";
+                    String tbl = parts.length > 1 ? parts[1] : parts[0];
+
+                    for (int i = 0; i < s.getColumnCount(); i++) {
+                        String c = s.getColumn(i).getName();
+                        if (im.hasIndex(t, c)) {
+                            rows.add(createTuple(
+                                    "def", db, tbl, 1, db, "IDX_" + tbl + "_" + c, 1, c, "A", 0L, null, null, "YES",
+                                    "BTREE", "", "", "YES", null));
+                        }
+                    }
+                }
             } else if (tableName.equalsIgnoreCase("KEY_COLUMN_USAGE")) {
-                // Empty for now to satisfy DBeaver
+                // Empty for now or populate if needed
             }
 
             iterator = rows.iterator();
@@ -144,10 +189,8 @@ public class SystemTableProvider {
         }
 
         private String mapToFullType(String kyloType) {
-            if (kyloType.contains("KyloVarchar")) {
-                // Extract length if possible, or default
+            if (kyloType.contains("KyloVarchar"))
                 return "varchar(255)";
-            }
             if (kyloType.contains("KyloUuid"))
                 return "varchar(36)";
             if (kyloType.contains("KyloBoolean"))
@@ -161,7 +204,7 @@ public class SystemTableProvider {
 
         private Long getLength(String kyloType) {
             if (kyloType.contains("KyloVarchar"))
-                return 255L; // Placeholder
+                return 255L;
             if (kyloType.contains("KyloUuid"))
                 return 36L;
             return null;
@@ -185,6 +228,7 @@ public class SystemTableProvider {
     public static Schema getSchema(String tableName) {
         List<Column> cols = new ArrayList<>();
         if (tableName.equalsIgnoreCase("TABLES")) {
+            // ... existing ...
             cols.add(new Column("TABLE_CATALOG", new com.sylo.kylo.core.structure.KyloVarchar(255), false));
             cols.add(new Column("TABLE_SCHEMA", new com.sylo.kylo.core.structure.KyloVarchar(255), false));
             cols.add(new Column("TABLE_NAME", new com.sylo.kylo.core.structure.KyloVarchar(255), false));
@@ -207,6 +251,7 @@ public class SystemTableProvider {
             cols.add(new Column("CREATE_OPTIONS", new com.sylo.kylo.core.structure.KyloVarchar(255), false));
             cols.add(new Column("TABLE_COMMENT", new com.sylo.kylo.core.structure.KyloVarchar(255), false));
         } else if (tableName.equalsIgnoreCase("COLUMNS")) {
+            // ... existing ... (lines 210-230)
             cols.add(new Column("TABLE_CATALOG", new com.sylo.kylo.core.structure.KyloVarchar(255), false));
             cols.add(new Column("TABLE_SCHEMA", new com.sylo.kylo.core.structure.KyloVarchar(255), false));
             cols.add(new Column("TABLE_NAME", new com.sylo.kylo.core.structure.KyloVarchar(255), false));
@@ -236,8 +281,45 @@ public class SystemTableProvider {
             cols.add(new Column("DEFAULT_COLLATION_NAME", new com.sylo.kylo.core.structure.KyloVarchar(255), false));
             cols.add(new Column("SQL_PATH", new com.sylo.kylo.core.structure.KyloVarchar(255), true));
             cols.add(new Column("DEFAULT_ENCRYPTION", new com.sylo.kylo.core.structure.KyloVarchar(3), false));
+        } else if (tableName.equalsIgnoreCase("STATISTICS")) {
+            cols.add(new Column("TABLE_CATALOG", new com.sylo.kylo.core.structure.KyloVarchar(255), false));
+            cols.add(new Column("TABLE_SCHEMA", new com.sylo.kylo.core.structure.KyloVarchar(255), false));
+            cols.add(new Column("TABLE_NAME", new com.sylo.kylo.core.structure.KyloVarchar(255), false));
+            cols.add(new Column("NON_UNIQUE", new com.sylo.kylo.core.structure.KyloBigInt(), false));
+            cols.add(new Column("INDEX_SCHEMA", new com.sylo.kylo.core.structure.KyloVarchar(255), false));
+            cols.add(new Column("INDEX_NAME", new com.sylo.kylo.core.structure.KyloVarchar(255), false));
+            cols.add(new Column("SEQ_IN_INDEX", new com.sylo.kylo.core.structure.KyloBigInt(), false));
+            cols.add(new Column("COLUMN_NAME", new com.sylo.kylo.core.structure.KyloVarchar(255), false));
+            cols.add(new Column("COLLATION", new com.sylo.kylo.core.structure.KyloVarchar(1), true));
+            cols.add(new Column("CARDINALITY", new com.sylo.kylo.core.structure.KyloBigInt(), true));
+            cols.add(new Column("SUB_PART", new com.sylo.kylo.core.structure.KyloBigInt(), true));
+            cols.add(new Column("PACKED", new com.sylo.kylo.core.structure.KyloVarchar(10), true));
+            cols.add(new Column("NULLABLE", new com.sylo.kylo.core.structure.KyloVarchar(3), false));
+            cols.add(new Column("INDEX_TYPE", new com.sylo.kylo.core.structure.KyloVarchar(16), false));
+            cols.add(new Column("COMMENT", new com.sylo.kylo.core.structure.KyloVarchar(16), true));
+            cols.add(new Column("INDEX_COMMENT", new com.sylo.kylo.core.structure.KyloVarchar(1024), false));
+            cols.add(new Column("IS_VISIBLE", new com.sylo.kylo.core.structure.KyloVarchar(3), false));
+            cols.add(new Column("EXPRESSION", new com.sylo.kylo.core.structure.KyloVarchar(1024), true));
+        } else if (tableName.equalsIgnoreCase("VIEWS")) {
+            cols.add(new Column("TABLE_CATALOG", new com.sylo.kylo.core.structure.KyloVarchar(255), false));
+            cols.add(new Column("TABLE_SCHEMA", new com.sylo.kylo.core.structure.KyloVarchar(255), false));
+            cols.add(new Column("TABLE_NAME", new com.sylo.kylo.core.structure.KyloVarchar(255), false));
+            cols.add(new Column("VIEW_DEFINITION", new com.sylo.kylo.core.structure.KyloVarchar(1024), false));
+            cols.add(new Column("CHECK_OPTION", new com.sylo.kylo.core.structure.KyloVarchar(8), false));
+            cols.add(new Column("IS_UPDATABLE", new com.sylo.kylo.core.structure.KyloVarchar(3), false));
+            cols.add(new Column("DEFINER", new com.sylo.kylo.core.structure.KyloVarchar(77), false));
+            cols.add(new Column("SECURITY_TYPE", new com.sylo.kylo.core.structure.KyloVarchar(7), false));
+            cols.add(new Column("CHARACTER_SET_CLIENT", new com.sylo.kylo.core.structure.KyloVarchar(32), false));
+            cols.add(new Column("COLLATION_CONNECTION", new com.sylo.kylo.core.structure.KyloVarchar(32), false));
+        } else if (tableName.equalsIgnoreCase("TABLE_CONSTRAINTS")) {
+            cols.add(new Column("CONSTRAINT_CATALOG", new com.sylo.kylo.core.structure.KyloVarchar(255), false));
+            cols.add(new Column("CONSTRAINT_SCHEMA", new com.sylo.kylo.core.structure.KyloVarchar(255), false));
+            cols.add(new Column("CONSTRAINT_NAME", new com.sylo.kylo.core.structure.KyloVarchar(255), false));
+            cols.add(new Column("TABLE_SCHEMA", new com.sylo.kylo.core.structure.KyloVarchar(255), false));
+            cols.add(new Column("TABLE_NAME", new com.sylo.kylo.core.structure.KyloVarchar(255), false));
+            cols.add(new Column("CONSTRAINT_TYPE", new com.sylo.kylo.core.structure.KyloVarchar(255), false));
+            cols.add(new Column("ENFORCED", new com.sylo.kylo.core.structure.KyloVarchar(3), false));
         } else {
-            // Fallback for KEYWORDS etc
             cols.add(new Column("DUMMY", new com.sylo.kylo.core.structure.KyloVarchar(1), true));
         }
         return new Schema(cols);

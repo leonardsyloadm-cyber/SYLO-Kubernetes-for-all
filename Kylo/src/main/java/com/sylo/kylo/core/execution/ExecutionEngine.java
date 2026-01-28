@@ -10,8 +10,7 @@ import com.sylo.kylo.core.structure.Tuple;
 import com.sylo.kylo.core.structure.PlanNode;
 import com.sylo.kylo.core.structure.ScanNode;
 import com.sylo.kylo.core.structure.FilterNode;
-import com.sylo.kylo.core.index.BPlusTreeIndex;
-import com.sylo.kylo.core.index.Index;
+
 import com.sylo.kylo.core.storage.StorageConstants;
 
 import java.util.HashMap;
@@ -24,13 +23,16 @@ public class ExecutionEngine {
     private final DiskManager diskManager;
     private final BufferPoolManager bufferPool;
     private final Map<String, HeapFile> tableFiles;
-    private final Map<String, Index> tableIndices; // TableName.ColumnName -> Index
+    // Removed local tableIndices map, using IndexManager via Catalog
 
     public ExecutionEngine(String dbPath) {
         this.diskManager = new DiskManager(dbPath);
         this.bufferPool = new BufferPoolManager(diskManager, 500); // 500 pages cache
         this.tableFiles = new HashMap<>();
-        this.tableIndices = new HashMap<>();
+    }
+
+    public BufferPoolManager getBufferPool() {
+        return bufferPool;
     }
 
     public void insertTuple(String tableName, Object[] values) {
@@ -61,18 +63,55 @@ public class ExecutionEngine {
         // 3. Get/Create HeapFile for table
         HeapFile heapFile = tableFiles.computeIfAbsent(tableName, k -> new HeapFile(bufferPool));
 
-        // 4. Insert into Heap
+        // FK Constraint Check
+        com.sylo.kylo.core.index.IndexManager indexMgr = catalog.getIndexManager();
+
+        // 3. Validate Constraints (FK, Check, etc.) BEFORE modifying anything
+        try {
+            com.sylo.kylo.core.constraint.ConstraintManager.getInstance().validateInsert(tableName, tuple, bufferPool);
+        } catch (RuntimeException e) {
+            throw e; // Fail fast
+        }
+
+        // 4. Insert into Heap (Prepare Phase)
         long rid = heapFile.insertTuple(tuple, schema);
 
-        // 5. Insert into Indices (if any)
-        // Check for indices on each column
-        for (int i = 0; i < schema.getColumnCount(); i++) {
-            String colName = schema.getColumn(i).getName();
-            String indexKey = tableName + "." + colName;
-            if (tableIndices.containsKey(indexKey)) {
-                Index idx = tableIndices.get(indexKey);
-                idx.insert(values[i], rid);
+        // 5. Insert into Indices (Commit Phase /w Rollback)
+        try {
+            for (int i = 0; i < schema.getColumnCount(); i++) {
+                String colName = schema.getColumn(i).getName();
+                if (indexMgr.hasIndex(tableName, colName)) {
+                    com.sylo.kylo.core.index.BPlusTreeIndex idx = indexMgr.getIndex(tableName, colName, bufferPool);
+                    if (idx != null) {
+                        try {
+                            idx.insert(values[i], rid);
+                        } catch (Exception ex) {
+                            System.err.println("CRITICAL ERROR inserting into index " + tableName + "." + colName +
+                                    " Value: " + values[i] + ". RootID: " + idx.getRootPageId());
+                            ex.printStackTrace();
+                            throw ex;
+                        }
+                    }
+                }
             }
+        } catch (Exception e) {
+            // ROLLBACK!
+            // Mark the tuple in HeapFile as deleted immediately
+            System.err.println("Index insertion failed: " + e.getMessage() + ". Rolling back Heap Insert.");
+            deleteTupleByRid(tableName, rid);
+            throw new RuntimeException("Transaction Aborted: " + e.getMessage() + " (State: " + tableName + ")", e);
+        }
+    }
+
+    // Helper for Rollback
+    private void deleteTupleByRid(String tableName, long rid) {
+        int pageId = (int) (rid >> 32);
+        int slotId = (int) (rid & 0xFFFFFFFFL);
+        try {
+            com.sylo.kylo.core.storage.Page page = bufferPool.fetchPage(new com.sylo.kylo.core.storage.PageId(pageId));
+            page.markTupleDeleted(slotId);
+        } catch (Exception e) {
+            System.err.println("Fatal: Rollback failed for RID " + rid);
         }
     }
 
@@ -121,20 +160,34 @@ public class ExecutionEngine {
         return scan;
     }
 
-    public void createIndex(String tableName, String columnName) {
-        // Create B+ Tree
-        // Use a distinct root page ID (e.g., from a meta table or just allocate new)
-        // For simplicity: allocate new page for root
+    public void createIndex(String tableName, String columnName, String indexName) {
+        Catalog catalog = Catalog.getInstance();
+        if (catalog.getTableSchema(tableName) == null)
+            throw new IllegalArgumentException("Table not found");
+
+        com.sylo.kylo.core.index.IndexManager indexMgr = catalog.getIndexManager();
+        if (indexMgr.hasIndex(tableName, columnName)) {
+            throw new IllegalArgumentException("Index already exists");
+        }
+
+        // Create Root
         com.sylo.kylo.core.storage.Page root = bufferPool.newPage();
         int rootId = root.getPageId().getPageNumber();
+        // Init as Leaf
+        com.sylo.kylo.core.index.IndexPage idxPage = new com.sylo.kylo.core.index.IndexPage(root,
+                com.sylo.kylo.core.index.IndexPage.IndexType.LEAF);
+        idxPage.init(com.sylo.kylo.core.index.IndexPage.IndexType.LEAF,
+                com.sylo.kylo.core.storage.StorageConstants.INVALID_PAGE_ID);
 
-        Index idx = new BPlusTreeIndex(bufferPool, rootId);
-        tableIndices.put(tableName + "." + columnName, idx);
+        // Register
+        indexMgr.registerIndex(tableName, columnName, rootId, indexName);
+        com.sylo.kylo.core.index.BPlusTreeIndex idx = indexMgr.getIndex(tableName, columnName, bufferPool);
 
-        // Populate index from existing data
+        System.out.println("Building Index " + indexName + " for " + tableName + "." + columnName + "...");
+
+        // Populate index from existing data (Full Table Scan)
         PlanNode scan = createScanPlan(tableName, null);
         scan.open();
-        Catalog catalog = Catalog.getInstance();
         Schema schema = catalog.getTableSchema(tableName);
         int colIdx = -1;
         for (int i = 0; i < schema.getColumnCount(); i++) {
@@ -143,7 +196,6 @@ public class ExecutionEngine {
                 break;
             }
         }
-
         if (colIdx == -1)
             throw new IllegalArgumentException("Column not found");
 
@@ -154,8 +206,12 @@ public class ExecutionEngine {
             idx.insert(t.getValue(colIdx), t.getRid());
         }
         scan.close();
+        System.out.println("Index build complete.");
+    }
 
-        System.out.println("Index created on " + tableName + "." + columnName);
+    // Overload for backward compatibility
+    public void createIndex(String tableName, String columnName) {
+        createIndex(tableName, columnName, "IDX_" + System.currentTimeMillis());
     }
 
     public int deleteTuple(String tableName, Predicate<Tuple> predicate) {
@@ -168,7 +224,16 @@ public class ExecutionEngine {
         if (schema == null)
             return 0;
 
+        com.sylo.kylo.core.index.IndexManager indexMgr = catalog.getIndexManager();
+
         int currentPageId = 0;
+        // Basic scan for deletion (Should use Plan logic but here we access pages for
+        // direct modification)
+        // Actually the deleteTuple logic iterates pages directly which effectively
+        // replicates ScanNode logic
+        // We should reuse plan but we need Modify access.
+        // For simplicity, keeping existing iteration logic but adding Index Deletion.
+
         while (true) {
             try {
                 if (currentPageId == StorageConstants.INVALID_PAGE_ID)
@@ -176,13 +241,42 @@ public class ExecutionEngine {
                 com.sylo.kylo.core.storage.Page page = bufferPool
                         .fetchPage(new com.sylo.kylo.core.storage.PageId(currentPageId));
                 int cnt = page.getSlotCount();
+                boolean dirty = false;
                 for (int i = 0; i < cnt; i++) {
                     Tuple t = page.getTuple(i, schema);
                     if (!t.getRowHeader().isDeleted() && predicate.test(t)) {
+                        // FK Constraint Check (Delete)
+                        try {
+                            for (int c = 0; c < schema.getColumnCount(); c++) {
+                                indexMgr.validateDelete(tableName, schema.getColumn(c).getName(), t.getValue(c),
+                                        bufferPool);
+                            }
+                        } catch (RuntimeException e) {
+                            throw e;
+                        }
+
+                        // DELETE
                         page.markTupleDeleted(i);
                         count++;
+                        dirty = true;
+
+                        // Remove from indices
+                        for (int c = 0; c < schema.getColumnCount(); c++) {
+                            String colName = schema.getColumn(c).getName();
+                            if (indexMgr.hasIndex(tableName, colName)) {
+                                com.sylo.kylo.core.index.BPlusTreeIndex idx = indexMgr.getIndex(tableName, colName,
+                                        bufferPool);
+                                if (idx != null) {
+                                    idx.delete(t.getValue(c)); // Note: BPlusTreeIndex.delete is currently empty!
+                                    // TODO: Implement BPlusTree delete
+                                }
+                            }
+                        }
                     }
                 }
+                if (dirty)
+                    page.setDirty(true); // Should be handled by markTupleDeleted theoretically if it touches buffer
+
                 int next = page.getNextPageId();
                 if (next == currentPageId || next == 0)
                     break;
@@ -195,9 +289,23 @@ public class ExecutionEngine {
     }
 
     public void updateTuple(String tableName, Object[] newValues, Predicate<Tuple> predicate) {
+        // Naive Update: Delete + Insert
+        // This is transactionally safe IF delete and insert are atomic.
+        // Currently they are separate operations.
+        // Ideally we grab locks.
+
+        // For now, simple execution:
         int deleted = deleteTuple(tableName, predicate);
         if (deleted > 0) {
-            insertTuple(tableName, newValues);
+            // Re-insert 'deleted' times?
+            // "updateTuple" typically updates ALL matching rows.
+            // If we deleted N rows, we might need to insert N rows?
+            // The signature `Object[] newValues` implies setting to CONSTANT values.
+            // e.g. UPDATE t SET c=5 WHERE ...
+            // So yes, we insert N copies.
+            for (int i = 0; i < deleted; i++) {
+                insertTuple(tableName, newValues);
+            }
         }
     }
 

@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  kylo-db:
+    build: .
+    container_name: kylo-node-1
+    ports:
+      - "8080:8080" # Web Interface
+      - "3307:3307" # MySQL Protocol
+    volumes:
+      - kylo-data:/app/kylo_storage
+    restart: unless-stopped
+
+volumes:
+  kylo-data:

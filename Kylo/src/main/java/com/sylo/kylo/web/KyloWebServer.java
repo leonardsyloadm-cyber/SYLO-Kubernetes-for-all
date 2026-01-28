@@ -221,11 +221,19 @@ public class KyloWebServer {
                 return;
             }
 
-            // String db = parts[3]; // Not used yet, assuming Default
+            String db = parts[3];
             String tbl = parts[4];
 
+            // Construct full name if needed (Catalog uses "DB:Table" format)
+            String fullTable = db + ":" + tbl;
+
             Catalog cat = Catalog.getInstance();
-            Schema schema = cat.getTableSchema(tbl);
+            Schema schema = cat.getTableSchema(fullTable);
+
+            // Fallback: Try just table name (for default or legacy)
+            if (schema == null) {
+                schema = cat.getTableSchema(tbl);
+            }
 
             StringBuilder json = new StringBuilder("[");
             if (schema != null) {

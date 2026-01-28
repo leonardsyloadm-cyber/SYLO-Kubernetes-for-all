@@ -14,9 +14,19 @@ public class HeapFile {
 
     public HeapFile(BufferPoolManager bufferPool) {
         this.bufferPool = bufferPool;
-        // In reality we should read metadata to find last page.
-        // We'll initialize assuming empty or find out (not implemented fully).
-        this.lastPageId = new PageId(0);
+        // Correctly handle initialization.
+        // If the DB is empty, we MUST allocate Page 0 formally so subsequent logic
+        // (like Index creation)
+        // respects the file size.
+        if (bufferPool.getNumPages() == 0) {
+            Page p = bufferPool.newPage();
+            this.lastPageId = p.getPageId();
+        } else {
+            // If DB exists, we assume Page 0 is the start of Heap (legacy/simple mode)
+            // In a real system we'd look up the "Last Page" from a header.
+            // For now, default to 0 and we'll scan or just overwrite (toy db behavior).
+            this.lastPageId = new PageId(0);
+        }
     }
 
     public long insertTuple(Tuple tuple, Schema schema) {

@@ -31,15 +31,16 @@ public class BufferPoolManager {
         }
 
         // Not in cache, read from disk
-        // LRU eviction happens automatically via put if full, triggering removeEldestEntry
-        
+        // LRU eviction happens automatically via put if full, triggering
+        // removeEldestEntry
+
         Page page = new Page(pageId); // Empty shell container
         diskManager.readPage(pageId, page);
         page.refresh(); // Sync header fields from loaded data
-        
+
         // This 'put' might trigger eviction if we are at capacity
         pageTable.put(pageId, page);
-        
+
         return page;
     }
 
@@ -47,10 +48,10 @@ public class BufferPoolManager {
         // Allocate space on disk
         PageId pageId = diskManager.allocatePage();
         Page page = new Page(pageId);
-        
+
         // This 'put' might trigger eviction
         pageTable.put(pageId, page);
-        
+
         return page;
     }
 
@@ -68,5 +69,9 @@ public class BufferPoolManager {
         for (PageId pid : new java.util.ArrayList<>(pageTable.keySet())) {
             flushPage(pid);
         }
+    }
+
+    public int getNumPages() {
+        return diskManager.getNumPages();
     }
 }

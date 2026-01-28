@@ -54,6 +54,14 @@ public class DiskManager {
         }
     }
 
+    public int getNumPages() {
+        try {
+            return (int) (dbFile.length() / StorageConstants.PAGE_SIZE);
+        } catch (IOException e) {
+            throw new RuntimeException("IO Error getting DB size", e);
+        }
+    }
+
     public void close() {
         try {
             dbFile.close();

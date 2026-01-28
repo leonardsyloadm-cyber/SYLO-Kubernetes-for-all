@@ -15,7 +15,34 @@ public class KyloServer {
         System.out.println("💎 KyloDB v32 Turbo-Core & SQL Brain Online...");
 
         // Init Engine
-        engine = new ExecutionEngine("kylo_storage.db");
+        // Check if we are in Docker (Volume mounted at /app/kylo_storage)
+        java.io.File dockerDataDir = new java.io.File("/app/kylo_storage");
+        java.io.File dataDir;
+        java.io.File dbFile;
+
+        if (dockerDataDir.exists() && dockerDataDir.isDirectory()) {
+            System.out.println("🐳 Docker environment detected. Using volume storage.");
+            dataDir = dockerDataDir;
+            dbFile = new java.io.File(dataDir, "kylo_storage.db");
+        } else {
+            System.out.println("💻 Local environment detected. Using local storage.");
+            dataDir = new java.io.File("kylo_system/data");
+            if (!dataDir.exists())
+                dataDir.mkdirs();
+            dbFile = new java.io.File(dataDir, "kylo_storage.db");
+        }
+
+        if (!dbFile.exists()) {
+            System.out.println("⚠️ Fresh DB detected. Wiping stale metadata to prevent corruption...");
+            new java.io.File("kylo_system/indexes/index_roots.dat").delete();
+            new java.io.File("kylo_system/indexes/index_names.dat").delete();
+            new java.io.File("kylo_system/indexes/foreign_keys.dat").delete();
+            new java.io.File("kylo_system/settings/indexes.dat").delete();
+            new java.io.File("kylo_system/settings/constraints.dat").delete();
+            new java.io.File("kylo_system/views/views.dat").delete();
+        }
+
+        engine = new ExecutionEngine(dbFile.getAbsolutePath());
 
         // Init default DB
         if (!SYSTEM_DBS.contains("default")) {
@@ -43,6 +70,13 @@ public class KyloServer {
                 webServer.stop();
             engine.close();
         }));
+
+        System.out.println("🚀 KyloDB is READY and Waiting for connections...");
+        try {
+            Thread.currentThread().join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 
     // Static method used by WebServer or internal calls if needed.

@@ -32,3 +32,4 @@ kylo.cat
 
 # Compiled Classes (if outside target)
 *.class
+kylo_system/

@@ -486,12 +486,20 @@ class OktopusApp(ctk.CTk):
         if not msg: return
         self.chat_entry.delete(0, "end")
         
-        # 1. Identidad dinámica
+        # 1. Identidad dinámica: Preferimos Usuario del OS, luego Hostname
         import socket
+        import getpass
         try:
-            sender_id = socket.gethostname()
+            # Intentar obtener usuario actual (ej. 'leonard', 'ivan')
+            sender_id = getpass.getuser()
+            # Si corre como root, intentar obtener el usuario real
+            if sender_id == "root" and os.environ.get("SUDO_USER"):
+                sender_id = os.environ.get("SUDO_USER")
         except:
-            sender_id = "Unknown-Node"
+            try:
+                sender_id = socket.gethostname()
+            except:
+                sender_id = "Unknown-Node"
         
         # 2. Evitar duplicados: Obtener mi IP de Tailscale para no enviarme a mi mismo por la pública
         my_ts_ip = ""

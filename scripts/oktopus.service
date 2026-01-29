@@ -1,0 +1,16 @@
+[Unit]
+Description=Sylo Oktopus Orchestrator
+After=network.target tailscaled.service
+Wants=tailscaled.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/leonard/proyecto
+ExecStart=/home/leonard/proyecto/scripts/oktopus_boot.sh
+Restart=always
+RestartSec=10
+EnvironmentFile=-/home/leonard/proyecto/.env
+
+[Install]
+WantedBy=multi-user.target

@@ -10,10 +10,15 @@ require_once 'php/data.php';
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.4.12/ace.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
     <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 <div class="toast-container" id="toastContainer"></div>
+<!-- ... existing code ... -->
+
 <div class="sidebar">
     <div class="brand"><i class="bi bi-cpu-fill text-primary me-2"></i><strong>SYLO</strong>_OS</div>
     <div class="d-flex flex-column gap-1 p-2">
@@ -151,6 +156,18 @@ require_once 'php/data.php';
                     <div class="mt-3 text-secondary small select-none"># SSH ROOT ACCESS</div>
                     <div><span class="text-secondary select-none">CMD:</span>  <span class="text-success" id="disp-ssh-cmd"><?=htmlspecialchars($creds['ssh_cmd'] ?? 'Connecting...')?></span></div>
                     <div><span class="text-secondary select-none">PASS:</span> <span class="text-warning" id="disp-ssh-pass"><?=htmlspecialchars($creds['ssh_pass'] ?? 'sylo1234')?></span></div>
+                </div>
+            </div>
+
+            <!-- SYLO BASTION TERMINAL SECTION -->
+            <div class="card-clean mb-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="fw-bold m-0 text-white"><i class="bi bi-hdd-network me-2 text-success"></i><span data-i18n="dashboard.web_terminal">Consola Web (Bastion)</span></h6>
+                    <button class="btn btn-sm btn-dark border-secondary hover-white" onclick="initTerminal()" id="btn-reconnect-term"><i class="bi bi-plug me-1"></i> Conectar</button>
+                </div>
+                <!-- Terminal Container -->
+                <div id="terminal-container" style="height: 300px; background: #000; border-radius: 6px; padding: 10px; overflow: hidden;">
+                    <div class="text-secondary small font-monospace">Haga clic en 'Conectar' para iniciar sesión SSH...</div>
                 </div>
             </div>
 
@@ -308,6 +325,67 @@ require_once 'php/data.php';
         </div>
     </div>
 
+<script>
+let term = null;
+let ws = null;
+let fitAddon = null;
+
+function initTerminal() {
+    if (term) { term.dispose(); term = null; }
+    if (ws) { ws.close(); ws = null; }
+
+    const container = document.getElementById('terminal-container');
+    container.innerHTML = ''; // Limpiar
+
+    term = new Terminal({
+        cursorBlink: true,
+        theme: { background: '#000000', foreground: '#00ff00' },
+        fontSize: 14,
+        fontFamily: "'Fira Code', monospace"
+    });
+    
+    fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+    term.open(container);
+    fitAddon.fit();
+
+    term.writeln("🔌 Conectando a Sylo Bastion...");
+
+    // Determine WS URL (Localhost workaround if needed)
+    // Assuming API is on port 8001
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.hostname; // 'localhost' or '127.0.0.1' or IP
+    const wsUrl = `${protocol}//${host}:8001/api/console/sylo-cliente-${orderId}`;
+
+    ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+        term.writeln("\r\n✅ CONEXIÓN ESTABLECIDA\r\n");
+        term.focus();
+    };
+
+    ws.onmessage = (event) => {
+        term.write(event.data);
+    };
+
+    ws.onclose = () => {
+        term.writeln("\r\n⚠️ CONEXIÓN CERRADA");
+    };
+
+    ws.onerror = (e) => {
+        term.writeln("\r\n❌ ERROR DE CONEXIÓN");
+    };
+
+    term.onData(data => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(data);
+        }
+    });
+
+    // Resize observer
+    window.addEventListener('resize', () => fitAddon.fit());
+}
+</script>
 <script src="js/control.js?v=<?=time()?>"></script>
 </body>
 </html>

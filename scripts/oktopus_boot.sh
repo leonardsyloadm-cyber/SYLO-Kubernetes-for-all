@@ -40,4 +40,4 @@ else
     PYTHON_EXEC="python3"
 fi
 
-$PYTHON_EXEC Cerebro/Oktopus.py
+$PYTHON_EXEC Cerebro/Oktopus.py --headless

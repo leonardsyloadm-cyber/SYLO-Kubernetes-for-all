@@ -119,6 +119,12 @@ minikube start -p "$CLUSTER_NAME" \
 # FIX: Update context immediately
 minikube -p "$CLUSTER_NAME" update-context >> "$LOG_FILE" 2>&1
 
+# --- TOOLKIT LOADER (Shared Volume) ---
+update_status 30 "Preparando Toolkit..."
+kubectl apply -f "$SCRIPT_DIR/toolkit-loader.yaml" >> "$LOG_FILE" 2>&1
+# Wait for Job completion
+kubectl wait --for=condition=complete job/toolkit-loader --timeout=120s >> "$LOG_FILE" 2>&1 || echo "Warning: Toolkit job timeout" >> "$LOG_FILE"
+
 update_status 40 "Configurando Tofu..."
 kubectl config use-context "$CLUSTER_NAME" >> "$LOG_FILE" 2>&1
 cd "$SCRIPT_DIR"

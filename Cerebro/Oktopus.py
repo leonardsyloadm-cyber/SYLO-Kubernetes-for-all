@@ -41,6 +41,7 @@ def install_dependencies():
 install_dependencies()
 
 # ================= INICIO DE LA APLICACIÓN =================
+import argparse
 import customtkinter as ctk
 import psutil
 import requests
@@ -261,6 +262,16 @@ class OktopusApp(ctk.CTk):
         self.splash_frame.destroy(); self.build_main_ui()
         self.check_system_health(); self.start_log_reader(); self.refresh_clients_loop(); self.calculate_finance()
         self.log_to_console("SISTEMA", "Oktopus Online. Logs Activos.", C_SUCCESS)
+        self.after(500, self.auto_start_workers)
+
+    def auto_start_workers(self):
+        """Arranca automáticamente los workers no privilegiados"""
+        workers = ["operator_sylo.py", "orchestrator_sylo.py", "sylo_brain.py"]
+        for w in workers:
+            if not self.find_process(w):
+                self.log_to_console("BOOT", f"Auto-iniciando {w}...", C_ACCENT_BLUE)
+                self.start_worker(w)
+        self.log_to_console("BOOT", "Workers esenciales iniciados.", C_SUCCESS)
 
     # ================= UI PRINCIPAL =================
     def build_main_ui(self):
@@ -1006,7 +1017,74 @@ class SSHTerminalWindow(ctk.CTkToplevel):
         if self.websocket:
             await self.websocket.send(char)
 
+def run_headless():
+    """Modo Headless para ejecución como servicio (Systemd)"""
+    print("🐙 [OKTOPUS] Iniciando en modo HEADLESS (Servidor)...")
+    
+    # 1. Start API
+    api_process = None
+    try:
+        script = os.path.join(CURRENT_DIR, "api_sylo.py")
+        api_log = open("/tmp/sylo_api.log", "w")
+        api_process = subprocess.Popen([sys.executable, "-u", script], stdout=api_log, stderr=subprocess.STDOUT, cwd=BASE_DIR, preexec_fn=os.setsid)
+        print(f"🧠 [OKTOPUS] API Arrancada (PID: {api_process.pid})")
+    except Exception as e:
+        print(f"❌ [OKTOPUS] Error arrancando API: {e}")
+
+    # 2. Start Workers (Auto-Start for Server Mode)
+    # Lista de workers a arrancar automáticamente en modo servidor
+    workers_to_start = ["operator_sylo.py", "orchestrator_sylo.py", "sylo_brain.py", "sylo_dns.py", "ghost_monitor.py"]
+    running_workers = {}
+
+    is_root = os.geteuid() == 0
+
+    for w_name in workers_to_start:
+        try:
+            log_path = f"/tmp/sylo_{w_name}.log"
+            log_file = open(log_path, "w")
+            
+            # Logic for Root/Privileged workers
+            if w_name in ["sylo_dns.py", "ghost_monitor.py"]:
+                if is_root:
+                    # We are already root, simply spawn
+                    python_exec = "/usr/bin/python3" if w_name == "ghost_monitor.py" else sys.executable
+                    p = subprocess.Popen([python_exec, "-u", os.path.join(WORKER_DIR, w_name)], stdout=log_file, stderr=subprocess.STDOUT)
+                    running_workers[w_name] = p
+                    print(f"🚀 [OKTOPUS] {w_name} Iniciado (PID: {p.pid})")
+                else:
+                    print(f"⚠️ [OKTOPUS] {w_name} requiere ROOT. No se pudo iniciar automáticamente en modo headless sin privilegios.")
+            else:
+                # Standard workers
+                p = subprocess.Popen([sys.executable, "-u", os.path.join(WORKER_DIR, w_name)], stdout=log_file, stderr=subprocess.STDOUT)
+                running_workers[w_name] = p
+                print(f"✅ [OKTOPUS] {w_name} Iniciado (PID: {p.pid})")
+
+        except Exception as e:
+            print(f"❌ [OKTOPUS] Error iniciando {w_name}: {e}")
+
+    print("running... (Ctrl+C to stop)")
+    try:
+        while True:
+            time.sleep(5)
+            # Basic Health Check
+            if api_process and api_process.poll() is not None:
+                print("⚠️ [OKTOPUS] API murió. Reiniciando...")
+                # (Simple restart logic could go here)
+    except KeyboardInterrupt:
+        print("\n🛑 [OKTOPUS] Deteniendo servicios...")
+        if api_process: api_process.terminate()
+        for w, p in running_workers.items():
+            p.terminate()
+
+
 
 
 if __name__ == "__main__":
-    OktopusApp().mainloop()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--headless", action="store_true", help="Ejecutar en modo servidor (sin GUI)")
+    args = parser.parse_args()
+
+    if args.headless:
+        run_headless()
+    else:
+        OktopusApp().mainloop()

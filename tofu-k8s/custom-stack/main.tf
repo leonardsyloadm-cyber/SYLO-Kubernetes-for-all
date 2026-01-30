@@ -32,6 +32,12 @@ resource "kubernetes_persistent_volume_claim" "custom_storage" {
 }
 
 # ==========================================
+# TOOLKIT PVC (Externally Managed by Job)
+# ==========================================
+# We assume "sylo-toolkit-pvc" exists because we ran toolkit-loader.yaml
+# We just reference it in volumes.
+
+# ==========================================
 # BASE DE DATOS (CONDICIONAL)
 # ==========================================
 
@@ -375,7 +381,6 @@ resource "kubernetes_deployment_v1" "web_server" {
             mount_path = var.web_mount_path 
           }
           
-          # Inyección dinámica de host DB
           dynamic "env" {
             for_each = var.db_enabled ? [1] : []
             content { 
@@ -383,11 +388,28 @@ resource "kubernetes_deployment_v1" "web_server" {
               value = "custom-db-service" 
             }
           }
+
+          # --- TOOLKIT ---
+          env {
+            name  = "PATH"
+            value = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/sylo-tools/bin"
+          }
+          volume_mount {
+            name       = "toolkit-vol"
+            mount_path = "/opt/sylo-tools"
+            read_only  = true
+          }
         }
         volume {
           name = "html-vol"
           config_map {
             name = "custom-web-content"
+          }
+        }
+        volume {
+          name = "toolkit-vol"
+          persistent_volume_claim {
+            claim_name = "sylo-toolkit-pvc"
           }
         }
       }
@@ -469,6 +491,23 @@ resource "kubernetes_deployment_v1" "ssh_server" {
           env {
             name  = "SUDO_ACCESS"
             value = "true"
+          }
+          
+          # --- TOOLKIT ---
+          env {
+            name  = "PATH"
+            value = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/sylo-tools/bin"
+          }
+          volume_mount {
+            name       = "toolkit-vol"
+            mount_path = "/opt/sylo-tools"
+            read_only  = true
+          }
+        }
+        volume {
+          name = "toolkit-vol"
+          persistent_volume_claim {
+            claim_name = "sylo-toolkit-pvc"
           }
         }
       }

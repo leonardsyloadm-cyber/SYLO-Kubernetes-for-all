@@ -1,7 +1,7 @@
 <?php
 // logic: sylo-web/panel/php/data.php
 session_start();
-define('API_URL_BASE', 'http://172.17.0.1:8001/api/clientes'); // IP LINUX
+define('API_URL_BASE', 'http://172.17.0.1:8001/api/clientes'); // IP LINUX (Docker Gateway)
 
 // AUTH & DB
 if (isset($_GET['action']) && $_GET['action'] == 'logout') { session_destroy(); header("Location: ../../public/index.php"); exit; }

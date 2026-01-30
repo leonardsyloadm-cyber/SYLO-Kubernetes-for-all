@@ -1,0 +1,1 @@
+{"percent": 100, "message": "Fallo Cr\u00edtico Custom.", "status": "error", "metrics": {"cpu": 26.05, "ram": 58.66}, "ssh_cmd": "root@sylo", "web_url": "http://interno.sylobi.org", "os_info": "os_img", "installed_tools": ["alpine"], "last_update": 1769792499.6784437}

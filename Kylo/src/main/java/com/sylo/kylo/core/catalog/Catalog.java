@@ -57,6 +57,14 @@ public class Catalog {
         return com.sylo.kylo.core.index.IndexManager.getInstance();
     }
 
+    public com.sylo.kylo.core.constraint.ConstraintManager getConstraintManager() {
+        return com.sylo.kylo.core.constraint.ConstraintManager.getInstance();
+    }
+
+    public void addConstraint(com.sylo.kylo.core.constraint.Constraint c) {
+        getConstraintManager().addConstraint(c);
+    }
+
     public void reset() {
         tables.clear();
         databases.clear();

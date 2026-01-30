@@ -11,8 +11,10 @@ public class SessionContext {
     private final Map<String, Object> variables = new HashMap<>();
     private String currentDatabase = "default";
     private String currentUser = null;
+    private final String sessionId;
 
     public SessionContext() {
+        this.sessionId = java.util.UUID.randomUUID().toString();
         // Initialize default MySQL 8.0 variables to satisfy JDBC/DBeaver
         variables.put("max_allowed_packet", 67108864); // 64M
         variables.put("net_write_timeout", 60);
@@ -83,5 +85,9 @@ public class SessionContext {
 
     public void setCurrentUser(String currentUser) {
         this.currentUser = currentUser;
+    }
+
+    public String getSessionId() {
+        return sessionId;
     }
 }

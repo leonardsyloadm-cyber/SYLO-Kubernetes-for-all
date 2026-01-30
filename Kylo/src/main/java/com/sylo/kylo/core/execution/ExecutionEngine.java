@@ -35,10 +35,39 @@ public class ExecutionEngine {
         return bufferPool;
     }
 
+    // Overload for no session (AutoCommit / System)
     public void insertTuple(String tableName, Object[] values) {
+        insertTuple(null, tableName, values);
+    }
+
+    public void insertTuple(String sessionId, String tableName, Object[] values) {
+        // 0. Transaction Check
+        if (sessionId != null) {
+            com.sylo.kylo.core.transaction.TransactionManager tm = com.sylo.kylo.core.transaction.TransactionManager
+                    .getInstance();
+            if (tm.isInTransaction(sessionId)) {
+                // Shadow Insert
+                System.out.println("👻 Shadow Insert for Session " + sessionId);
+                Schema schema = Catalog.getInstance().getTableSchema(tableName);
+                // Validate first
+                for (int i = 0; i < values.length; i++) {
+                    if (values[i] != null)
+                        schema.getColumn(i).getType().validate(values[i]);
+                }
+                RowHeader header = new RowHeader();
+                Tuple t = new Tuple(header, values);
+                tm.getTransaction(sessionId).addInsert(tableName, t);
+                return;
+            }
+        }
+        // Fallback to direct synchronous write
+        insertTupleDirect(tableName, values);
+    }
+
+    public void insertTupleDirect(String tableName, Object[] values) {
         Catalog catalog = Catalog.getInstance();
         Schema schema = catalog.getTableSchema(tableName);
-
+        // ... existing logic ...
         if (schema == null) {
             throw new IllegalArgumentException("Table " + tableName + " does not exist.");
         }
@@ -104,7 +133,7 @@ public class ExecutionEngine {
     }
 
     // Helper for Rollback
-    private void deleteTupleByRid(String tableName, long rid) {
+    public void deleteTupleByRid(String tableName, long rid) {
         int pageId = (int) (rid >> 32);
         int slotId = (int) (rid & 0xFFFFFFFFL);
         try {
@@ -117,19 +146,44 @@ public class ExecutionEngine {
 
     // Legacy support for simple scan - executes plan immediately
     public List<Object[]> scanTable(String tableName) {
+        return scanTable(null, tableName);
+    }
+
+    public List<Object[]> scanTable(String sessionId, String tableName) {
         PlanNode plan = createScanPlan(tableName, null);
         List<Object[]> results = new ArrayList<>();
+
+        com.sylo.kylo.core.transaction.TransactionContext ctx = null;
+        if (sessionId != null) {
+            ctx = com.sylo.kylo.core.transaction.TransactionManager.getInstance().getTransaction(sessionId);
+        }
+
         plan.open();
         try {
             while (true) {
                 Tuple t = plan.next();
                 if (t == null)
                     break;
+
+                // Shadow Filter (Deletes)
+                if (ctx != null && ctx.isDeleted(tableName, t.getRid())) {
+                    continue; // Skip shadow-deleted row
+                }
+
                 results.add(t.getValues());
             }
         } finally {
             plan.close();
         }
+
+        // Shadow Merge (Inserts)
+        if (ctx != null) {
+            List<Tuple> shadowInserts = ctx.getInserts(tableName);
+            for (Tuple t : shadowInserts) {
+                results.add(t.getValues());
+            }
+        }
+
         return results;
     }
 
@@ -214,7 +268,59 @@ public class ExecutionEngine {
         createIndex(tableName, columnName, "IDX_" + System.currentTimeMillis());
     }
 
+    // Overload
     public int deleteTuple(String tableName, Predicate<Tuple> predicate) {
+        return deleteTuple(null, tableName, predicate);
+    }
+
+    public int deleteTuple(String sessionId, String tableName, Predicate<Tuple> predicate) {
+        if (sessionId != null) {
+            com.sylo.kylo.core.transaction.TransactionManager tm = com.sylo.kylo.core.transaction.TransactionManager
+                    .getInstance();
+            if (tm.isInTransaction(sessionId)) {
+                System.out.println("👻 Shadow Delete for Session " + sessionId);
+                int count = 0;
+                com.sylo.kylo.core.transaction.TransactionContext ctx = tm.getTransaction(sessionId);
+
+                // 1. Mark Disk Tuples as Deleted (Shadow)
+                // We restart scan to get RIDs
+                PlanNode plan = createScanPlan(tableName, null);
+                plan.open();
+                while (true) {
+                    Tuple t = plan.next();
+                    if (t == null)
+                        break;
+
+                    // If already shadow-deleted, skip
+                    if (ctx.isDeleted(tableName, t.getRid()))
+                        continue;
+
+                    if (predicate.test(t)) {
+                        ctx.addDelete(tableName, t.getRid());
+                        count++;
+                    }
+                }
+                plan.close();
+
+                // 2. Remove from Shadow Inserts
+                List<Tuple> inserts = ctx.getInserts(tableName);
+                if (inserts != null) {
+                    java.util.Iterator<Tuple> it = inserts.iterator();
+                    while (it.hasNext()) {
+                        Tuple t = it.next();
+                        if (predicate.test(t)) {
+                            it.remove();
+                            count++;
+                        }
+                    }
+                }
+                return count;
+            }
+        }
+        return deleteTupleDirect(tableName, predicate);
+    }
+
+    public int deleteTupleDirect(String tableName, Predicate<Tuple> predicate) {
         PlanNode plan = createScanPlan(tableName, predicate);
         plan.open();
         int count = 0;
@@ -268,7 +374,6 @@ public class ExecutionEngine {
                                         bufferPool);
                                 if (idx != null) {
                                     idx.delete(t.getValue(c)); // Note: BPlusTreeIndex.delete is currently empty!
-                                    // TODO: Implement BPlusTree delete
                                 }
                             }
                         }
@@ -288,24 +393,78 @@ public class ExecutionEngine {
         return count;
     }
 
-    public void updateTuple(String tableName, Object[] newValues, Predicate<Tuple> predicate) {
-        // Naive Update: Delete + Insert
-        // This is transactionally safe IF delete and insert are atomic.
-        // Currently they are separate operations.
-        // Ideally we grab locks.
+    // Overload
+    public void updateTuple(String tableName, java.util.Map<Integer, Object> changes, Predicate<Tuple> predicate) {
+        updateTuple(null, tableName, changes, predicate);
+    }
 
-        // For now, simple execution:
-        int deleted = deleteTuple(tableName, predicate);
-        if (deleted > 0) {
-            // Re-insert 'deleted' times?
-            // "updateTuple" typically updates ALL matching rows.
-            // If we deleted N rows, we might need to insert N rows?
-            // The signature `Object[] newValues` implies setting to CONSTANT values.
-            // e.g. UPDATE t SET c=5 WHERE ...
-            // So yes, we insert N copies.
-            for (int i = 0; i < deleted; i++) {
-                insertTuple(tableName, newValues);
+    public void updateTuple(String sessionId, String tableName, java.util.Map<Integer, Object> changes,
+            Predicate<Tuple> predicate) {
+        // Transactional Read-Modify-Write
+        // 1. Scan for targets
+        // Catalog.getInstance().getTableSchema(tableName); // Schema unused
+
+        // We need RIDs. scanTable returning Object[] loses RIDs.
+        // We need a scanTuple that returns Tuples!
+        // Re-implementing scan loop here to get Tuples is safest.
+
+        List<Tuple> toUpdate = new ArrayList<>();
+        PlanNode plan = createScanPlan(tableName, null);
+        com.sylo.kylo.core.transaction.TransactionContext ctx = null;
+        if (sessionId != null) {
+            ctx = com.sylo.kylo.core.transaction.TransactionManager.getInstance().getTransaction(sessionId);
+        }
+
+        plan.open();
+        try {
+            while (true) {
+                Tuple t = plan.next();
+                if (t == null)
+                    break;
+                if (ctx != null && ctx.isDeleted(tableName, t.getRid()))
+                    continue;
+                if (predicate.test(t)) {
+                    toUpdate.add(t);
+                }
             }
+        } finally {
+            plan.close();
+        }
+
+        // Check Shadow Inserts too
+        if (ctx != null) {
+            List<Tuple> shadows = ctx.getInserts(tableName);
+            if (shadows != null) {
+                for (Tuple t : shadows) {
+                    if (predicate.test(t)) {
+                        toUpdate.add(t);
+                    }
+                }
+            }
+        }
+
+        // 2. Process Updates
+        for (Tuple oldT : toUpdate) {
+            // A. Delete Old
+            // Construct specific predicate for RID or object identity
+            final long targetRid = oldT.getRid();
+            final Tuple targetObj = oldT;
+
+            deleteTuple(sessionId, tableName, t -> {
+                // Match by RID or Identity
+                if (targetRid != 0)
+                    return t.getRid() == targetRid;
+                return t == targetObj; // Identity match for shadow tuples
+            });
+
+            // B. Create New
+            Object[] newVals = oldT.getValues().clone();
+            for (java.util.Map.Entry<Integer, Object> entry : changes.entrySet()) {
+                newVals[entry.getKey()] = entry.getValue();
+            }
+
+            // C. Insert New
+            insertTuple(sessionId, tableName, newVals);
         }
     }
 

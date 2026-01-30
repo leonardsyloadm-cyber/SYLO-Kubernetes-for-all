@@ -18,7 +18,7 @@ public class AuthManager {
         // We will just look for the user.
 
         try {
-            List<Object[]> users = executionEngine.scanTable("SYSTEM:users");
+            List<Object[]> users = executionEngine.scanTable("kylo_system:users");
             for (Object[] row : users) {
                 String user = (String) row[1];
                 String passHash = (String) row[2]; // Can be null

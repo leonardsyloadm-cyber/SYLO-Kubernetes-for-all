@@ -133,42 +133,71 @@ public class SystemTableProvider {
                             entry.getValue(), "NONE", "NO", "def", "utf8mb4", "utf8mb4_0900_ai_ci"));
                 }
             } else if (tableName.equalsIgnoreCase("TABLE_CONSTRAINTS")) {
+                // TABLE_CONSTRAINTS: CONSTRAINT_CATALOG, CONSTRAINT_SCHEMA, CONSTRAINT_NAME,
+                // TABLE_SCHEMA, TABLE_NAME, CONSTRAINT_TYPE, ENFORCED
                 for (String t : catalog.getAllTableNames()) {
                     String[] parts = t.contains(":") ? t.split(":") : new String[] { "default", t };
                     String db = parts.length > 1 ? parts[0] : "default";
                     String tbl = parts.length > 1 ? parts[1] : parts[0];
 
-                    // PK (Assuming 1st col is PK for now as we don't store strict PK metadata yet,
-                    // or just dummy)
-                    // Instructions say: Expose B-Trees as Indexes.
-                    // CONSTRAINTS: PRIMARY KEY, UNIQUE, FOREIGN KEY.
+                    List<com.sylo.kylo.core.constraint.Constraint> constraints = catalog.getConstraintManager()
+                            .getConstraints(t);
+                    for (com.sylo.kylo.core.constraint.Constraint c : constraints) {
+                        String type = "UNKNOWN";
+                        if (c.getType() == com.sylo.kylo.core.constraint.Constraint.Type.PRIMARY_KEY)
+                            type = "PRIMARY KEY";
+                        else if (c.getType() == com.sylo.kylo.core.constraint.Constraint.Type.UNIQUE)
+                            type = "UNIQUE";
+                        else if (c.getType() == com.sylo.kylo.core.constraint.Constraint.Type.FOREIGN_KEY)
+                            type = "FOREIGN KEY";
 
-                    // Fake PK for DBeaver happiness if we don't have real PK meta?
-                    rows.add(createTuple("def", db, "PK_" + tbl, db, tbl, "PRIMARY KEY", "NO"));
+                        rows.add(createTuple("def", db, c.getName(), db, tbl, type, "YES"));
+                    }
+
+                    // Fake PK if none exists? DBeaver likes PKs.
+                    // Let's rely on real metadata now.
                 }
-            } else if (tableName.equalsIgnoreCase("STATISTICS")) {
-                // INDEXES
-                // TABLE_CATALOG, TABLE_SCHEMA, TABLE_NAME, NON_UNIQUE, INDEX_SCHEMA,
-                // INDEX_NAME, SEQ_IN_INDEX, COLUMN_NAME, COLLATION, CARDINALITY, SUB_PART,
-                // PACKED, NULLABLE, INDEX_TYPE, COMMENT, INDEX_COMMENT, IS_VISIBLE, EXPRESSION
-                com.sylo.kylo.core.index.IndexManager im = catalog.getIndexManager();
+            } else if (tableName.equalsIgnoreCase("KEY_COLUMN_USAGE")) {
+                // CONSTRAINT_CATALOG, CONSTRAINT_SCHEMA, CONSTRAINT_NAME, TABLE_CATALOG,
+                // TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION,
+                // POSITION_IN_UNIQUE_CONSTRAINT, REFERENCED_TABLE_SCHEMA,
+                // REFERENCED_TABLE_NAME, REFERENCED_COLUMN_NAME
                 for (String t : catalog.getAllTableNames()) {
-                    Schema s = catalog.getTableSchema(t);
                     String[] parts = t.contains(":") ? t.split(":") : new String[] { "default", t };
                     String db = parts.length > 1 ? parts[0] : "default";
                     String tbl = parts.length > 1 ? parts[1] : parts[0];
 
-                    for (int i = 0; i < s.getColumnCount(); i++) {
-                        String c = s.getColumn(i).getName();
-                        if (im.hasIndex(t, c)) {
+                    List<com.sylo.kylo.core.constraint.Constraint> constraints = catalog.getConstraintManager()
+                            .getConstraints(t);
+                    for (com.sylo.kylo.core.constraint.Constraint c : constraints) {
+                        int ord = 1;
+                        // For each column in constraint
+                        for (int i = 0; i < c.getColumns().size(); i++) {
+                            String col = c.getColumns().get(i);
+                            String refDb = null;
+                            String refTbl = null;
+                            String refCol = null;
+
+                            if (c.getType() == com.sylo.kylo.core.constraint.Constraint.Type.FOREIGN_KEY) {
+                                String fullRef = c.getRefTable();
+                                String[] rParts = fullRef.contains(":") ? fullRef.split(":")
+                                        : new String[] { "default", fullRef };
+                                refDb = rParts.length > 1 ? rParts[0] : "default";
+                                refTbl = rParts.length > 1 ? rParts[1] : rParts[0];
+                                refCol = c.getRefColumns().get(i);
+                            }
+
                             rows.add(createTuple(
-                                    "def", db, tbl, 1, db, "IDX_" + tbl + "_" + c, 1, c, "A", 0L, null, null, "YES",
-                                    "BTREE", "", "", "YES", null));
+                                    "def", db, c.getName(), // Constraint Schema/Name
+                                    "def", db, tbl, // Table
+                                    col, // Column
+                                    (long) ord++, // Ordinal
+                                    null, // Pos in Unique (null for now)
+                                    refDb, refTbl, refCol // Refs
+                            ));
                         }
                     }
                 }
-            } else if (tableName.equalsIgnoreCase("KEY_COLUMN_USAGE")) {
-                // Empty for now or populate if needed
             }
 
             iterator = rows.iterator();

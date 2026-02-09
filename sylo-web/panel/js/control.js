@@ -3,7 +3,9 @@
 
 // Global vars defined in dashboard.php (oid, planCpus, backupLimit) need to be accessible.
 
+
 let isManualLoading = false;
+let pollingInterval = null;
 let completionLock = 0; // Previene leer '100%' de ejecuciones anteriores
 let stateLockTimestamp = 0; // FIX RACE CONDITION: Ignore 100% for X seconds
 let isBackupLoading = false;
@@ -369,7 +371,16 @@ function loadData() {
                                 if (powerModal) powerModal.hide();
                                 showToast(window.SyloLang?.get('power.completed') || "Operación Completada", 'success');
                                 if (gp && gp.action === 'plan_update') {
-                                    window.location.reload(); // Refresh to show new plan details
+                                    // FIX: Dismiss status file BEFORE reloading to prevent loop
+                                    if (pollingInterval) clearInterval(pollingInterval);
+                                    fetch('php/data.php?ajax_action=1', {
+                                        method: 'POST',
+                                        body: new URLSearchParams({ action: 'dismiss_plan', order_id: orderId })
+                                    })
+                                        .then(() => {
+                                            window.location.reload();
+                                        })
+                                        .catch(() => window.location.reload());
                                 }
                             }, 1000);
                         }
@@ -664,7 +675,7 @@ function loadData() {
         })
         .catch(err => { console.log("Esperando datos...", err); });
 }
-setInterval(loadData, 500);
+pollingInterval = setInterval(loadData, 500);
 
 function setBtnState(disabled, text = null, progress = null) {
     const btn = document.getElementById('btn-ver-web');
@@ -696,4 +707,70 @@ function setBtnState(disabled, text = null, progress = null) {
             txt.innerHTML = text;
         }
     }
+}
+
+function submitPlanChange() {
+    const form = document.getElementById('planForm');
+    if (!form) return;
+
+    const planInput = document.getElementById('selectedPlanInput');
+    const planName = planInput ? planInput.value : "Nuevo Plan";
+
+    // Warn about backups deletion
+    const warningMsg = `⚠️ ADVERTENCIA: CAMBIO DE PLAN\n\nEstás a punto de cambiar al plan: ${planName}.\n\nIMPORTANTE: Si seleccionas un plan inferior al actual, el límite de copias de seguridad podría reducirse. El sistema borrará AUTOMÁTICAMENTE las copias más antiguas para ajustarse al nuevo espacio.\n\n¿Deseas continuar?`;
+
+    if (!confirm(warningMsg)) {
+        return;
+    }
+
+    // 1. Hide Plan Modal
+    const planModalEl = document.getElementById('changePlanModal');
+    if (planModalEl) {
+        const modal = bootstrap.Modal.getInstance(planModalEl);
+        if (modal) modal.hide();
+    }
+
+    // 2. Show Loading Modal (Immediate Feedback)
+    const powerModalEl = document.getElementById('powerModal');
+    if (powerModalEl) {
+        // Initialize if not exists
+        if (!powerModal) powerModal = new bootstrap.Modal(powerModalEl);
+        powerModal.show();
+
+        // Update Text
+        const pBar = document.getElementById('power-progress-bar');
+        const pTxt = document.getElementById('power-status-text');
+
+        if (pBar) pBar.style.width = '5%';
+        if (pTxt) {
+            pTxt.innerText = "Iniciando cambio de plan...";
+            // Try to use translation key if available, otherwise keep text
+            pTxt.setAttribute('data-i18n', 'plan.updating');
+        }
+    }
+
+    // 3. Submit via AJAX
+    const formData = new FormData(form);
+    // data.php expects 'action' which is in the form
+
+    fetch('php/data.php?ajax_action=1', {
+        method: 'POST',
+        body: formData
+    })
+        .then(r => r.json()) // Expecting JSON {status: 'ok'}
+        .then(data => {
+            console.log("Plan Update Request Sent", data);
+            // The existing polling loop in loadData() checks for d.general_progress.action === 'plan_update'
+            // and will keep the modal open and updating until completion.
+
+            // Add artificial delay to show 10% progress at least before polling takes over
+            const pBar = document.getElementById('power-progress-bar');
+            if (pBar) pBar.style.width = '10%';
+
+        })
+        .catch(err => {
+            console.error("Plan Update Error", err);
+            alert("Error al comunicarse con el servidor. Por favor recarga la página.");
+            if (powerModal) powerModal.hide();
+        });
 }

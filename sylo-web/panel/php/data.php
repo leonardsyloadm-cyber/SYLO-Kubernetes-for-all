@@ -69,6 +69,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         echo json_encode(['status'=>'ok']); exit;
     }
 
+    // ACTION: Dismiss Plan Update (Fix: Prevent Infinite Reload Loop)
+    if ($act == 'dismiss_plan') {
+        $f_plan = __DIR__ . "/../../buzon-pedidos/plan_status_{$oid}.json";
+        if (file_exists($f_plan)) @unlink($f_plan);
+        echo json_encode(['status'=>'ok']); exit;
+    }
+
     if ($act == 'update_web') {
         $data['html_content'] = $_POST['html_content'];
         // SMART LINKING (Fix Blinking & Status Flop)
@@ -158,10 +165,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
            ]
        ];
        file_put_contents($action_file, json_encode($payload));
-       
+
+       // --- BACKUP LIMIT ENFORCEMENT ---
+       // Calculate new limit
+       $new_limit = 2; // Default (Bronce)
+       if ($new_plan == 'Oro') $new_limit = 5;
+       elseif ($new_plan == 'Plata') $new_limit = 3;
+       elseif ($new_plan == 'Personalizado') {
+           $score = ($cpu * 5) + ($ram * 5);
+           if ($db_en) $score += 10;
+           if ($web_en) $score += 10;
+           if ($score >= 30) $new_limit = 5;
+           elseif ($score >= 15) $new_limit = 3;
+       }
+
+       // Scan and Clean Excess
+       $buzon_dir = __DIR__ . "/../../buzon-pedidos/";
+       $files = glob($buzon_dir . "backup_v{$oid}_*.tar.gz");
+       if ($files && count($files) > $new_limit) {
+           // Sort by modification time DESC (Newest first)
+           usort($files, function($a, $b) {
+               return filemtime($b) - filemtime($a);
+           });
+           
+           // Keep first $new_limit, delete the rest
+           $to_delete = array_slice($files, $new_limit);
+           foreach ($to_delete as $f) {
+               if (file_exists($f)) @unlink($f);
+           }
+       }
+       // --------------------------------
+
+       // CLEANUP CONFLICTING STATUS FILES (Fix: Stuck Progress Bar)
+       // We must remove power/web/backup and PLAN status files so data.php reads our new status_{oid}.json
+       $f_pow = $buzon_dir . "power_status_{$oid}.json";
+       $f_web = $buzon_dir . "web_status_{$oid}.json";
+       $f_back = $buzon_dir . "backup_status_{$oid}.json";
+       $f_plan = $buzon_dir . "plan_status_{$oid}.json";
+
+       if (file_exists($f_pow)) @unlink($f_pow);
+       if (file_exists($f_web)) @unlink($f_web);
+       if (file_exists($f_back)) @unlink($f_back);
+       if (file_exists($f_plan)) @unlink($f_plan);
+
        // Set Transient Status - Starts at 10%
-       $f_upd = __DIR__ . "/../../buzon-pedidos/status_{$oid}.json";
-       $f_upd = __DIR__ . "/../../buzon-pedidos/status_{$oid}.json";
+       $f_upd = $buzon_dir . "plan_status_{$oid}.json";
        $transient = [
            'action' => 'plan_update',
            'status' => 'updating_plan',
@@ -229,8 +277,12 @@ if (isset($_GET['ajax_data'])) {
     // Debemos leer el más relevante.
     $prog_data = null;
     
+    // Priority 0: Plan Updates (Avoids Metrics Race Condition)
+    if (file_exists($buzon_dir . "plan_status_{$oid}.json")) {
+        $prog_data = json_decode(@file_get_contents($buzon_dir . "plan_status_{$oid}.json"), true);
+    }
     // Priority 1: Power Ops (Critical)
-    if (file_exists($buzon_dir . "power_status_{$oid}.json")) {
+    else if (file_exists($buzon_dir . "power_status_{$oid}.json")) {
         $prog_data = json_decode(@file_get_contents($buzon_dir . "power_status_{$oid}.json"), true);
     }
     // Priority 2: Web Updates (High User Vis)

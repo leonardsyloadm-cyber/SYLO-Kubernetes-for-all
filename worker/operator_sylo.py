@@ -60,12 +60,46 @@ except ImportError: log("⚠️ Falta 'requests'", C_RED)
 
 def report_progress(oid, tipo, status, pct, msg):
     log(f"📡 API > Cliente {oid} [{tipo}]: {msg} ({pct}%)", C_GREY)
+    
+    # 1. WRITE TO DISK (Compatibilidad Directa Frontend PHP)
+    try:
+        # Definir nombre de archivo segun tipo
+        f_name = f"status_{oid}.json"
+        if tipo == "power": f_name = f"power_status_{oid}.json"
+        elif tipo == "backup": f_name = f"backup_status_{oid}.json"
+        elif tipo == "web" or tipo == "web_updating": f_name = f"web_status_{oid}.json"
+        
+        file_path = os.path.join(BUZON, f_name)
+        
+        # Mapeo de action para que el frontend lo reconozca
+        payload = {
+            "id_cliente": int(oid), 
+            "status": status, 
+            "percent": int(pct), 
+            "msg": str(msg),
+            "message": str(msg) # Redundancia
+        }
+        if tipo == "plan_update": 
+            payload["action"] = "plan_update"
+            # Force filename to specialist status for plan updates to avoid race condition with metrics
+            f_name = f"plan_status_{oid}.json"
+            file_path = os.path.join(BUZON, f_name)
+
+        tmp_path = file_path + ".tmp"
+        with open(tmp_path, 'w') as f: json.dump(payload, f)
+        os.chmod(tmp_path, 0o666)
+        os.replace(tmp_path, file_path)
+    except Exception as e:
+        log(f"⚠️ Error escribiendo disco: {e}", C_RED)
+
+    # 2. SEND TO API (Legacy/Centralized)
+    # FIX: Skip API for plan_update to avoid creating 'backup_status' file (API defaults) which overrides our 'status' file in frontend.
+    if tipo == "plan_update": return
+
     try:
         payload = {
             "id_cliente": int(oid), "tipo": tipo, "status_text": status, "percent": int(pct), "msg": str(msg)
         }
-        if tipo == "plan_update": payload["action"] = "plan_update"
-        
         requests.post(f"{API_URL}/reportar/progreso", json=payload, timeout=2)
     except: pass
 
@@ -129,6 +163,113 @@ def find_active_configmap(profile, pod_name):
 # 🚀 ACCIONES
 # ==============================================================================
 
+# ... (Previous functions omitted for brevity, ensure they are kept if outside range) ...
+
+# 7. 🔄 UPDATE PLAN (Scaling & Reconciliation)
+def handle_plan_update(oid, profile, new_specs_arg):
+    log(f"⚡ UPDATE PLAN: Cliente {oid}", C_YELLOW)
+    report_progress(oid, "plan_update", "updating", 10, "Analizando nueva configuración...")
+    time.sleep(1)
+    
+    try:
+        # A. Fetch Full Specs (Target)
+        report_progress(oid, "plan_update", "updating", 15, "Leyendo especificaciones...")
+        cmd_db = f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D kylo_main_db -e "SELECT cpu_cores, ram_gb, db_enabled, db_type, db_custom_name, web_enabled, web_type, web_custom_name, subdomain, os_image, ssh_user FROM order_specs WHERE order_id={oid}"'
+        raw = run_command(cmd_db, silent=True).strip()
+        if not raw: raise Exception("No specs found in DB")
+        
+        parts = raw.split('\t')
+        specs = {
+            "cpu": parts[0], "ram": parts[1],
+            "db_en": parts[2], "db_type": parts[3], "db_name": parts[4],
+            "web_en": parts[5], "web_type": parts[6], "web_name": parts[7],
+            "sub": parts[8], "os": parts[9], "user": parts[10], "owner": parts[10]
+        }
+        
+        # B. DETECT CURRENT STATE (For user feedback)
+        curr_cpu = 0
+        curr_ram = 0
+        web_exists = "custom-web" in run_command(f"minikube -p {profile} kubectl -- get deploy", silent=True)
+        
+        try:
+            # Check current resources from live deployment (if exists)
+            chk = f"minikube -p {profile} kubectl -- get deploy custom-web -o jsonpath='{{.spec.template.spec.containers[0].resources.requests.memory}}'"
+            raw_ram = run_command(chk, silent=True).strip()
+            if raw_ram and "Gi" in raw_ram: curr_ram = int(raw_ram.replace("Gi",""))
+            elif raw_ram and "Mi" in raw_ram: curr_ram = int(raw_ram.replace("Mi","")) / 1024
+            
+            # Simple heuristic if deployment checking fails or returns strange values:
+            if curr_ram == 0: curr_ram = 1 # Assume min
+        except: pass
+
+        # C. Compare & Report
+        tgt_ram = int(specs['ram'])
+        
+        msg_scale = f"Ajustando recursos (RAM: {specs['ram']}GB)..."
+        if tgt_ram > curr_ram and curr_ram > 0:
+            msg_scale = f"🚀 Aumentando RAM y CPU ({curr_ram}GB -> {tgt_ram}GB)..."
+        elif tgt_ram < curr_ram:
+            msg_scale = f"📉 Reduciendo RAM y CPU ({curr_ram}GB -> {tgt_ram}GB)..."
+            
+        report_progress(oid, "plan_update", "scaling", 30, msg_scale)
+        time.sleep(2)
+        
+        # Resize Web
+        if specs['web_en'] == '1':
+            run_command(f"minikube -p {profile} kubectl -- set resources deployment custom-web --limits=cpu={specs['cpu']},memory={specs['ram']}Gi --requests=cpu={specs['cpu']},memory={specs['ram']}Gi", silent=True)
+            
+        # Resize DB
+        if specs['db_en'] == '1':
+            run_command(f"minikube -p {profile} kubectl -- set resources deployment custom-db --limits=cpu={specs['cpu']},memory={specs['ram']}Gi --requests=cpu={specs['cpu']},memory={specs['ram']}Gi", silent=True)
+            
+        time.sleep(2) 
+
+        # D. Installs / Uninstalls
+        db_exists = "custom-db" in run_command(f"minikube -p {profile} kubectl -- get deploy", silent=True)
+        
+        if specs['db_en'] == '1' and not db_exists:
+             report_progress(oid, "plan_update", "deploying_db", 50, "Instalando Base de Datos...")
+             _apply_db_manifest(profile, specs)
+        elif specs['db_en'] == '0' and db_exists:
+             report_progress(oid, "plan_update", "removing_db", 50, "Desinstalando Base de Datos...")
+             run_command(f"minikube -p {profile} kubectl -- delete deployment custom-db", silent=True)
+             run_command(f"minikube -p {profile} kubectl -- delete service custom-db-service", silent=True)
+        
+        
+        if specs['web_en'] == '1' and not web_exists:
+            report_progress(oid, "plan_update", "deploying_web", 70, "Instalando Servidor Web...")
+            time.sleep(2)
+            _apply_web_manifest(profile, specs)
+        elif specs['web_en'] == '0' and web_exists:
+            report_progress(oid, "plan_update", "removing_web", 70, "Desinstalando Servidor Web...")
+            time.sleep(2)
+            run_command(f"minikube -p {profile} kubectl -- delete deployment custom-web", silent=True)
+            run_command(f"minikube -p {profile} kubectl -- delete service web-service", silent=True)
+        elif specs['web_en'] == '1':
+             report_progress(oid, "plan_update", "reconciling_web", 70, "Actualizando Servidor Web...")
+             time.sleep(2)
+             _apply_web_manifest(profile, specs) # Re-apply to ensure config matches
+        
+        # E. Update Info
+        if specs['web_en'] == '1':
+             _update_web_info_cm(profile, specs)
+             
+        # F. Validation
+        report_progress(oid, "plan_update", "verifying", 90, "Verificando nuevos servicios...")
+        time.sleep(3)
+        
+        report_progress(oid, "plan_update", "completed", 100, "Plan Actualizado Correctamente")
+        log(f"✅ PLAN V{oid} ACTUALIZADO", C_GREEN)
+        
+        # Clean transient status immediately to unlock UI
+        # WAIT 10 SECONDS to ensure Frontend sees the 100%
+        time.sleep(10)
+        try: os.remove(os.path.join(BUZON, f"plan_status_{oid}.json"))
+        except: pass
+
+    except Exception as e:
+        log(f"❌ Error Update Plan: {e}", C_RED)
+        report_progress(oid, "plan_update", "error", 0, str(e))
 # 1. EDITAR WEB
 def update_web_content(oid, profile, html_content, is_restore_process=False):
     t_type = "backup" if is_restore_process else "web"

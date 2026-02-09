@@ -436,7 +436,7 @@ require_once 'php/data.php';
                 </div>
                 <div class="modal-footer border-0 px-4 pb-4">
                     <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-warning rounded-pill px-5 fw-bold shadow-glow">Aplicar Cambios</button>
+                    <button type="button" onclick="submitPlanChange()" class="btn btn-warning rounded-pill px-5 fw-bold shadow-glow">Aplicar Cambios</button>
                 </div>
             </form>
         </div>

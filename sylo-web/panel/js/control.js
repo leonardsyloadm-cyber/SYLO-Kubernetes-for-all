@@ -303,8 +303,26 @@ function loadData() {
 
             try {
                 if (d.status) {
-                    // --- POWER PROGRESS POLLING ---
-                    if (activePowerOp) {
+                    // --- POWER & PLAN UPDATE PROGRESS POLLING ---
+                    // FIX: Check if we have an active operation OR if backend reports one
+                    if (activePowerOp || (d.general_progress && d.general_progress.action === 'plan_update')) {
+                        const gp = d.general_progress;
+
+                        // Auto-open modal if plan update detected and not open
+                        if (gp && gp.action === 'plan_update' && !powerModal) {
+                            const modalEl = document.getElementById('powerModal');
+                            if (modalEl) {
+                                powerModal = new bootstrap.Modal(modalEl);
+                                powerModal.show();
+                                // Close Plan Modal if open
+                                const planModalEl = document.getElementById('changePlanModal');
+                                if (planModalEl) {
+                                    const pm = bootstrap.Modal.getInstance(planModalEl);
+                                    if (pm) pm.hide();
+                                }
+                            }
+                        }
+
                         const pBar = document.getElementById('power-progress-bar');
                         const pTxt = document.getElementById('power-status-text');
 
@@ -313,22 +331,21 @@ function loadData() {
                         let customMsg = "";
 
                         // 1. Prioritize REAL PROGRESS from Operator (if API updated)
-                        // With Gemini FIX in data.php, this will come from 'general_progress' or 'power_progress'
-                        // The PHP fix maps the status file to 'general_progress'
-                        if (d.general_progress) {
-                            // Check if general_progress matches our power op intent
-                            const gp = d.general_progress;
-                            if (gp.status && (
-                                gp.status.includes('stopping') || gp.status.includes('starting') || gp.status.includes('restarting') ||
-                                gp.status === 'stopped' || gp.status === 'active' || gp.status === 'online' || gp.status === 'terminated' ||
-                                gp.status === 'started' || gp.status === 'restarted' || gp.status === 'completed'
-                            )) {
-                                // FIX: Backend sends 'percent', frontend used 'progress'
+                        if (gp) {
+                            // Check if general_progress matches our power op intent or is plan update
+                            if (
+                                gp.action === 'plan_update' ||
+                                (gp.status && (
+                                    gp.status.includes('stopping') || gp.status.includes('starting') || gp.status.includes('restarting') ||
+                                    gp.status === 'stopped' || gp.status === 'active' || gp.status === 'online' || gp.status === 'terminated' ||
+                                    gp.status === 'started' || gp.status === 'restarted' || gp.status === 'completed'
+                                ))) {
                                 targetProgress = parseInt(gp.percent) || parseInt(gp.progress) || 10;
                                 if (targetProgress >= 100) isComplete = true;
                                 if (gp.msg) customMsg = gp.msg;
                             }
                         }
+
                         // Fallbacks...
                         if (!customMsg) {
                             if (activePowerOp === 'stop' && (d.status === 'stopped' || d.status === 'offline')) isComplete = true;
@@ -339,9 +356,10 @@ function loadData() {
                         if (activePowerOp === 'stop') key = 'power.progress_stopping';
                         else if (activePowerOp === 'start') key = 'power.progress_starting';
                         else if (activePowerOp === 'restart') key = 'power.progress_restarting';
+                        else if (gp && gp.action === 'plan_update') key = 'plan.updating';
 
                         pTxt.setAttribute('data-i18n', key);
-                        pTxt.innerHTML = window.SyloLang?.get(key) || (customMsg || "Procesando...");
+                        pTxt.innerHTML = customMsg || window.SyloLang?.get(key) || "Procesando...";
 
                         if (pBar) pBar.style.width = targetProgress + '%';
 
@@ -349,8 +367,11 @@ function loadData() {
                             activePowerOp = null;
                             setTimeout(() => {
                                 if (powerModal) powerModal.hide();
-                                showToast(window.SyloLang?.get('power.completed'), 'success');
-                            }, 500);
+                                showToast(window.SyloLang?.get('power.completed') || "Operación Completada", 'success');
+                                if (gp && gp.action === 'plan_update') {
+                                    window.location.reload(); // Refresh to show new plan details
+                                }
+                            }, 1000);
                         }
                     }
                     // --- END POWER POLLING ---

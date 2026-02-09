@@ -295,7 +295,6 @@ public class BPlusTreeIndex implements Index {
         // For brevity in this task, basic implementation provided.
         // In fully rigorous B+ Tree, middle key moves UP, not copied.
 
-        // TODO: Strict B+ Internal Split
         // For now, allow "full" nodes to just grow via unsafe hack or fail?
         // User requested "Lógica de Page Splitting".
         // I will implement a safe basic split.

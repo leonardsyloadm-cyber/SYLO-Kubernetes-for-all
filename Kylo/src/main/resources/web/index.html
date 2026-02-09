@@ -5,6 +5,8 @@
     <meta charset="UTF-8">
     <title>KyloDB v27 (Insert Fix Final)</title>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="style.css?v=5" rel="stylesheet">
     <style>
         :root {
             --dark: #2c3e50;
@@ -14,6 +16,7 @@
             --success: #2ecc71;
             --console: #1e272e;
         }
+
 
         body {
             margin: 0;
@@ -763,6 +766,7 @@
             <div class="tab" onclick="nav('indices')"><i class="fas fa-search"></i> Índices</div>
             <div class="tab" onclick="nav('constraints')"><i class="fas fa-link"></i> Restricciones</div>
             <div class="tab" onclick="nav('views')"><i class="fas fa-eye"></i> Vistas</div>
+            <div class="tab" onclick="nav('constructor')"><i class="fas fa-hammer"></i> Constructor Visual</div>
         </div>
 
         <div class="content">
@@ -1008,6 +1012,150 @@
                     <button class="btn" onclick="loadViews()">Refrescar Lista</button>
                 </div>
                 <div id="views-list"></div>
+            </div>
+
+            <!-- CONSTRUCTOR VISUAL -->
+            <div id="p-constructor" class="panel" style="height:100%">
+                <div id="tab-constructor">
+                    <!-- Left: Canvas -->
+                    <div class="constructor-canvas" id="constructor-canvas">
+                        <svg id="connections-layer" xmlns="http://www.w3.org/2000/svg">
+                            <!-- Lines will be drawn here -->
+                        </svg>
+                        <div
+                            style="color:#aaa; text-align:center; margin-top:50px; font-style:italic; pointer-events:none">
+                            Añade tablas y arrástralas...
+                        </div>
+                        <div class="fab-wrapper">
+                            <button class="btn-fab" onclick="addNewTableCard()">+</button>
+                        </div>
+                    </div>
+
+                    <!-- Right: Dashboard -->
+                    <div class="constructor-dashboard">
+                        <div class="dash-stat">
+                            <div class="dash-val" id="val-total-size">0 MB</div>
+                            <div class="dash-label">Estimación Total</div>
+                        </div>
+                        <div class="chart-container">
+                            <canvas id="cap-output-chart"></canvas>
+                        </div>
+
+                        <button class="btn" style="background:#e67e22; width:100%; margin-top:10px"
+                            onclick="openSimModal()"><i class="fas fa-magic"></i> Crear Índice Visual</button>
+
+                        <!-- Legend -->
+                        <div class="chart-legend" style="margin-top:15px; font-size:0.85em; color:#2c3e50 !important">
+                            <div class="legend-item"
+                                style="display:flex; align-items:center; margin-bottom:4px; justify-content:space-between">
+                                <div class="legend-color"
+                                    style="background:#3498db; width:12px; height:12px; border-radius:2px; margin-right:8px">
+                                </div>
+                                <span style="color:#2c3e50 !important; font-weight:600">Datos</span>
+                                <span class="legend-desc"
+                                    style="color:#7f8fa6 !important; font-size:0.8em; margin-left:auto">User Data</span>
+                            </div>
+                            <div class="legend-item"
+                                style="display:flex; align-items:center; margin-bottom:4px; justify-content:space-between">
+                                <div class="legend-color"
+                                    style="background:#e67e22; width:12px; height:12px; border-radius:2px; margin-right:8px">
+                                </div>
+                                <span style="color:#2c3e50 !important; font-weight:600">Índices</span>
+                                <span class="legend-desc"
+                                    style="color:#7f8fa6 !important; font-size:0.8em; margin-left:auto">B-Tree
+                                    Overhead</span>
+                            </div>
+                            <div class="legend-item"
+                                style="display:flex; align-items:center; margin-bottom:4px; justify-content:space-between">
+                                <div class="legend-color"
+                                    style="background:#95a5a6; width:12px; height:12px; border-radius:2px; margin-right:8px">
+                                </div>
+                                <span style="color:#2c3e50 !important; font-weight:600">Sistema</span>
+                                <span class="legend-desc"
+                                    style="color:#7f8fa6 !important; font-size:0.8em; margin-left:auto">Logs/WAL
+                                    (Fixed)</span>
+                            </div>
+                            <div
+                                style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid #ddd; padding-top:8px">
+                                <span style="font-size:0.85em; font-weight:600; color:#7f8fa6">Tamaño Estimado:</span>
+                                <span id="dashboard-total-size" style="font-weight:bold; color:#e67e22">0 KB</span>
+                            </div>
+                        </div>
+
+                        <div
+                            style="font-size:0.8em; color:#bdc3c7; line-height:1.4; text-align:justify; padding-top:10px; border-top:1px solid #eee">
+                            <i class="fas fa-info-circle"></i> <b>Nota:</b> Incluye 256MB de asignación fija para System
+                            Logs & WAL para garantizar estabilidad transaccional.
+                        </div>
+
+                        <!-- Kylo Formula -->
+                        <!-- Kylo Formula (Compact) -->
+                        <!-- Kylo Formula (Medium) -->
+                        <!-- Kylo Formula (Expanded) -->
+                        <div
+                            style="background:#fff; border:1px solid #e0e0e0; padding:10px; border-radius:6px; margin-top:10px; box-shadow:0 1px 3px rgba(0,0,0,0.05)">
+                            <div
+                                style="font-size:1.0em; font-weight:bold; color:#2c3e50; margin-bottom:8px; text-align:center; border-bottom:1px solid #eee; padding-bottom:5px">
+                                🌌 LA ECUACIÓN MAESTRA DE KYLO (&Phi;<sub>DB</sub>)
+                            </div>
+
+                            <div
+                                style="font-family:'Courier New', monospace; font-size:1.3em; color:#2c3e50; font-weight:bold; text-align:center; padding:10px; background:#f9f9f9; border-radius:4px; border:1px solid #ddd; margin-bottom:12px">
+                                <span style="color:#e67e22">&#9660;DB</span> = SLog + &Sigma;(WData(t) + WIdx(t))
+                            </div>
+
+                            <div style="font-size:0.95em; line-height:1.5; color:#555">
+                                <div style="margin-bottom:8px">
+                                    <strong style="color:#e74c3c">1️⃣ SLog</strong>: Sistema (WAL + BinLog + Reserved) =
+                                    256MB+
+                                </div>
+
+                                <div style="margin-bottom:8px">
+                                    <strong style="color:#2980b9">🅰️ WData(t)</strong>: <i>Ptotal &times; 4096</i><br>
+                                    Ptotal = &#8968;Nrows / &#8970;&rho;row / Pusable&#8971;&#8969;<br>
+                                    &rho;row = 7 + &#8968;Ncols/8&#8969; + &Sigma;&delta;(Col)
+                                </div>
+
+                                <div>
+                                    <strong style="color:#e67e22">🅱️ WIdx(t)</strong>: <i>Pidx_total &times;
+                                        4096</i><br>
+                                    Pidx_total = &#8968;Nrows / &#8970;&rho;key / Pusable&#8971;&#8969;<br>
+                                    &rho;key = &delta;(Key) + 10
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- VISUAL INDEX SIMULATOR MODAL -->
+    <div id="sim-modal-overlay" class="modal-overlay">
+        <div class="modal">
+            <div class="modal-header">
+                <span>Simulador de Índices</span>
+                <span onclick="closeSimModal()" style="cursor:pointer">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div>
+                    <label>Tabla:</label>
+                    <select id="sim-tbl-sel" class="b-sel-tbl"
+                        style="width:100%; padding:8px; border:1px solid #ccc; margin-top:5px; background:#fff; color:#333"
+                        onchange="updateSimulatorCols()"></select>
+                </div>
+                <div>
+                    <label>Columnas (Multi-select):</label>
+                    <div id="sim-cols-box" class="chk-group" style="height:150px"></div>
+                </div>
+                <div
+                    style="display:flex; justify-content:space-between; align-items:center; background:#f0f2f5; padding:8px; border-radius:4px">
+                    <span style="font-size:0.9em; font-weight:bold; color:#7f8fa6">Peso Estimado:</span>
+                    <span id="sim-modal-result" style="font-weight:bold; color:#e67e22">0 KB</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-red" onclick="closeSimModal()">Cancelar</button>
+                <button class="btn" style="background:#e67e22" onclick="addVisualIndex()">Crear e Insertar</button>
             </div>
         </div>
     </div>
@@ -2021,6 +2169,17 @@
         }
 
         loadTree(); loadHistory();
+    </script>
+    <script src="app.js?v=5"></script>
+    <script>
+        // Init Constructor when tab is loaded
+        const originalNav = nav;
+        nav = function (id) {
+            originalNav(id);
+            if (id === 'constructor') {
+                initConstructor();
+            }
+        }
     </script>
 </body>
 

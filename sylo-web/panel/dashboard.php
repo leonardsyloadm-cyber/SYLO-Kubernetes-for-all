@@ -257,6 +257,9 @@ require_once 'php/data.php';
                 
                 <div class="mt-4 pt-3 border-top border-secondary border-opacity-25 text-center">
                     <div class="d-grid gap-2">
+                        <button class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#changePlanModal">
+                            <i class="bi bi-sliders me-2"></i><span data-i18n="dashboard.change_plan">Cambiar Plan</span>
+                        </button>
                         <button class="btn btn-outline-danger btn-sm" onclick="destroyK8s()">
                             <i class="bi bi-radioactive me-2"></i><span data-i18n="dashboard.destroy_k8s">Destruir Kubernetes</span>
                         </button>
@@ -297,6 +300,193 @@ require_once 'php/data.php';
 <div class="modal fade" id="uploadModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0"><div class="modal-header border-0"><h5 class="modal-title" data-i18n="upload.title">Subir Web</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body"><form id="uploadForm" enctype="multipart/form-data"><input type="file" id="htmlFile" name="html_file" class="form-control mb-3" required><button type="submit" class="btn btn-success w-100 rounded-pill" data-i18n="upload.btn">Subir</button></form></div></div></div></div>
 <div class="modal fade" id="profileModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0"><div class="modal-header border-0 pb-0"><h5 class="modal-title fw-bold"><i class="bi bi-person-lines-fill me-2"></i><span data-i18n="profile.title">Perfil</span></h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><form method="POST" action="php/data.php"><input type="hidden" name="action" value="update_profile"><div class="modal-body px-4 pt-4"><div class="mb-3"><label class="small text-light-muted" data-i18n="profile.name">Nombre</label><input type="text" name="full_name" class="form-control" value="<?=htmlspecialchars($user_info['full_name']??'')?>"></div><div class="mb-3"><label class="small text-light-muted" data-i18n="profile.email">Email</label><input type="email" name="email" class="form-control" value="<?=htmlspecialchars($user_info['email']??'')?>" required></div><button type="submit" class="btn btn-primary w-100 rounded-pill" data-i18n="common.save">Guardar</button></div></form></div></div></div>
 <div class="modal fade" id="billingModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0"><div class="modal-header border-0"><h5 class="modal-title" data-i18n="billing.title">Facturación</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body"><?php foreach($clusters as $c): ?><div class="d-flex justify-content-between mb-2"><span>#<?=$c['id']?> <span data-i18n="plan.<?=strtolower(str_replace(' ','_',$c['plan_name']))?>"><?=$c['plan_name']?></span></span><span class="text-success"><?=number_format(calculateWeeklyPrice($c),2)?>€</span></div><?php endforeach; ?><hr><div class="d-flex justify-content-between fs-5 text-white"><strong data-i18n="common.total">Total</strong><strong class="text-primary"><?=number_format($total_weekly,2)?>€</strong></div></div></div></div></div>
+
+<!-- CHANGE PLAN MODAL (ENHANCED UI) -->
+<div class="modal fade" id="changePlanModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content border-0" style="background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(20px);">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold"><i class="bi bi-rocket-takeoff-fill me-2 text-warning"></i>Mejorar Plan</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="php/data.php" id="planForm">
+                <input type="hidden" name="action" value="change_plan">
+                <input type="hidden" name="order_id" value="<?=$current['id']?>">
+                <input type="hidden" name="new_plan" id="selectedPlanInput" value="<?=$current['plan_name']?>">
+                
+                <div class="modal-body px-4 pt-4">
+                    <!-- PLANS GRID -->
+                    <div class="row g-3 mb-4">
+                        <!-- BRONZE -->
+                        <div class="col-md-4">
+                            <div class="plan-card p-4 h-100 d-flex flex-column justify-content-between <?= ($current['plan_name'] == 'Bronce') ? 'current-plan' : '' ?>" onclick="selectPlan('Bronce', this)">
+                                <div>
+                                    <div class="d-flex justify-content-between align-items-start mb-3">
+                                        <div class="plan-icon bg-bronze"><i class="bi bi-hdd-network"></i></div>
+                                        <?php if($current['plan_name'] == 'Bronce'): ?><span class="badge bg-secondary">Actual</span><?php endif; ?>
+                                    </div>
+                                    <h4 class="fw-bold mb-1">Plan Bronce</h4>
+                                    <p class="text-light-muted small mb-3">Para proyectos pequeños.</p>
+                                    <ul class="list-unstyled text-small text-white opacity-75">
+                                        <li><i class="bi bi-check2 text-success me-2"></i>1 vCPU Core</li>
+                                        <li><i class="bi bi-check2 text-success me-2"></i>1 GB RAM</li>
+                                        <li><i class="bi bi-x-lg text-secondary me-2"></i>Sin Base de Datos</li>
+                                    </ul>
+                                </div>
+                                <div class="mt-3 text-center w-100 p-2 rounded border border-secondary border-opacity-25 hover-bg">
+                                    <small>Seleccionar</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- SILVER -->
+                        <div class="col-md-4">
+                            <div class="plan-card p-4 h-100 d-flex flex-column justify-content-between <?= ($current['plan_name'] == 'Plata') ? 'current-plan' : '' ?>" onclick="selectPlan('Plata', this)">
+                                <div>
+                                    <div class="d-flex justify-content-between align-items-start mb-3">
+                                        <div class="plan-icon bg-silver"><i class="bi bi-cpu-fill"></i></div>
+                                        <?php if($current['plan_name'] == 'Plata'): ?><span class="badge bg-secondary">Actual</span><?php endif; ?>
+                                    </div>
+                                    <h4 class="fw-bold mb-1">Plan Plata</h4>
+                                    <p class="text-light-muted small mb-3">Equilibrio perfecto.</p>
+                                    <ul class="list-unstyled text-small text-white opacity-75">
+                                        <li><i class="bi bi-check2 text-success me-2"></i>2 vCPU Cores</li>
+                                        <li><i class="bi bi-check2 text-success me-2"></i>2 GB RAM</li>
+                                        <li><i class="bi bi-x-lg text-secondary me-2"></i>Sin Base de Datos</li>
+                                    </ul>
+                                </div>
+                                <div class="mt-3 text-center w-100 p-2 rounded border border-secondary border-opacity-25 hover-bg">
+                                    <small>Seleccionar</small>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- GOLD -->
+                        <div class="col-md-4">
+                            <div class="plan-card p-4 h-100 d-flex flex-column justify-content-between <?= ($current['plan_name'] == 'Oro') ? 'current-plan' : '' ?>" onclick="selectPlan('Oro', this)">
+                                <div>
+                                    <div class="d-flex justify-content-between align-items-start mb-3">
+                                        <div class="plan-icon bg-gold"><i class="bi bi-lightning-charge-fill"></i></div>
+                                        <?php if($current['plan_name'] == 'Oro'): ?><span class="badge bg-secondary">Actual</span><?php endif; ?>
+                                    </div>
+                                    <h4 class="fw-bold mb-1 text-warning">Plan Oro</h4>
+                                    <p class="text-light-muted small mb-3">Máximo rendimiento.</p>
+                                    <ul class="list-unstyled text-small text-white opacity-75">
+                                        <li><i class="bi bi-check2 text-warning me-2"></i>4 vCPU Cores</li>
+                                        <li><i class="bi bi-check2 text-warning me-2"></i>4 GB RAM</li>
+                                        <li><i class="bi bi-check2 text-warning me-2"></i>Base de Datos Incluida</li>
+                                    </ul>
+                                </div>
+                                <div class="mt-3 text-center w-100 p-2 rounded border border-warning border-opacity-50 text-warning hover-bg">
+                                    <small>Seleccionar</small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- CUSTOM OPTION -->
+                    <div class="plan-card p-3 mb-3 d-flex align-items-center justify-content-between cursor-pointer <?= ($current['plan_name'] == 'Personalizado') ? 'current-plan' : '' ?>" onclick="selectPlan('Personalizado', this)">
+                       <div class="d-flex align-items-center gap-3">
+                           <div class="plan-icon bg-custom text-white"><i class="bi bi-sliders"></i></div>
+                           <div>
+                               <h6 class="fw-bold mb-0">Configuración Personalizada</h6>
+                               <small class="text-muted">Define tus propios recursos (CPU, RAM, Servicios)</small>
+                           </div>
+                       </div>
+                       <i class="bi bi-chevron-right text-muted"></i>
+                    </div>
+
+                    <div id="custom-plan-options" class="p-4 border border-secondary rounded-4 bg-black bg-opacity-50 mb-3" style="display:none; animation: fadeIn 0.3s ease;">
+                        <h6 class="text-white mb-4 border-bottom border-secondary pb-2"><i class="bi bi-tools me-2"></i>Ajustes Avanzados</h6>
+                        <div class="row g-4">
+                            <div class="col-md-6">
+                                <label class="small text-muted mb-2">CPU Cores</label>
+                                <div class="d-flex align-items-center gap-3">
+                                    <input type="range" class="form-range flex-grow-1" min="1" max="8" step="1" value="<?=$current['custom_cpu'] ?? 1?>" oninput="document.getElementById('cpuVal').innerText = this.value">
+                                    <span class="badge bg-primary fs-6"><span id="cpuVal"><?=$current['custom_cpu'] ?? 1?></span> vCPU</span>
+                                    <input type="hidden" name="custom_cpu" id="customCpuInput" value="<?=$current['custom_cpu'] ?? 1?>">
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="small text-muted mb-2">Memoria RAM</label>
+                                <div class="d-flex align-items-center gap-3">
+                                    <input type="range" class="form-range flex-grow-1" min="1" max="16" step="1" value="<?=$current['custom_ram'] ?? 1?>" oninput="document.getElementById('ramVal').innerText = this.value">
+                                    <span class="badge bg-info fs-6"><span id="ramVal"><?=$current['custom_ram'] ?? 1?></span> GB</span>
+                                    <input type="hidden" name="custom_ram" id="customRamInput" value="<?=$current['custom_ram'] ?? 1?>">
+                                </div>
+                            </div>
+                            <div class="col-12 d-flex gap-4 mt-3">
+                                <div class="form-check form-switch p-3 rounded bg-dark border border-secondary flex-grow-1">
+                                    <input class="form-check-input" type="checkbox" name="custom_db" value="1" id="chkDb" <?= (!empty($current['db_enabled'])) ? 'checked' : '' ?>>
+                                    <label class="form-check-label text-white ms-2 cursor-pointer" for="chkDb">
+                                        <i class="bi bi-database-fill me-2 text-warning"></i>Base de Datos
+                                        <div class="small text-muted mt-1">Habilita MySQL/PostgreSQL persistente.</div>
+                                    </label>
+                                </div>
+                                <div class="form-check form-switch p-3 rounded bg-dark border border-secondary flex-grow-1">
+                                    <input class="form-check-input" type="checkbox" name="custom_web" value="1" id="chkWeb" <?= (!empty($current['web_enabled'])) ? 'checked' : '' ?>>
+                                    <label class="form-check-label text-white ms-2 cursor-pointer" for="chkWeb">
+                                        <i class="bi bi-globe me-2 text-info"></i>Servidor Web
+                                        <div class="small text-muted mt-1">Habilita Nginx/Apache.</div>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 px-4 pb-4">
+                    <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-warning rounded-pill px-5 fw-bold shadow-glow">Aplicar Cambios</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function selectPlan(planInfo, element) {
+    // Update Input
+    document.getElementById('selectedPlanInput').value = planInfo;
+    
+    // Update Visuals
+    document.querySelectorAll('.plan-card').forEach(el => {
+        el.classList.remove('selected');
+        el.style.borderColor = 'rgba(51, 65, 85, 0.5)';
+        el.style.background = 'rgba(15, 23, 42, 0.7)';
+    });
+    
+    element.classList.add('selected');
+    
+    // Toggle Custom
+    const cust = document.getElementById('custom-plan-options');
+    if (planInfo === 'Personalizado') {
+        cust.style.display = 'block';
+    } else {
+        cust.style.display = 'none';
+    }
+}
+
+// Sync ranges to hidden inputs if needed (or just use name on range)
+// Actually range inputs above didn't have name, fixing that via JS or adding name attr. 
+// Adding name attr directly to range inputs is better, but I used hidden. Let's just give names to ranges.
+document.querySelectorAll('input[type=range]').forEach(input => {
+    input.addEventListener('input', e => {
+        if(e.target.nextElementSibling.nextElementSibling) 
+            e.target.nextElementSibling.nextElementSibling.value = e.target.value;
+    });
+});
+
+// Init on load
+document.addEventListener('DOMContentLoaded', () => {
+    // Highlight current
+    const current = "<?=$current['plan_name']?>";
+    // Find card with onclick having current
+    // ... logic handled by PHP echoing 'current-plan' class which we will style, 
+    // but better to trigger click to set state.
+    // Simplifying: User clicks to select.
+});
+</script>
+
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>

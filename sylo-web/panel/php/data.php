@@ -104,8 +104,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         // 4. Borrar el genérico y power para evitar conflictos de prioridad
         if (file_exists($f_gen)) @unlink($f_gen);
         if (file_exists($f_pow)) @unlink($f_pow);
+        if (file_exists($f_gen)) @unlink($f_gen);
+        if (file_exists($f_pow)) @unlink($f_pow);
     }
     
+    // ACTION: CHANGE PLAN (Prioridad 1)
+    if ($act == 'change_plan') {
+       $new_plan = $_POST['new_plan'];
+       
+       // Definir Specs por defecto según el plan
+       $plan_id = 1;
+       $cpu = 1; $ram = 1; $db_en = 0; $web_en = 0;
+       
+       if ($new_plan == 'Bronce') { 
+           $plan_id = 1; $cpu = 1; $ram = 1; 
+       } elseif ($new_plan == 'Plata') { 
+           $plan_id = 2; $cpu = 2; $ram = 2; 
+       } elseif ($new_plan == 'Oro') { 
+           $plan_id = 3; $cpu = 4; $ram = 4; $db_en = 1; $web_en = 1; 
+       } elseif ($new_plan == 'Personalizado') {
+           $plan_id = 4;
+           $cpu = (int)($_POST['custom_cpu'] ?? 1);
+           $ram = (int)($_POST['custom_ram'] ?? 1);
+           $db_en = isset($_POST['custom_db']) ? 1 : 0;
+           $web_en = isset($_POST['custom_web']) ? 1 : 0;
+       }
+       
+       // Update 'orders' table
+       $stmt = $conn->prepare("UPDATE orders SET plan_id = ? WHERE id = ?");
+       $stmt->execute([$plan_id, $oid]);
+       
+       // Update 'order_specs' table (create or update)
+       $chk = $conn->prepare("SELECT id FROM order_specs WHERE order_id = ?");
+       $chk->execute([$oid]);
+       if ($chk->fetch()) {
+           $sql_specs = "UPDATE order_specs SET cpu_cores=?, ram_gb=?, db_enabled=?, web_enabled=? WHERE order_id=?";
+           $conn->prepare($sql_specs)->execute([$cpu, $ram, $db_en, $web_en, $oid]);
+       } else {
+           $sql_specs = "INSERT INTO order_specs (order_id, cpu_cores, ram_gb, db_enabled, web_enabled, storage_gb) VALUES (?, ?, ?, ?, ?, 20)";
+           $conn->prepare($sql_specs)->execute([$oid, $cpu, $ram, $db_en, $web_en]);
+       }
+       
+       // Generate Action JSON for Operator
+       $action_file = __DIR__ . "/../../buzon-pedidos/accion_update_{$oid}.json";
+       $payload = [
+           "action" => "UPDATE_PLAN",
+           "id_cliente" => (int)$oid,
+           "new_specs" => [
+               "cpu" => $cpu,
+               "ram" => $ram,
+               "db_enabled" => $db_en,
+               "web_enabled" => $web_en
+           ]
+       ];
+       file_put_contents($action_file, json_encode($payload));
+       
+       // Set Transient Status - Starts at 10%
+       $f_upd = __DIR__ . "/../../buzon-pedidos/status_{$oid}.json";
+       $f_upd = __DIR__ . "/../../buzon-pedidos/status_{$oid}.json";
+       $transient = [
+           'action' => 'plan_update',
+           'status' => 'updating_plan',
+           'percent' => 5,
+           'msg' => "Iniciando cambio de plan a {$new_plan}..."
+       ];
+       file_put_contents($f_upd, json_encode($transient));
+    }
+
     if ($act == 'destroy_k8s') {
         // No params needed
     }

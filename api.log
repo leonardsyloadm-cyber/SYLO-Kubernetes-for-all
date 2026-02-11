@@ -1,0 +1,81 @@
+nohup: ignoring input
+🧠 [SYLO BRAIN] API Restaurada y Lista. Escuchando en puerto 8001...
+🔌 [BASTION] Conexión SSH solicitada para sylo-cliente-50
+INFO:DockerTerminal:Terminal iniciada para sylo-cliente-50
+ERROR:DockerTerminal:Error en read_loop: timed out
+INFO:DockerTerminal:Terminal cerrada para sylo-cliente-50
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+⚠️ [BASTION] Error en conexión: (<CloseCode.NO_STATUS_RCVD: 1005>, '')
+INFO:DockerTerminal:Terminal cerrada para sylo-cliente-50
+🔌 [BASTION] Desconectado de sylo-cliente-50
+🔌 [BASTION] Conexión SSH solicitada para sylo-cliente-50
+INFO:DockerTerminal:Terminal iniciada para sylo-cliente-50
+ERROR:DockerTerminal:Error en read_loop: timed out
+INFO:DockerTerminal:Terminal cerrada para sylo-cliente-50
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+⚠️ [BASTION] Error en conexión: (<CloseCode.NO_STATUS_RCVD: 1005>, '')
+INFO:DockerTerminal:Terminal cerrada para sylo-cliente-50
+🔌 [BASTION] Desconectado de sylo-cliente-50
+🔌 [BASTION] Conexión SSH solicitada para sylo-cliente-50
+INFO:DockerTerminal:Terminal iniciada para sylo-cliente-50
+ERROR:DockerTerminal:Error en read_loop: timed out
+INFO:DockerTerminal:Terminal cerrada para sylo-cliente-50
+⚠️ [BASTION] Error en conexión: (1001, '')
+INFO:DockerTerminal:Terminal cerrada para sylo-cliente-50
+🔌 [BASTION] Desconectado de sylo-cliente-50
+🔌 [BASTION] Conexión SSH solicitada para sylo-cliente-50
+INFO:DockerTerminal:Terminal iniciada para sylo-cliente-50
+⚠️ [BASTION] Error en conexión: (1001, '')
+INFO:DockerTerminal:Terminal cerrada para sylo-cliente-50
+🔌 [BASTION] Desconectado de sylo-cliente-50
+🔌 [BASTION] Conexión SSH solicitada para sylo-cliente-50
+INFO:DockerTerminal:Terminal iniciada para sylo-cliente-50
+ERROR:DockerTerminal:Error en read_loop: timed out
+INFO:DockerTerminal:Terminal cerrada para sylo-cliente-50
+ERROR:DockerTerminal:Error en read_loop: timed out
+INFO:DockerTerminal:Terminal cerrada para sylo-cliente-50
+ERROR:DockerTerminal:Error escribiendo: I/O operation on closed file.
+⚠️ [BASTION] Error en conexión: (1001, '')
+INFO:DockerTerminal:Terminal cerrada para sylo-cliente-50
+🔌 [BASTION] Desconectado de sylo-cliente-50
+🔌 [BASTION] Conexión SSH solicitada para sylo-cliente-50
+INFO:DockerTerminal:Terminal iniciada para sylo-cliente-50
+ERROR:DockerTerminal:Error en read_loop: timed out
+INFO:DockerTerminal:Terminal cerrada para sylo-cliente-50
+⚠️ [BASTION] Error en conexión: (1001, '')
+INFO:DockerTerminal:Terminal cerrada para sylo-cliente-50
+🔌 [BASTION] Desconectado de sylo-cliente-50
+🔌 [BASTION] Conexión SSH solicitada para sylo-cliente-50
+INFO:DockerTerminal:Terminal iniciada para sylo-cliente-50
+ERROR:DockerTerminal:Error en read_loop: timed out
+INFO:DockerTerminal:Terminal cerrada para sylo-cliente-50

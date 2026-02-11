@@ -1,0 +1,58 @@
+nohup: ignoring input
+[92m[16:47:00] === OPERATOR V55 (SELF-HEAL FIXED) ===[0m
+[92m[16:47:00] 📥 Cola lista.[0m
+[92m[16:47:00] 📊 Métricas activas.[0m
+[90m[16:47:01] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:47:10] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:47:18] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:47:26] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:47:35] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:47:43] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:47:51] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:48:00] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:48:08] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:48:17] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:48:25] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:48:33] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:48:42] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:48:50] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:48:58] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:49:07] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:49:15] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:49:23] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:49:32] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:49:40] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:49:48] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:49:57] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:50:05] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:50:13] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:50:22] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:50:30] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:50:38] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:50:47] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:50:55] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:51:03] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:51:12] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:51:20] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:51:28] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:51:37] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:51:45] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[90m[16:51:54] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
+[93m[16:52:00] 📨 Orden: UPDATE_PLAN -> 50[0m
+[93m[16:52:00] ⚡ UPDATE PLAN: Cliente 50[0m
+[90m[16:52:00] 📡 API > Cliente 50 [plan_update]: Analizando nueva configuración... (10%)[0m
+[93m[16:52:00] 📨 Orden: CHANGE_PLAN -> 50[0m
+[90m[16:52:02] 🔌 Deteniendo Port-Forward Cliente 50[0m
+[90m[16:52:02] 📡 API > Cliente 50 [plan_update]: Obteniendo especificaciones... (15%)[0m
+[90m[16:52:04] 📡 API > Cliente 50 [plan_update]: Escalando Recursos (CPU: 2 / RAM: 2GB)... (30%)[0m
+[90m[16:52:06] 📡 API > Cliente 50 [plan_update]: Gestionando capa de Datos... (50%)[0m
+[93m[16:52:06]    ➖ Solicitud: Eliminar Base de Datos[0m
+[90m[16:52:06] 📡 API > Cliente 50 [plan_update]: Eliminando Base de Datos... (55%)[0m
+[90m[16:52:07] 📡 API > Cliente 50 [plan_update]: Gestionando capa Web... (70%)[0m
+[93m[16:52:07]    ➖ Solicitud: Eliminar Servidor Web[0m
+[90m[16:52:07] 📡 API > Cliente 50 [plan_update]: Eliminando Servidor Web... (75%)[0m
+[90m[16:52:07] 📡 API > Cliente 50 [plan_update]: Verificando salud de servicios... (90%)[0m
+[90m[16:52:10] 📡 API > Cliente 50 [plan_update]: Plan Actualizado Correctamente (100%)[0m
+[92m[16:52:10] ✅ PLAN V50 ACTUALIZADO[0m
+[93m[16:53:26] 📨 Orden: TERMINATE -> 43[0m
+[93m[16:53:31] 📨 Orden: TERMINATE -> 44[0m

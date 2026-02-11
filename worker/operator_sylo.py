@@ -484,7 +484,7 @@ def destroy_k8s_resources(oid, profile):
     log(f"☢️ DESTRUYENDO: CLIENTE {oid}", C_RED)
     try:
         run_command(f"minikube delete -p {profile}")
-        run_command(f'docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D kylo_main_db -e "UPDATE orders SET status=\'cancelled\' WHERE id={oid}"', silent=False)
+        run_command(f'docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D sylo_admin_db -e "UPDATE k8s_deployments SET status=\'cancelled\' WHERE id={oid}"', silent=False)
         log(f"⚰️ ELIMINADO", C_RED)
     except: pass
 
@@ -503,7 +503,7 @@ def handle_power(oid, profile, action):
 
             run_command(f"minikube stop -p {profile}", check_error=True)
             
-            run_command(f'docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D kylo_main_db -e "UPDATE orders SET status=\'stopped\' WHERE id={oid}"', check_error=True)
+            run_command(f'docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D sylo_admin_db -e "UPDATE k8s_deployments SET status=\'stopped\' WHERE id={oid}"', check_error=True)
             
             try: requests.post(f"{API_URL}/reportar/metricas", json={"id_cliente":int(oid), "metrics":{"cpu":0,"ram":0}, "ssh_cmd": "Offline", "web_url": "", "os_info": "Offline", "installed_tools": []}, timeout=2)
             except: pass
@@ -543,13 +543,13 @@ def _power_up_logic(oid, profile, is_restart=False):
 
     # 1. OBTENER IP FIJA
     try:
-        fixed_ip = run_command(f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D kylo_main_db -e "SELECT ip_address FROM orders WHERE id={oid}"', silent=True).strip()
+        fixed_ip = run_command(f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D sylo_admin_db -e "SELECT ip_address FROM k8s_deployments WHERE id={oid}"', silent=True).strip()
     except: fixed_ip = ""
 
     # 2. OBTENER RAM CONTRATADA (Specs)
     try:
         # Extraemos la RAM definida en el plan del usuario
-        db_ram_str = run_command(f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D kylo_main_db -e "SELECT ram_gb FROM order_specs WHERE order_id={oid}"', silent=True).strip()
+        db_ram_str = run_command(f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D sylo_admin_db -e "SELECT ram_gb FROM k8s_deployments WHERE id={oid}"', silent=True).strip()
         user_ram_gb = int(db_ram_str)
     except: 
         user_ram_gb = 2 # Fallback de seguridad si falla la query
@@ -597,7 +597,7 @@ def _power_up_logic(oid, profile, is_restart=False):
         log(f"⚠️ Alerta: Pods no encontrados. Intentando Self-Healing...", C_YELLOW)
         report_progress(oid, "power", op_type, 80, "Aplicando Self-Healing...")
         
-        specs_json = run_command(f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D kylo_main_db -e "SELECT JSON_OBJECT(\'cpu\', cpu_cores, \'ram\', ram_gb, \'storage\', storage_gb, \'db_en\', db_enabled, \'db_type\', db_type, \'web_en\', web_enabled, \'web_type\', web_type, \'ssh_user\', ssh_user, \'os\', os_image, \'db_name\', db_custom_name, \'web_name\', web_custom_name, \'subdomain\', subdomain) FROM order_specs WHERE order_id={oid}"', silent=True).strip()
+        specs_json = run_command(f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D sylo_admin_db -e "SELECT JSON_OBJECT(\'cpu\', cpu_cores, \'ram\', ram_gb, \'storage\', storage_gb, \'db_en\', db_enabled, \'db_type\', db_type, \'web_en\', web_enabled, \'web_type\', web_type, \'ssh_user\', ssh_user, \'os\', os_image, \'db_name\', db_custom_name, \'web_name\', web_custom_name, \'subdomain\', subdomain) FROM k8s_deployments WHERE id={oid}"', silent=True).strip()
         
         if specs_json and "{" in specs_json:
             sp = json.loads(specs_json)
@@ -610,7 +610,7 @@ def _power_up_logic(oid, profile, is_restart=False):
         else:
             raise Exception("Imposible recuperar Specs para reparación")
 
-    run_command(f'docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D kylo_main_db -e "UPDATE orders SET status=\'active\' WHERE id={oid}"', check_error=True)
+    run_command(f'docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D sylo_admin_db -e "UPDATE k8s_deployments SET status=\'active\' WHERE id={oid}"', check_error=True)
     report_progress(oid, "power", final_type, 100, "Online")
     log(f"🟢 CLIENTE {oid} ONLINE", C_GREEN)
     if int(oid) in blocked_cids: blocked_cids.remove(int(oid))
@@ -689,7 +689,7 @@ def process_metrics():
                     
                     if oid in blocked_cids: continue
                     try:
-                        check_stat = run_command(f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D kylo_main_db -e "SELECT status FROM orders WHERE id={oid}"', silent=True).strip().lower()
+                        check_stat = run_command(f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D sylo_admin_db -e "SELECT status FROM k8s_deployments WHERE id={oid}"', silent=True).strip().lower()
                         if check_stat in ['stopped', 'stopping', 'cancelled', 'terminated']: continue
                     except: pass
 
@@ -707,7 +707,7 @@ def process_metrics():
                     except: pass
                     
                     try:
-                        db_cmd = f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D kylo_main_db -e "SELECT subdomain, os_image, web_enabled, web_type, db_enabled, db_type FROM order_specs WHERE order_id={oid}"'
+                        db_cmd = f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D sylo_admin_db -e "SELECT subdomain, os_image, web_enabled, web_type, db_enabled, db_type FROM k8s_deployments WHERE id={oid}"'
                         raw_data = run_command(db_cmd, silent=True).strip()
                         sub, os_img, web_en, web_type, db_en, db_type = "", "Linux", "0", "", "0", ""
                         if raw_data:
@@ -742,8 +742,12 @@ def handle_plan_update(oid, profile, new_specs_arg):
     
     try:
         # A. Fetch Full Specs
+        # Updated to use k8s_deployments + k8s_tools
         report_progress(oid, "plan_update", "updating", 15, "Obteniendo especificaciones...")
-        cmd_db = f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D kylo_main_db -e "SELECT cpu_cores, ram_gb, db_enabled, db_type, db_custom_name, web_enabled, web_type, web_custom_name, subdomain, os_image, ssh_user FROM order_specs WHERE order_id={oid}"'
+        
+        # New Query reflecting schema change
+        cmd_db = f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D sylo_admin_db -e "SELECT d.cpu_cores, d.ram_gb, d.db_enabled, d.db_type, d.db_custom_name, d.web_enabled, d.web_type, d.web_custom_name, d.subdomain, d.os_image, d.ssh_user, p.name FROM k8s_deployments d JOIN plans p ON d.plan_id = p.id WHERE d.id={oid}"'
+        
         raw = run_command(cmd_db, silent=True).strip()
         if not raw: raise Exception("No specs found in DB")
         
@@ -752,7 +756,8 @@ def handle_plan_update(oid, profile, new_specs_arg):
             "cpu": parts[0], "ram": parts[1],
             "db_en": parts[2], "db_type": parts[3], "db_name": parts[4],
             "web_en": parts[5], "web_type": parts[6], "web_name": parts[7],
-            "sub": parts[8], "os": parts[9], "user": parts[10], "owner": parts[10]
+            "sub": parts[8], "os": parts[9], "user": parts[10], "owner": parts[10],
+            "plan_name": parts[11]
         }
         
         # B. Hot Resize (Vertical Scaling)
@@ -796,9 +801,10 @@ def handle_plan_update(oid, profile, new_specs_arg):
             run_command(f"minikube -p {profile} kubectl -- delete deployment custom-web", silent=True)
             run_command(f"minikube -p {profile} kubectl -- delete service web-service", silent=True)
         
-        # E. Update Info
+        # E. Update Info & Tools
         if specs['web_en'] == '1':
              _update_web_info_cm(profile, specs)
+             _reinstall_tools(profile, specs['plan_name'])
              
         # F. Validation
         report_progress(oid, "plan_update", "verifying", 90, "Verificando salud de servicios...")
@@ -961,6 +967,36 @@ def _apply_yaml(profile, yaml_content):
     with open(filename, "w") as f: f.write(yaml_content)
     run_command(f"minikube -p {profile} kubectl -- apply -f {filename}", silent=True)
     os.remove(filename)
+
+def _reinstall_tools(profile, plan_name):
+    """
+    Reinstala herramientas según el plan actualizado (Hot-Inject).
+    """
+    log(f"   🛠️ Reconciliando Herramientas para Plan: {plan_name}...", C_CYAN)
+    
+    # Tool Catalog (Mirrored from Orchestrator)
+    TIER_1 = ["htop", "nano", "ncdu", "curl", "wget", "zip", "unzip", "git"]
+    TIER_2 = ["python3", "nodejs", "npm", "mysql-client", "jq", "tmux", "lazygit"]
+    TIER_3 = ["rsync", "ffmpeg", "imagemagick", "redis", "ansible", "zsh"] # redis-tools -> redis in alpine
+
+    to_install = set(TIER_1) # Always T1
+    p = plan_name.lower()
+    
+
+    if p == "plata" or p == "oro":
+        to_install.update(TIER_2)
+    if p == "oro":
+        to_install.update(TIER_3)
+
+    # Install via APT (Minikube Node is Ubuntu based)
+    packages = " ".join(to_install)
+    log(f"   📦 Instalando en Nodo Bastion ({profile}): {packages}", C_CYAN)
+    
+    # We install directly on the node container (which acts as Bastion)
+    cmd = f"docker exec {profile} bash -c 'apt-get update >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get install -y {packages} >/dev/null 2>&1'"
+    run_command(cmd, silent=True)
+    log("   ✅ Herramientas Nodo Sincronizadas.", C_GREEN)
+
 
 def random_str(length):
     import random, string

@@ -27,7 +27,7 @@ API_URL = "http://127.0.0.1:8001/api/clientes"
 DB_CONTAINER = "kylo-main-db"
 DB_USER = "sylo_app"
 DB_PASS = "sylo_app_pass"
-DB_NAME = "kylo_main_db"
+DB_NAME = "sylo_admin_db"
 
 # --- SYLO TOOLBELT CATALOGS ---
 TIER_1_ESSENTIALS = ["htop", "nano", "ncdu", "curl", "wget", "zip", "unzip", "git"]
@@ -69,7 +69,7 @@ def report_progress(oid, percent, msg, status="creating"):
 
 def update_db_state(oid, status):
     if shutdown_event.is_set(): return
-    sql = f"UPDATE orders SET status='{status}' WHERE id={oid};"
+    sql = f"UPDATE k8s_deployments SET status='{status}' WHERE id={oid};"
     cmd = ["docker", "exec", "-i", DB_CONTAINER, "mysql", f"-u{DB_USER}", f"-p{DB_PASS}", "-D", DB_NAME, "--silent", "--skip-column-names", "-e", sql]
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -81,7 +81,7 @@ def save_cluster_data(oid, profile, web_port_tf=None, ssh_port_tf=None):
         
         if ip:
             log(f"💾 Guardando IP {ip} en base de datos...", Colors.CYAN)
-            sql = f"UPDATE orders SET ip_address='{ip}' WHERE id={oid};"
+            sql = f"UPDATE k8s_deployments SET ip_address='{ip}' WHERE id={oid};"
             cmd = ["docker", "exec", "-i", DB_CONTAINER, "mysql", f"-u{DB_USER}", f"-p{DB_PASS}", "-D", DB_NAME, "--silent", "--skip-column-names", "-e", sql]
             subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return ip
@@ -99,7 +99,7 @@ def get_next_free_ip():
     """Genera una IP única en el rango de Minikube (192.168.49.X)"""
     try:
         # Obtenemos IPs usadas
-        cmd = ["docker", "exec", "-i", DB_CONTAINER, "mysql", f"-u{DB_USER}", f"-p{DB_PASS}", "-D", DB_NAME, "--silent", "--skip-column-names", "-e", "SELECT ip_address FROM orders WHERE status NOT IN ('terminated','cancelled')"]
+        cmd = ["docker", "exec", "-i", DB_CONTAINER, "mysql", f"-u{DB_USER}", f"-p{DB_PASS}", "-D", DB_NAME, "--silent", "--skip-column-names", "-e", "SELECT ip_address FROM k8s_deployments WHERE status NOT IN ('terminated','cancelled')"]
         res = subprocess.run(cmd, stdout=subprocess.PIPE, text=True)
         used_ips = [line.strip() for line in res.stdout.splitlines() if line.strip()]
         
@@ -397,7 +397,7 @@ def process_order(json_file):
                 log(f"📌 IP Inmortal (Subnet Sharding) asignada para ID {oid}: {fixed_ip}", Colors.CYAN)
                 
                 # Persistir en DB
-                sql = f"UPDATE orders SET ip_address='{fixed_ip}' WHERE id={oid};"
+                sql = f"UPDATE k8s_deployments SET ip_address='{fixed_ip}' WHERE id={oid};"
                 subprocess.run(["docker", "exec", "-i", DB_CONTAINER, "mysql", f"-u{DB_USER}", f"-p{DB_PASS}", "-D", DB_NAME, "--silent", "--skip-column-names", "-e", sql], stdout=subprocess.DEVNULL)
                 
                 return fixed_ip

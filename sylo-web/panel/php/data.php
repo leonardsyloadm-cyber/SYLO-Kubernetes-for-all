@@ -10,7 +10,7 @@ if (!isset($_SESSION['user_id'])) { header("Location: ../../public/index.php"); 
 $servername = getenv('DB_HOST') ?: "kylo-main-db";
 $username_db = getenv('DB_USER') ?: "sylo_app";
 $password_db = getenv('DB_PASS') ?: "sylo_app_pass";
-$dbname = getenv('DB_NAME') ?: "kylo_main_db";
+$dbname = getenv('DB_NAME') ?: "sylo_admin_db";
 
 try { $conn = new PDO("mysql:host=$servername;dbname=$dbname", $username_db, $password_db); } catch(PDOException $e) { die("Error DB"); }
 
@@ -137,20 +137,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
            $web_en = isset($_POST['custom_web']) ? 1 : 0;
        }
        
-       // Update 'orders' table
-       $stmt = $conn->prepare("UPDATE orders SET plan_id = ? WHERE id = ?");
-       $stmt->execute([$plan_id, $oid]);
-       
-       // Update 'order_specs' table (create or update)
-       $chk = $conn->prepare("SELECT id FROM order_specs WHERE order_id = ?");
-       $chk->execute([$oid]);
-       if ($chk->fetch()) {
-           $sql_specs = "UPDATE order_specs SET cpu_cores=?, ram_gb=?, db_enabled=?, web_enabled=? WHERE order_id=?";
-           $conn->prepare($sql_specs)->execute([$cpu, $ram, $db_en, $web_en, $oid]);
-       } else {
-           $sql_specs = "INSERT INTO order_specs (order_id, cpu_cores, ram_gb, db_enabled, web_enabled, storage_gb) VALUES (?, ?, ?, ?, ?, 20)";
-           $conn->prepare($sql_specs)->execute([$oid, $cpu, $ram, $db_en, $web_en]);
-       }
+       // Update 'k8s_deployments' table (Unified)
+       $sql_update = "UPDATE k8s_deployments SET plan_id = ?, cpu_cores = ?, ram_gb = ?, db_enabled = ?, web_enabled = ? WHERE id = ?";
+       $stmt = $conn->prepare($sql_update);
+       $stmt->execute([$plan_id, $cpu, $ram, $db_en, $web_en, $oid]);
        
        // Generate Action JSON for Operator
        $action_file = __DIR__ . "/../../buzon-pedidos/accion_update_{$oid}.json";
@@ -255,7 +245,7 @@ if (isset($_GET['ajax_data'])) {
     
     // FORCE UPDATE STATUS FROM DB (Source of Truth)
     try {
-        $stmt = $conn->prepare("SELECT status FROM orders WHERE id = ?");
+        $stmt = $conn->prepare("SELECT status FROM k8s_deployments WHERE id = ?");
         $stmt->execute([$oid]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($row) {
@@ -363,7 +353,8 @@ if (isset($_GET['ajax_data'])) {
 
 // UPDATE PROFILE
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] == 'update_profile') {
-    $sql = "UPDATE users SET full_name=?, email=?, dni=?, telefono=?, company_name=?, calle=? WHERE id=?";
+    // Map params to new schema
+    $sql = "UPDATE users SET full_name=?, email=?, documento_identidad=?, telefono=?, company_name=?, direccion=? WHERE id=?";
     $conn->prepare($sql)->execute([$_POST['full_name'], $_POST['email'], $_POST['dni'], $_POST['telefono'], $_POST['company_name'], $_POST['calle'], $user_id]);
     header("Location: ../dashboard.php"); exit;
 }
@@ -375,7 +366,7 @@ if (!$user_info) $user_info = [];
 function calculateWeeklyPrice($r) { 
     $p=match($r['plan_name']??''){'Bronce'=>5,'Plata'=>15,'Oro'=>30,default=>0}; 
     if(($r['plan_name']??'')=='Personalizado'){
-        $p=(intval($r['custom_cpu']??0)*5)+(intval($r['custom_ram']??0)*5); 
+        $p=(intval($r['cpu_cores']??0)*5)+(intval($r['ram_gb']??0)*5); // Use correct columns
         if(!empty($r['db_enabled']))$p+=10; if(!empty($r['web_enabled']))$p+=10;
     } 
     return $p/4; 
@@ -383,7 +374,7 @@ function calculateWeeklyPrice($r) {
 function getBackupLimit($r) { 
     $m=match($r['plan_name']??''){'Bronce'=>5,'Plata'=>15,'Oro'=>30,default=>0}; 
     if(($r['plan_name']??'')=='Personalizado'){
-        $m=(intval($r['custom_cpu']??0)*5)+(intval($r['custom_ram']??0)*5); 
+        $m=(intval($r['cpu_cores']??0)*5)+(intval($r['ram_gb']??0)*5); 
         if(!empty($r['db_enabled']))$m+=10; if(!empty($r['web_enabled']))$m+=10;
     } 
     return (($r['plan_name']??'')=='Oro'||$m>=30)?5:((($r['plan_name']??'')=='Plata'||$m>=15)?3:2); 
@@ -404,7 +395,24 @@ function getOSNamePretty($os) {
 }
 
 // --- INIT DATA ---
-$sql = "SELECT o.*, p.name as plan_name, p.cpu_cores as p_cpu, p.ram_gb as p_ram, os.cpu_cores as custom_cpu, os.ram_gb as custom_ram, os.db_enabled, os.web_enabled, os.os_image, os.tools, os.cluster_alias FROM orders o JOIN plans p ON o.plan_id=p.id LEFT JOIN order_specs os ON o.id = os.order_id WHERE user_id=? AND status!='cancelled' ORDER BY o.id DESC";
+// Update Query for k8s_deployments
+$sql = "SELECT d.*, 
+        p.name as plan_name, 
+        p.base_cpu as p_cpu, 
+        p.base_ram as p_ram, 
+        
+        -- Tools Aggregation
+        (
+            SELECT JSON_ARRAYAGG(tool_name) 
+            FROM k8s_tools 
+            WHERE deployment_id = d.id
+        ) as tools_json
+
+        FROM k8s_deployments d 
+        JOIN plans p ON d.plan_id=p.id 
+        WHERE user_id=? AND status!='cancelled' 
+        ORDER BY d.id DESC";
+
 $stmt = $conn->prepare($sql); $stmt->execute([$_SESSION['user_id']]); $clusters = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
 $current = null; 
@@ -419,7 +427,7 @@ foreach($clusters as $c) $total_weekly += calculateWeeklyPrice($c);
 
 if($clusters) {
     $current = (isset($_GET['id'])) ? array_values(array_filter($clusters, fn($c)=>$c['id']==$_GET['id']))[0] ?? $clusters[0] : $clusters[0];
-    if ($current['plan_name'] == 'Personalizado') $plan_cpus = intval($current['custom_cpu'] ?? 1); else $plan_cpus = intval($current['p_cpu'] ?? 1); 
+    if ($current['plan_name'] == 'Personalizado') $plan_cpus = intval($current['cpu_cores'] ?? 1); else $plan_cpus = intval($current['p_cpu'] ?? 1); 
     if ($plan_cpus < 1) $plan_cpus = 1;
     $backup_limit = getBackupLimit($current);
     $has_web = ($current['plan_name'] === 'Oro' || (!empty($current['web_enabled']) && $current['web_enabled'] == 1));
@@ -437,7 +445,8 @@ if($clusters) {
             $web_url = $d['web_url'] ?? null;
             if(isset($d['html_source']) && !empty($d['html_source'])) { $html_code = $d['html_source']; }
             
-            $tools_db = (!empty($current['tools'])) ? json_decode($current['tools'], true) : [];
+            // Fix Tools Loading
+            $tools_db = (!empty($current['tools_json'])) ? json_decode($current['tools_json'], true) : [];
             if(!empty($tools_db)) {
                 $installed_tools = $tools_db;
             } else {

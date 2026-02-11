@@ -539,6 +539,11 @@ function initTerminal() {
     term.open(container);
     fitAddon.fit();
 
+    // FIX: Re-focus terminal on click
+    container.addEventListener('click', () => {
+        if (term) term.focus();
+    });
+
     term.writeln("🔌 Conectando a Sylo Bastion...");
 
     // Determine WS URL (Localhost workaround if needed)

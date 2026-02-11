@@ -13,18 +13,21 @@ define('API_URL', 'http://172.17.0.1:8001/api/clientes');
 $db_host = getenv('DB_HOST') ?: "kylo-main-db";
 $db_user = getenv('DB_USER') ?: "sylo_app";
 $db_pass = getenv('DB_PASS') ?: "sylo_app_pass";
-$db_name = getenv('DB_NAME') ?: "kylo_main_db";
+$db_name = getenv('DB_NAME') ?: "sylo_admin_db";
 
 try {
     $conn = new PDO("mysql:host=$db_host;dbname=$db_name", $db_user, $db_pass);
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
-} catch(PDOException $e) { if($_SERVER['REQUEST_METHOD']=='POST') die(json_encode(["status"=>"error"])); }
+} catch(PDOException $e) {
+    file_put_contents('/tmp/auth_debug.txt', "DB Error: " . $e->getMessage() . "\n", FILE_APPEND);
+    die("Error DB");
+}
 
 // --- CHECK USER ---
 $has_clusters = false;
 if (isset($_SESSION['user_id'])) {
     try {
-        $stmt = $conn->prepare("SELECT COUNT(*) FROM orders WHERE user_id = ? AND status IN ('active', 'suspended', 'creating', 'pending')");
+        $stmt = $conn->prepare("SELECT COUNT(*) FROM k8s_deployments WHERE user_id = ? AND status IN ('active', 'suspended', 'creating', 'pending')");
         $stmt->execute([$_SESSION['user_id']]);
         if ($stmt->fetchColumn() > 0) $has_clusters = true;
     } catch(Exception $e) {}
@@ -72,7 +75,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $dn = ($tipo === 'autonomo') ? $input['dni'] : $input['cif'];
             $cn = ($tipo === 'empresa') ? $input['company_name'] : null;
             $te = ($tipo === 'empresa') ? $input['tipo_empresa'] : null;
-            $sql = "INSERT INTO users (username, full_name, email, password_hash, role, tipo_usuario, dni, telefono, company_name, tipo_empresa, calle, created_at) VALUES (?, ?, ?, ?, 'client', ?, ?, ?, ?, ?, ?, NOW())";
+            // Map inputs to new schema: dni -> documento_identidad, calle -> direccion
+            $sql = "INSERT INTO users (username, full_name, email, password_hash, role, tipo_usuario, documento_identidad, telefono, company_name, tipo_empresa, direccion, created_at) VALUES (?, ?, ?, ?, 'client', ?, ?, ?, ?, ?, ?, NOW())";
             $stmt = $conn->prepare($sql);
             $stmt->execute([$user, $fn, $email, $pass, $tipo, $dn, $input['telefono'], $cn, $te, $input['calle']]);
             $_SESSION['user_id'] = $conn->lastInsertId(); $_SESSION['username'] = $user; $_SESSION['company'] = $cn ?: 'Particular';
@@ -108,15 +112,40 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 else $plan_id = 1; // Fallback general a Bronce
             }
 
-            $stmt = $conn->prepare("INSERT INTO orders (user_id, plan_id, status) VALUES (?, ?, 'pending')");
-            $stmt->execute([$_SESSION['user_id'], $plan_id]);
+            // Insert into k8s_deployments (Unified Table)
+            $sql = "INSERT INTO k8s_deployments 
+                (user_id, plan_id, status, cluster_alias, subdomain, os_image, cpu_cores, ram_gb, storage_gb, 
+                 web_enabled, web_type, web_custom_name, db_enabled, db_type, db_custom_name, ssh_user, created_at) 
+                VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
+            
+            $stmt = $conn->prepare($sql);
+            $stmt->execute([
+                $_SESSION['user_id'], 
+                $plan_id,
+                $s['cluster_alias'],
+                $s['subdomain'] . '-' . rand(1000, 9999), // Force unique subdomain
+                $s['os_image'],
+                $s['cpu'],
+                $s['ram'],
+                $s['storage'],
+                $s['web_enabled'] ? 1 : 0,
+                $s['web_type'],
+                $s['web_custom_name'],
+                $s['db_enabled'] ? 1 : 0,
+                $s['db_type'],
+                $s['db_custom_name'],
+                $s['ssh_user']
+            ]);
+            
             $oid = $conn->lastInsertId();
             
-            $tools_str = json_encode($s['tools'] ?? []);
-
-            $sqlS = "INSERT INTO order_specs (order_id, cpu_cores, ram_gb, storage_gb, db_enabled, db_type, web_enabled, web_type, cluster_alias, subdomain, ssh_user, os_image, db_custom_name, web_custom_name, tools) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-            $stmtS = $conn->prepare($sqlS);
-            $stmtS->execute([$oid, $s['cpu'], $s['ram'], $s['storage'], $s['db_enabled']?1:0, $s['db_type'], $s['web_enabled']?1:0, $s['web_type'], $s['cluster_alias'], $s['subdomain'], $s['ssh_user'], $s['os_image'], $s['db_custom_name'], $s['web_custom_name'], $tools_str]);
+            // Handle Tools (Insert into k8s_tools)
+            if (!empty($s['tools']) && is_array($s['tools'])) {
+                $stmtTools = $conn->prepare("INSERT INTO k8s_tools (deployment_id, tool_name) VALUES (?, ?)");
+                foreach ($s['tools'] as $tool) {
+                    $stmtTools->execute([$oid, $tool]);
+                }
+            }
             
             $payload = ["id_cliente" => (int)$oid, "plan" => $plan, "cliente_nombre" => $_SESSION['username'], "specs" => $s, "id_usuario_real" => (string)$_SESSION['user_id']];
             $ch = curl_init(API_URL . "/crear");

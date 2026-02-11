@@ -1,0 +1,1 @@
+{"metrics": {"cpu": 20.47, "ram": 96.84}, "ssh_cmd": "root@sylo", "web_url": "http://localhost:8042", "os_info": "os_img", "installed_tools": ["alpine", "nginx", "mysql"], "last_update": 1770666560.856522}

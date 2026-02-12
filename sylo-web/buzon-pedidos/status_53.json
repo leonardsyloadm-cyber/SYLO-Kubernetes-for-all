@@ -1,1 +1,1 @@
-{"percent": 100, "message": "Despliegue finalizado.", "status": "completed", "metrics": {"cpu": 70.83, "ram": 93.56}, "ssh_cmd": "root@sylo", "web_url": "http://interno-3070.sylobi.org", "os_info": "os_img", "installed_tools": ["alpine"], "last_update": 1770914925.1504366}
+{"metrics": {"cpu": 0, "ram": 0}, "ssh_cmd": "Offline", "web_url": "http://localhost:8053", "os_info": "Offline", "installed_tools": ["alpine", "nginx", "mysql"], "last_update": 1770915842.893469}

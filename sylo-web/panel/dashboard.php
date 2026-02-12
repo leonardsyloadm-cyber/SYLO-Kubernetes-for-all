@@ -554,7 +554,7 @@ document.querySelectorAll('input[type=range]').forEach(input => {
 // Init on load
 document.addEventListener('DOMContentLoaded', () => {
     // Highlight current
-    const current = "<?=$current['plan_name']?>";
+    const current = <?=json_encode($current['plan_name']??'')?>;
     // Find card with onclick having current
     // ... logic handled by PHP echoing 'current-plan' class which we will style, 
     // but better to trigger click to set state.
@@ -568,7 +568,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const orderId = <?=$current['id']??0?>; 
     const planCpus = <?=$plan_cpus?>; 
     const backupLimit = <?=$backup_limit?>;
-    const initialCode = <?php echo json_encode($html_code); ?>;
+    const initialCode = <?php echo json_encode($html_code, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
 </script>
     <!-- Cloud Loader Overlay REPLACED BY Power Modal -->
     <div class="modal fade" id="powerModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-hidden="true">

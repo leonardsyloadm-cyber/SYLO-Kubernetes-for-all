@@ -2,9 +2,24 @@
 // logic: sylo-web/public/php/auth.php
 // backend logic for Landing/Login
 
-ini_set('display_errors', 1);
+// --- SECURITY CONFIG ---
+ini_set('display_errors', 0); // 🛡️ Disable error display in production to prevent path leakage
+ini_set('log_errors', 1);
 error_reporting(E_ALL);
-if (session_status() === PHP_SESSION_NONE) session_start();
+
+// 🛡️ Secure Session Cookies (HttpOnly + Secure)
+// Ensure this is set BEFORE session_start()
+if (session_status() === PHP_SESSION_NONE) {
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path' => '/',
+        'domain' => '', // Default current domain
+        'secure' => true, // 🛡️ Require HTTPS
+        'httponly' => true, // 🛡️ Prevent JS access to session cookie (XSS protection)
+        'samesite' => 'Strict' // 🛡️ CSRF mitigation
+    ]);
+    session_start();
+}
 require_once __DIR__ . '/csrf.php';
 
 define('API_URL', 'http://172.17.0.1:8001/api/clientes');
@@ -16,11 +31,12 @@ $db_pass = getenv('DB_PASS') ?: "sylo_app_pass";
 $db_name = getenv('DB_NAME') ?: "sylo_admin_db";
 
 try {
-    $conn = new PDO("mysql:host=$db_host;dbname=$db_name", $db_user, $db_pass);
+    $conn = new PDO("mysql:host=$db_host;dbname=$db_name;charset=utf8mb4", $db_user, $db_pass); // Added charset
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $conn->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC); // 🏗️ Default fetch mode
 } catch(PDOException $e) {
-    file_put_contents('/tmp/auth_debug.txt', "DB Error: " . $e->getMessage() . "\n", FILE_APPEND);
-    die("Error DB");
+    error_log("DB Error: " . $e->getMessage()); // 🛡️ Log to system logs, not file
+    die(json_encode(["status" => "error", "mensaje" => "Error interno del servidor"])); // 🛡️ Generic error for user
 }
 
 // --- CHECK USER ---
@@ -67,7 +83,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if ($action === 'register') {
         try {
             if ($input['password'] !== $input['password_confirm']) throw new Exception("Pass mismatch");
-            $user = htmlspecialchars($input['username']);
+            // 🛡️ Store RAW, Sanitize on OUTPUT. Prevents double-encoding and database corruption.
+            $user = $input['username']; // Removed htmlspecialchars
             $email = filter_var($input['email'], FILTER_VALIDATE_EMAIL);
             $pass = password_hash($input['password'], PASSWORD_BCRYPT);
             $tipo = $input['tipo_usuario'];
@@ -99,7 +116,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     if ($action === 'logout') { session_destroy(); echo json_encode(["status"=>"success"]); exit; }
     if ($action === 'comprar') {
         if (!isset($_SESSION['user_id'])) exit(json_encode(["status"=>"auth_required"]));
-        $plan = htmlspecialchars($input['plan']); $s = $input['specs']; 
+        $plan = $input['plan']; // 🛡️ Removed htmlspecialchars (Input Validation only)
+        $s = $input['specs']; 
         try {
             // -- FIX: Obtener ID dinámico del plan --
             $stmtP = $conn->prepare("SELECT id FROM plans WHERE name = ?");

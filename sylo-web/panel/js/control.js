@@ -42,9 +42,11 @@ function sendPowerAction(action) {
 function showToast(msg, type = 'info') {
     const icon = type === 'success' ? 'check-circle' : (type === 'error' ? 'exclamation-triangle' : 'info-circle');
     const color = type === 'success' ? '#10b981' : (type === 'error' ? '#ef4444' : '#3b82f6');
-    const html = `<div class="custom-toast" style="border-left-color:${color}"><i class="bi bi-${icon}" style="color:${color};font-size:1.2rem"></i><div><strong>${window.SyloLang?.get('js.toast_notification') || 'Notificación'}</strong><br><small>${msg}</small></div></div>`;
+    const html = `<div class="custom-toast" style="border-left-color:${color}"><i class="bi bi-${icon}" style="color:${color};font-size:1.2rem"></i><div><strong>${window.SyloLang?.get('js.toast_notification') || 'Notificación'}</strong><br><small id="toast-msg"></small></div></div>`;
     const container = document.getElementById('toastContainer');
-    const el = document.createElement('div'); el.innerHTML = html;
+    const el = document.createElement('div');
+    el.innerHTML = html;
+    el.querySelector('#toast-msg').textContent = msg; // 🛡️ Safe text insertion
     container.appendChild(el);
     setTimeout(() => el.remove(), 4000);
     addLog(msg);
@@ -53,10 +55,26 @@ function showToast(msg, type = 'info') {
 function addLog(msg) {
     const tbody = document.getElementById('activity-log-body');
     const time = new Date().toLocaleTimeString();
-    const row = `<tr><td><span class="text-light-muted small me-2">[${time}]</span> <span class="text-white">${msg}</span></td></tr>`;
+
+    // 🛡️ Secure Row Creation
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'text-light-muted small me-2';
+    timeSpan.innerText = `[${time}]`;
+
+    const msgSpan = document.createElement('span');
+    msgSpan.className = 'text-white';
+    msgSpan.textContent = msg; // Safe
+
+    cell.appendChild(timeSpan);
+    cell.appendChild(msgSpan);
+    row.appendChild(cell);
+
     const emptyRow = document.getElementById('log-empty-row');
     if (emptyRow) emptyRow.remove();
-    tbody.innerHTML = row + tbody.innerHTML;
+    tbody.prepend(row);
 }
 
 function toggleChat() { const win = document.getElementById('chatWindow'); win.style.display = win.style.display === 'flex' ? 'none' : 'flex'; }
@@ -67,11 +85,22 @@ function sendChat() {
     const txt = inp.value.trim();
     if (!txt) return;
     const body = document.getElementById('chatBody');
-    body.innerHTML += `<div class="chat-msg me">${txt}</div>`;
+
+    // 🛡️ Secure Element Creation (Prevents XSS)
+    const msgDiv = document.createElement('div');
+    msgDiv.className = 'chat-msg me';
+    msgDiv.textContent = txt; // Safe
+    body.appendChild(msgDiv);
+
     inp.value = '';
     body.scrollTop = body.scrollHeight;
-    const thinkingHTML = `<div id="sylo-thinking" class="chat-msg support thinking-bubble"><div class="spinner-border spinner-border-sm text-primary" role="status"></div><span id="thinking-text">${window.SyloLang?.get('chat.sending') || 'Enviando...'}</span></div>`;
-    body.innerHTML += thinkingHTML;
+
+    const thinkingDiv = document.createElement('div');
+    thinkingDiv.id = 'sylo-thinking';
+    thinkingDiv.className = 'chat-msg support thinking-bubble';
+    thinkingDiv.innerHTML = `<div class="spinner-border spinner-border-sm text-primary" role="status"></div><span id="thinking-text"></span>`; // Inner HTML safe here (static)
+    thinkingDiv.querySelector('#thinking-text').textContent = window.SyloLang?.get('chat.sending') || 'Enviando...';
+    body.appendChild(thinkingDiv);
     body.scrollTop = body.scrollHeight;
     const formData = new FormData();
     formData.append('action', 'send_chat');
@@ -665,14 +694,16 @@ function loadData() {
                     if (chatBubble) chatBubble.remove();
                     const body = document.getElementById('chatBody');
                     if (body) {
-                        body.innerHTML += `<div class="chat-msg support">${d.chat_reply}</div>`;
+                        const replyDiv = document.createElement('div');
+                        replyDiv.className = 'chat-msg support';
+                        replyDiv.textContent = d.chat_reply; // 🛡️ Safe
+                        body.appendChild(replyDiv);
                         body.scrollTop = body.scrollHeight;
                         showToast(window.SyloLang?.get('chat.received') || "Mensaje de soporte recibido", "info");
                     }
-                }
-            } catch (e) { }
+                } catch (e) { }
 
-        })
+            })
         .catch(err => { console.log("Esperando datos...", err); });
 }
 pollingInterval = setInterval(loadData, 500);

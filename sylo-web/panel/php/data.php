@@ -1,6 +1,17 @@
 <?php
 // logic: sylo-web/panel/php/data.php
-session_start();
+// --- SECURITY CONFIG ---
+ini_set('display_errors', 0);
+ini_set('log_errors', 1);
+error_reporting(E_ALL);
+
+if (session_status() === PHP_SESSION_NONE) {
+    session_set_cookie_params([
+        'lifetime' => 0, 'path' => '/', 'domain' => '', 'secure' => true, 'httponly' => true, 'samesite' => 'Strict'
+    ]);
+    session_start();
+}
+
 define('API_URL_BASE', 'http://172.17.0.1:8001/api/clientes'); // IP LINUX (Docker Gateway)
 
 // AUTH & DB
@@ -12,17 +23,34 @@ $username_db = getenv('DB_USER') ?: "sylo_app";
 $password_db = getenv('DB_PASS') ?: "sylo_app_pass";
 $dbname = getenv('DB_NAME') ?: "sylo_admin_db";
 
-try { $conn = new PDO("mysql:host=$servername;dbname=$dbname", $username_db, $password_db); } catch(PDOException $e) { die("Error DB"); }
+try { 
+    $conn = new PDO("mysql:host=$servername;dbname=$dbname;charset=utf8mb4", $username_db, $password_db);
+    $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+} catch(PDOException $e) { die("Error DB"); }
 
 $user_id = $_SESSION['user_id'];
 
+// 🛡️ HELPER: Verify Ownership (Prevent IDOR)
+function verifyOwnership($conn, $oid, $uid) {
+    if (!$oid) return false;
+    $stmt = $conn->prepare("SELECT id FROM k8s_deployments WHERE id = ? AND user_id = ?");
+    $stmt->execute([$oid, $uid]);
+    return (bool)$stmt->fetch();
+}
+
 // --- ACTIONS (POST) ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && !in_array($_POST['action'], ['update_profile', 'install_monitoring', 'uninstall_monitoring'])) {
-    $oid = $_POST['order_id'];
+    $oid = (int)$_POST['order_id']; // Cast to int immediately
     $act = $_POST['action'];
     
+    // 🛡️ CRITICAL: Verify User Owns This Deployment
+    if (!verifyOwnership($conn, $oid, $user_id)) {
+        http_response_code(403);
+        die(json_encode(['status' => 'error', 'message' => 'Unauthorized Access (IDOR Protected)']));
+    }
+    
     $data = [
-        "id_cliente" => (int)$oid,
+        "id_cliente" => $oid,
         "accion" => $act,
         "backup_type" => "full",
         "backup_name" => "Backup",
@@ -232,7 +260,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && !in_arra
 // --- AJAX DATA (GET) ---
 if (isset($_GET['ajax_data'])) {
     header('Content-Type: application/json');
-    $oid = $_GET['id'];
+    $oid = (int)$_GET['id'];
+    
+    // 🛡️ CRITICAL: Verify Ownership for Read Access
+    if (!verifyOwnership($conn, $oid, $user_id)) {
+        echo json_encode(['error' => 'Unauthorized']);
+        exit;
+    }
+
     $ctx = stream_context_create(['http'=> ['timeout' => 3]]);
     
     // Leer Chat si hay respuesta

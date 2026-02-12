@@ -1,0 +1,1 @@
+{"percent": 100, "message": "Despliegue finalizado.", "status": "completed", "metrics": {"cpu": 20.34, "ram": 90.52}, "ssh_cmd": "root@sylo", "web_url": "http://interno-2845.sylobi.org", "os_info": "os_img", "installed_tools": ["alpine"], "last_update": 1770834262.351992}

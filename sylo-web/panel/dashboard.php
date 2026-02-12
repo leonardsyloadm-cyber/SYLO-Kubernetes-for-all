@@ -191,6 +191,81 @@ require_once 'php/data.php';
                 </div>
             </div>
 
+            <!-- MARKETPLACE SECTION -->
+            <div class="card-clean mb-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h6 class="fw-bold m-0 text-white"><i class="bi bi-shop me-2 text-warning"></i><span data-i18n="dashboard.marketplace">Marketplace</span></h6>
+                </div>
+                
+                <?php
+                // Check if monitoring is already installed
+                $has_monitoring = false;
+                if (!empty($installed_tools)) {
+                    $has_monitoring = in_array('monitoring', $installed_tools);
+                }
+                ?>
+                
+                <div class="row g-3">
+                    <!-- MONITORING PRO CARD -->
+                    <div class="col-md-6">
+                        <div class="p-4 rounded border border-secondary bg-black bg-opacity-25 h-100 d-flex flex-column">
+                            <div class="d-flex align-items-start mb-3">
+                                <div class="bg-warning bg-opacity-10 p-3 rounded-circle border border-warning me-3">
+                                    <i class="bi bi-graph-up text-warning fs-4"></i>
+                                </div>
+                                <div class="flex-grow-1">
+                                    <h5 class="fw-bold text-white mb-1">Monitoring Pro</h5>
+                                    <small class="text-muted">Prometheus + Grafana</small>
+                                </div>
+                                <?php if ($has_monitoring): ?>
+                                    <span class="badge bg-success">Instalado</span>
+                                <?php endif; ?>
+                            </div>
+                            
+                            <p class="text-light-muted small mb-3">
+                                Stack completo de observabilidad con métricas en tiempo real, dashboards interactivos y alertas personalizadas.
+                            </p>
+                            
+                            <ul class="list-unstyled text-small text-white opacity-75 mb-4">
+                                <li><i class="bi bi-check2 text-success me-2"></i>Prometheus para métricas</li>
+                                <li><i class="bi bi-check2 text-success me-2"></i>Grafana con dashboards</li>
+                                <li><i class="bi bi-check2 text-success me-2"></i>Acceso vía subdominio</li>
+                                <li><i class="bi bi-check2 text-success me-2"></i>Retención 7 días</li>
+                            </ul>
+                            
+                            <div class="mt-auto">
+                                <?php if ($has_monitoring): ?>
+                                    <a href="http://localhost:80<?=$current['id']?>" target="_blank" class="btn btn-success w-100 mb-2">
+                                        <i class="bi bi-box-arrow-up-right me-2"></i>Abrir Grafana
+                                    </a>
+                                    <a href="http://localhost:90<?=$current['id']?>" target="_blank" class="btn btn-danger w-100 mb-2 bg-gradient text-white" style="background-color: #e6522c; border-color: #e6522c;">
+                                        <i class="bi bi-fire me-2"></i>Abrir Prometheus
+                                    </a>
+                                    <button class="btn btn-outline-danger w-100 btn-sm" onclick="uninstallMonitoring()">
+                                        <i class="bi bi-trash me-2"></i>Desinstalar
+                                    </button>
+                                <?php else: ?>
+                                    <button class="btn btn-warning w-100 fw-bold" onclick="installMonitoring()">
+                                        <i class="bi bi-download me-2"></i>Instalar Ahora
+                                    </button>
+                                    <small class="text-muted d-block mt-2 text-center">Instalación ~2 minutos</small>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- FUTURE: Add more marketplace items here -->
+                    <div class="col-md-6">
+                        <div class="p-4 rounded border border-secondary border-opacity-25 bg-black bg-opacity-10 h-100 d-flex align-items-center justify-content-center">
+                            <div class="text-center text-muted">
+                                <i class="bi bi-plus-circle fs-1 opacity-25"></i>
+                                <p class="mt-2 mb-0 small">Más herramientas próximamente</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <div class="card-clean">
                 <h6 class="fw-bold mb-3 text-white"><i class="bi bi-clock-history me-2 text-info"></i><span data-i18n="dashboard.activity_log">Historial de Actividad</span></h6>
                 <div class="table-responsive rounded border border-secondary border-opacity-25">
@@ -580,6 +655,59 @@ function initTerminal() {
     // Resize observer
     window.addEventListener('resize', () => fitAddon.fit());
 }
+
+// ============= MONITORING MARKETPLACE FUNCTIONS =============
+function installMonitoring() {
+    if (!confirm('¿Instalar Prometheus + Grafana en este clúster?\n\nEsto consumirá ~300MB de RAM adicionales.')) {
+        return;
+    }
+    
+    console.log('Iniciando instalación de Monitoring Pro...');
+    
+    fetch('php/data.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: new URLSearchParams({
+            action: 'install_monitoring',
+            deployment_id: orderId
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert('Instalación iniciada. La página se recargará en 2 minutos.');
+            setTimeout(() => location.reload(), 120000);
+        } else {
+            alert('Error: ' + (data.error || 'Desconocido'));
+        }
+    })
+    .catch(e => alert('Error de red: ' + e.message));
+}
+
+function uninstallMonitoring() {
+    if (!confirm('¿Desinstalar Monitoring Pro?\n\nSe perderán todas las métricas almacenadas.')) {
+        return;
+    }
+    
+    fetch('php/data.php', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: new URLSearchParams({
+            action: 'uninstall_monitoring',
+            deployment_id: orderId
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            alert('Desinstalación completada');
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            alert('Error: ' + (data.error || 'Desconocido'));
+        }
+    });
+}
+
 </script>
 <script src="js/control.js?v=<?=time()?>"></script>
 </body>

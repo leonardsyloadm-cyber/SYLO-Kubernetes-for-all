@@ -79,3 +79,17 @@ INFO:DockerTerminal:Terminal cerrada para sylo-cliente-50
 INFO:DockerTerminal:Terminal iniciada para sylo-cliente-50
 ERROR:DockerTerminal:Error en read_loop: timed out
 INFO:DockerTerminal:Terminal cerrada para sylo-cliente-50
+⚠️ [BASTION] Error en conexión: (1001, '')
+INFO:DockerTerminal:Terminal cerrada para sylo-cliente-50
+🔌 [BASTION] Desconectado de sylo-cliente-50
+📨 [API] Nuevo Pedido Recibido. Plan: Oro | Dueño: 4
+🛠️ [API] Tools guardadas para Cliente 51: []
+📨 [API] Nuevo Pedido Recibido. Plan: Bronce | Dueño: 4
+🛠️ [API] Tools guardadas para Cliente 52: []
+🔌 [BASTION] Conexión SSH solicitada para sylo-cliente-52
+INFO:DockerTerminal:Terminal iniciada para sylo-cliente-52
+ERROR:DockerTerminal:Error en read_loop: timed out
+INFO:DockerTerminal:Terminal cerrada para sylo-cliente-52
+⚠️ [BASTION] Error en conexión: (1001, '')
+INFO:DockerTerminal:Terminal cerrada para sylo-cliente-52
+🔌 [BASTION] Desconectado de sylo-cliente-52

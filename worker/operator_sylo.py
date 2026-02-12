@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 import sys, os, subprocess, time, json, datetime, threading, signal, shutil, tarfile, glob, codecs
 
+# Add ~/bin to PATH for Helm
+os.environ['PATH'] = os.environ.get('PATH', '') + ':' + os.path.expanduser('~/bin')
+
 # ==============================================================================
 # ⚙️ CONFIGURACIÓN
 # ==============================================================================
@@ -15,6 +18,8 @@ cmd_lock = threading.Lock()
 shutdown_event = threading.Event()
 blocked_cids = set() # Prevent metrics reporting during power ops
 active_port_forwards = {} # {oid: subprocess.Popen}
+active_monitor_forwards = {} # {oid: subprocess.Popen} for Grafana
+active_prometheus_forwards = {} # {oid: subprocess.Popen} for Prometheus
 
 # ==============================================================================
 # 🎨 LOGS
@@ -621,7 +626,12 @@ def _power_up_logic(oid, profile, is_restart=False):
 def process_task_queue():
     log("📥 Cola lista.", C_GREEN)
     while not shutdown_event.is_set():
+        # Process generic actions (exclude tool-specific actions)
         for f in glob.glob(os.path.join(BUZON, "accion_*.json")):
+            # Skip tool installation/uninstallation files - they're handled separately below
+            if 'install_tool' in f or 'uninstall_tool' in f:
+                continue
+                
             try:
                 with open(f) as fh: d = json.load(fh)
                 os.remove(f)
@@ -637,7 +647,115 @@ def process_task_queue():
                 elif act == "UPDATE_PLAN": threading.Thread(target=handle_plan_update, args=(oid, prof, d.get('new_specs'))).start()
                 
             except Exception as e: log(f"⚠️ Error: {e}", C_RED)
+        
+        # NEW: Handle tool installation requests
+        for f in glob.glob(os.path.join(BUZON, "accion_install_tool_*.json")):
+            try:
+                with open(f, 'r') as file:
+                    content = file.read()
+                    log(f"📄 Leyendo archivo: {f}", C_CYAN)
+                    log(f"   Contenido: {content[:200]}", C_GREY)
+                    d = json.loads(content)
+                
+                oid = d.get('deployment_id')
+                tool = d.get('tool')
+                
+                log(f"   deployment_id={oid}, tool={tool}", C_GREY)
+                
+                if not oid or not tool:
+                    log(f"⚠️ Invalid tool install request: {f}", C_YELLOW)
+                    log(f"   JSON data: {d}", C_YELLOW)
+                    os.remove(f)
+                    continue
+                
+                log(f"📥 Nueva solicitud de instalación: {tool} para deployment {oid}", C_CYAN)
+                
+                # Execute installation
+                threading.Thread(target=handle_install_tool, args=(oid, tool, d)).start()
+                
+                # Mark as processed
+                os.rename(f, f + ".procesado")
+                
+            except Exception as e:
+                log(f"❌ Error procesando {f}: {e}", C_RED)
+                try:
+                    os.rename(f, f + ".error")
+                except:
+                    pass
+        
+        # NEW: Handle tool uninstallation requests
+        for f in glob.glob(os.path.join(BUZON, "accion_uninstall_tool_*.json")):
+            try:
+                with open(f, 'r') as file:
+                    d = json.load(file)
+                
+                oid = d.get('deployment_id')
+                tool = d.get('tool')
+                
+                if not oid or not tool:
+                    os.remove(f)
+                    continue
+                
+                log(f"📥 Solicitud de desinstalación: {tool} para deployment {oid}", C_YELLOW)
+                
+                profile = f"sylo-cliente-{oid}"
+                
+                if tool == "monitoring":
+                    threading.Thread(target=uninstall_monitoring_stack, args=(oid, profile)).start()
+                
+                os.rename(f, f + ".procesado")
+                
+            except Exception as e:
+                log(f"❌ Error desinstalando: {e}", C_RED)
+        
         time.sleep(0.5)
+
+def ensure_monitoring_port_forward(oid, profile):
+    global active_monitor_forwards, active_prometheus_forwards
+    
+    # 1. GRAFANA (80xx)
+    grafana_port = f"80{oid}"
+    
+    # Check if monitoring is installed (via DB or known state)
+    try:
+        cmd = f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D sylo_admin_db -e "SELECT status FROM k8s_tools WHERE deployment_id={oid} AND tool_name=\'monitoring\'"'
+        status = run_command(cmd, silent=True).strip().lower()
+        
+        if status != "active":
+            # Cleanup Grafana
+            if oid in active_monitor_forwards:
+                try: active_monitor_forwards[oid].terminate()
+                except: pass
+                del active_monitor_forwards[oid]
+            
+            # Cleanup Prometheus
+            if oid in active_prometheus_forwards:
+                try: active_prometheus_forwards[oid].terminate()
+                except: pass
+                del active_prometheus_forwards[oid]
+            return
+            
+        # --- GRAFANA ---
+        if oid not in active_monitor_forwards or active_monitor_forwards[oid].poll() is not None:
+             # Cleanup specific port
+            run_command(f"pkill -f ':{grafana_port}'", silent=True)
+            
+            cmd = ["minikube", "-p", profile, "kubectl", "--", "port-forward", "-n", profile, "svc/sylo-monitor-grafana", f"{grafana_port}:80", "--address", "0.0.0.0"]
+            proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            active_monitor_forwards[oid] = proc
+            
+        # --- PROMETHEUS (90xx) ---
+        prom_port = f"90{oid}"
+        if oid not in active_prometheus_forwards or active_prometheus_forwards[oid].poll() is not None:
+            # Cleanup specific port
+            run_command(f"pkill -f ':{prom_port}'", silent=True)
+            
+            cmd = ["minikube", "-p", profile, "kubectl", "--", "port-forward", "-n", profile, "svc/sylo-monitor-kube-promethe-prometheus", f"{prom_port}:9090", "--address", "0.0.0.0"]
+            proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            active_prometheus_forwards[oid] = proc
+        
+    except Exception as e:
+        pass # Silent fail to avoid log spam
 
 def ensure_port_forward(oid, profile, web_en):
     global active_port_forwards
@@ -726,6 +844,9 @@ def process_metrics():
                         if os_img: tools.append(os_img)
                         if str(web_en) == "1" and web_type: tools.append(web_type)
                         if str(db_en) == "1" and db_type: tools.append(db_type)
+                        
+                        # NEW: Ensure Monitoring Port Forward (Self-Healing)
+                        ensure_monitoring_port_forward(oid, profile)
                         
                         requests.post(f"{API_URL}/reportar/metricas", json={"id_cliente":int(oid), "metrics":{"cpu":c,"ram":r}, "ssh_cmd": "root@sylo", "web_url": url, "os_info": "os_img", "installed_tools": tools}, timeout=1)
                         report_backups_list(oid)
@@ -996,6 +1117,152 @@ def _reinstall_tools(profile, plan_name):
     cmd = f"docker exec {profile} bash -c 'apt-get update >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get install -y {packages} >/dev/null 2>&1'"
     run_command(cmd, silent=True)
     log("   ✅ Herramientas Nodo Sincronizadas.", C_GREEN)
+
+# ==============================================================================
+# 🛠️ MONITORING STACK INSTALLATION (PROMETHEUS + GRAFANA)
+# ==============================================================================
+
+def handle_install_tool(oid, tool_name, config):
+    """
+    Instala herramientas adicionales en el clúster del cliente.
+    Actualmente soporta: monitoring (Prometheus + Grafana)
+    """
+    profile = f"sylo-cliente-{oid}"
+    log(f"🛠️ INSTALL TOOL: {tool_name} en {profile}", C_CYAN)
+    
+    if tool_name == "monitoring":
+        install_monitoring_stack(oid, profile, config)
+    else:
+        log(f"⚠️ Herramienta desconocida: {tool_name}", C_YELLOW)
+
+def install_monitoring_stack(oid, profile, config):
+    """
+    Instala Prometheus + Grafana usando Helm en el namespace del cliente.
+    """
+    namespace = profile  # El namespace es el mismo que el profile
+    grafana_password = config.get('grafana_password', 'admin')
+    
+    try:
+        log(f"   📦 Instalando Monitoring Stack (Prometheus + Grafana)...", C_CYAN)
+        
+        # 1. Add Helm repo (idempotent)
+        log("   ➕ Añadiendo repositorio Helm...", C_CYAN)
+        run_command("helm repo add prometheus-community https://prometheus-community.github.io/helm-charts", silent=True)
+        run_command("helm repo update", silent=True)
+        
+        # 2. Install kube-prometheus-stack with minimal resources
+        log(f"   🚀 Instalando stack en namespace {namespace}...", C_CYAN)
+        
+        # Minimal values for resource-constrained environments
+        helm_cmd = f"""helm upgrade --install sylo-monitor prometheus-community/kube-prometheus-stack \
+            --namespace {namespace} \
+            --create-namespace \
+            --set prometheus.prometheusSpec.resources.requests.memory=200Mi \
+            --set prometheus.prometheusSpec.resources.limits.memory=400Mi \
+            --set prometheus.prometheusSpec.resources.requests.cpu=100m \
+            --set prometheus.prometheusSpec.resources.limits.cpu=200m \
+            --set prometheus.prometheusSpec.retention=7d \
+            --set grafana.adminPassword={grafana_password} \
+            --set grafana.resources.requests.memory=100Mi \
+            --set grafana.resources.limits.memory=200Mi \
+            --set grafana.resources.requests.cpu=50m \
+            --set grafana.resources.limits.cpu=100m \
+            --set grafana.persistence.enabled=false \
+            --set alertmanager.enabled=false \
+            --set nodeExporter.enabled=false \
+            --set kubeStateMetrics.enabled=true \
+            --set grafana.service.type=ClusterIP \
+            --timeout 10m \
+            --wait"""
+        
+        result = run_command(helm_cmd, silent=False)
+        
+        if "deployed" in result.lower() or "upgraded" in result.lower():
+            log("   ✅ Helm installation successful", C_GREEN)
+        else:
+            raise Exception(f"Helm install failed: {result}")
+        
+        # 3. Wait for Grafana pod to be ready
+        log("   ⏳ Esperando a que Grafana esté listo...", C_CYAN)
+        time.sleep(10)  # Give it a moment
+        
+        wait_cmd = f"minikube -p {profile} kubectl -- wait --for=condition=ready pod -l app.kubernetes.io/name=grafana --namespace {namespace} --timeout=300s"
+        run_command(wait_cmd, silent=True)
+        
+        # 4. Setup port-forward for Grafana
+        log("   🌐 Configurando port-forward para Grafana...", C_CYAN)
+        setup_grafana_port_forward(oid, profile, namespace)
+        
+        # 5. Update database status
+        log("   💾 Actualizando estado en base de datos...", C_CYAN)
+        update_tool_status(oid, "monitoring", "active")
+        
+        log(f"   ✅ MONITORING STACK INSTALADO CORRECTAMENTE", C_GREEN)
+        log(f"   🔗 Grafana URL: http://localhost:80{oid}", C_CYAN)
+        log(f"   👤 Usuario: admin", C_CYAN)
+        log(f"   🔑 Password: {grafana_password}", C_CYAN)
+        
+    except Exception as e:
+        log(f"   ❌ Error instalando monitoring: {e}", C_RED)
+        update_tool_status(oid, "monitoring", "error")
+
+def setup_grafana_port_forward(oid, profile, namespace):
+    """
+    Configura port-forward para acceder a Grafana via localhost:80XX
+    """
+    port = f"80{oid}"
+    
+    try:
+        # Kill any existing port-forward for this port
+        run_command(f"pkill -f 'port-forward.*{port}:{port}'", silent=True)
+        
+        # Start new port-forward in background
+        cmd = f"minikube -p {profile} kubectl -- port-forward -n {namespace} svc/sylo-monitor-grafana {port}:80 --address=0.0.0.0 > /dev/null 2>&1 &"
+        run_command(cmd, silent=True)
+        
+        log(f"   ✅ Port-forward configurado: localhost:{port}", C_GREEN)
+    except Exception as e:
+        log(f"   ⚠️ Error configurando port-forward: {e}", C_YELLOW)
+
+def uninstall_monitoring_stack(oid, profile):
+    """
+    Desinstala el stack de monitoring usando Helm.
+    """
+    namespace = profile
+    port = f"80{oid}"
+    
+    try:
+        log(f"   🗑️ Desinstalando Monitoring Stack...", C_YELLOW)
+        
+        # 1. Kill port-forward
+        run_command(f"pkill -f 'port-forward.*{port}:{port}'", silent=True)
+        
+        # 2. Delete Helm release
+        uninstall_cmd = f"helm uninstall sylo-monitor --namespace {namespace}"
+        run_command(uninstall_cmd, silent=True)
+        
+        # 3. Update database
+        delete_tool_record(oid, "monitoring")
+        
+        log(f"   ✅ Monitoring desinstalado correctamente", C_GREEN)
+        
+    except Exception as e:
+        log(f"   ❌ Error desinstalando monitoring: {e}", C_RED)
+
+def update_tool_status(oid, tool_name, status):
+    """
+    Actualiza el estado de una herramienta en la base de datos.
+    """
+    cmd = f"""docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D sylo_admin_db -e "UPDATE k8s_tools SET status='{status}', updated_at=NOW() WHERE deployment_id={oid} AND tool_name='{tool_name}'" """
+    run_command(cmd, silent=True)
+
+def delete_tool_record(oid, tool_name):
+    """
+    Elimina el registro de una herramienta de la base de datos.
+    """
+    cmd = f"""docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D sylo_admin_db -e "DELETE FROM k8s_tools WHERE deployment_id={oid} AND tool_name='{tool_name}'" """
+    run_command(cmd, silent=True)
+
 
 
 def random_str(length):

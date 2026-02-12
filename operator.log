@@ -1,58 +1,136 @@
 nohup: ignoring input
-[92m[16:47:00] === OPERATOR V55 (SELF-HEAL FIXED) ===[0m
-[92m[16:47:00] 📥 Cola lista.[0m
-[92m[16:47:00] 📊 Métricas activas.[0m
-[90m[16:47:01] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:47:10] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:47:18] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:47:26] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:47:35] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:47:43] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:47:51] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:48:00] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:48:08] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:48:17] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:48:25] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:48:33] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:48:42] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:48:50] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:48:58] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:49:07] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:49:15] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:49:23] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:49:32] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:49:40] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:49:48] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:49:57] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:50:05] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:50:13] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:50:22] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:50:30] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:50:38] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:50:47] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:50:55] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:51:03] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:51:12] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:51:20] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:51:28] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:51:37] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:51:45] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[90m[16:51:54] 🔌 Iniciando Port-Forward Cliente 50 -> 8050[0m
-[93m[16:52:00] 📨 Orden: UPDATE_PLAN -> 50[0m
-[93m[16:52:00] ⚡ UPDATE PLAN: Cliente 50[0m
-[90m[16:52:00] 📡 API > Cliente 50 [plan_update]: Analizando nueva configuración... (10%)[0m
-[93m[16:52:00] 📨 Orden: CHANGE_PLAN -> 50[0m
-[90m[16:52:02] 🔌 Deteniendo Port-Forward Cliente 50[0m
-[90m[16:52:02] 📡 API > Cliente 50 [plan_update]: Obteniendo especificaciones... (15%)[0m
-[90m[16:52:04] 📡 API > Cliente 50 [plan_update]: Escalando Recursos (CPU: 2 / RAM: 2GB)... (30%)[0m
-[90m[16:52:06] 📡 API > Cliente 50 [plan_update]: Gestionando capa de Datos... (50%)[0m
-[93m[16:52:06]    ➖ Solicitud: Eliminar Base de Datos[0m
-[90m[16:52:06] 📡 API > Cliente 50 [plan_update]: Eliminando Base de Datos... (55%)[0m
-[90m[16:52:07] 📡 API > Cliente 50 [plan_update]: Gestionando capa Web... (70%)[0m
-[93m[16:52:07]    ➖ Solicitud: Eliminar Servidor Web[0m
-[90m[16:52:07] 📡 API > Cliente 50 [plan_update]: Eliminando Servidor Web... (75%)[0m
-[90m[16:52:07] 📡 API > Cliente 50 [plan_update]: Verificando salud de servicios... (90%)[0m
-[90m[16:52:10] 📡 API > Cliente 50 [plan_update]: Plan Actualizado Correctamente (100%)[0m
-[92m[16:52:10] ✅ PLAN V50 ACTUALIZADO[0m
-[93m[16:53:26] 📨 Orden: TERMINATE -> 43[0m
-[93m[16:53:31] 📨 Orden: TERMINATE -> 44[0m
+[92m[16:40:08] === OPERATOR V55 (SELF-HEAL FIXED) ===[0m
+[92m[16:40:08] 📥 Cola lista.[0m
+[92m[16:40:08] 📊 Métricas activas.[0m
+[91m[16:40:10] ⚠️ ERROR (-15): [0m
+[91m[16:40:10] ⚠️ ERROR (-15): [0m
+[91m[16:40:14] ⚠️ ERROR (-15): [0m
+[91m[16:40:18] ⚠️ ERROR (-15): [0m
+[91m[16:40:22] ⚠️ ERROR (-15): [0m
+[91m[16:40:26] ⚠️ ERROR (-15): [0m
+[91m[16:40:30] ⚠️ ERROR (-15): [0m
+[91m[16:40:34] ⚠️ ERROR (-15): [0m
+[91m[16:40:38] ⚠️ ERROR (-15): [0m
+[91m[16:40:42] ⚠️ ERROR (-15): [0m
+[91m[16:40:45] ⚠️ ERROR (-15): [0m
+[91m[16:40:49] ⚠️ ERROR (-15): [0m
+[91m[16:40:53] ⚠️ ERROR (-15): [0m
+[91m[16:40:57] ⚠️ ERROR (-15): [0m
+[91m[16:41:01] ⚠️ ERROR (-15): [0m
+[91m[16:41:05] ⚠️ ERROR (-15): [0m
+[91m[16:41:09] ⚠️ ERROR (-15): [0m
+[91m[16:41:13] ⚠️ ERROR (-15): [0m
+[91m[16:41:17] ⚠️ ERROR (-15): [0m
+[91m[16:41:21] ⚠️ ERROR (-15): [0m
+[91m[16:41:25] ⚠️ ERROR (-15): [0m
+[91m[16:41:29] ⚠️ ERROR (-15): [0m
+[91m[16:41:33] ⚠️ ERROR (-15): [0m
+[91m[16:41:37] ⚠️ ERROR (-15): [0m
+[91m[16:41:41] ⚠️ ERROR (-15): [0m
+[91m[16:41:45] ⚠️ ERROR (-15): [0m
+[91m[16:41:49] ⚠️ ERROR (-15): [0m
+[91m[16:41:53] ⚠️ ERROR (-15): [0m
+[91m[16:41:57] ⚠️ ERROR (-15): [0m
+[91m[16:42:01] ⚠️ ERROR (-15): [0m
+[91m[16:42:05] ⚠️ ERROR (-15): [0m
+[91m[16:42:09] ⚠️ ERROR (-15): [0m
+[91m[16:42:13] ⚠️ ERROR (-15): [0m
+[91m[16:42:17] ⚠️ ERROR (-15): [0m
+[91m[16:42:21] ⚠️ ERROR (-15): [0m
+[91m[16:42:25] ⚠️ ERROR (-15): [0m
+[91m[16:42:29] ⚠️ ERROR (-15): [0m
+[91m[16:42:32] ⚠️ ERROR (-15): [0m
+[91m[16:42:36] ⚠️ ERROR (-15): [0m
+[91m[16:42:40] ⚠️ ERROR (-15): [0m
+[91m[16:42:44] ⚠️ ERROR (-15): [0m
+[91m[16:42:48] ⚠️ ERROR (-15): [0m
+[91m[16:42:52] ⚠️ ERROR (-15): [0m
+[91m[16:42:56] ⚠️ ERROR (-15): [0m
+[91m[16:43:00] ⚠️ ERROR (-15): [0m
+[91m[16:43:04] ⚠️ ERROR (-15): [0m
+[91m[16:43:08] ⚠️ ERROR (-15): [0m
+[91m[16:43:12] ⚠️ ERROR (-15): [0m
+[91m[16:43:16] ⚠️ ERROR (-15): [0m
+[91m[16:43:20] ⚠️ ERROR (-15): [0m
+[91m[16:43:24] ⚠️ ERROR (-15): [0m
+[91m[16:43:28] ⚠️ ERROR (-15): [0m
+[91m[16:43:32] ⚠️ ERROR (-15): [0m
+[91m[16:43:36] ⚠️ ERROR (-15): [0m
+[91m[16:43:40] ⚠️ ERROR (-15): [0m
+[91m[16:43:44] ⚠️ ERROR (-15): [0m
+[91m[16:43:48] ⚠️ ERROR (-15): [0m
+[91m[16:43:52] ⚠️ ERROR (-15): [0m
+[91m[16:43:56] ⚠️ ERROR (-15): [0m
+[91m[16:44:00] ⚠️ ERROR (-15): [0m
+[91m[16:44:03] ⚠️ ERROR (-15): [0m
+[91m[16:44:07] ⚠️ ERROR (-15): [0m
+[91m[16:44:11] ⚠️ ERROR (-15): [0m
+[91m[16:44:15] ⚠️ ERROR (-15): [0m
+[91m[16:44:19] ⚠️ ERROR (-15): [0m
+[91m[16:44:23] ⚠️ ERROR (-15): [0m
+[91m[16:44:27] ⚠️ ERROR (-15): [0m
+[91m[16:44:31] ⚠️ ERROR (-15): [0m
+[91m[16:44:35] ⚠️ ERROR (-15): [0m
+[91m[16:44:39] ⚠️ ERROR (-15): [0m
+[91m[16:44:43] ⚠️ ERROR (-15): [0m
+[91m[16:44:47] ⚠️ ERROR (-15): [0m
+[91m[16:44:51] ⚠️ ERROR (-15): [0m
+[91m[16:44:55] ⚠️ ERROR (-15): [0m
+[91m[16:44:59] ⚠️ ERROR (-15): [0m
+[91m[16:45:03] ⚠️ ERROR (-15): [0m
+[91m[16:45:07] ⚠️ ERROR (-15): [0m
+[91m[16:45:11] ⚠️ ERROR (-15): [0m
+[91m[16:45:15] ⚠️ ERROR (-15): [0m
+[91m[16:45:19] ⚠️ ERROR (-15): [0m
+[91m[16:45:23] ⚠️ ERROR (-15): [0m
+[91m[16:45:27] ⚠️ ERROR (-15): [0m
+[91m[16:45:31] ⚠️ ERROR (-15): [0m
+[91m[16:45:35] ⚠️ ERROR (-15): [0m
+[91m[16:45:39] ⚠️ ERROR (-15): [0m
+[91m[16:45:43] ⚠️ ERROR (-15): [0m
+[91m[16:45:46] ⚠️ ERROR (-15): [0m
+[91m[16:45:50] ⚠️ ERROR (-15): [0m
+[91m[16:45:54] ⚠️ ERROR (-15): [0m
+[91m[16:45:58] ⚠️ ERROR (-15): [0m
+[91m[16:46:02] ⚠️ ERROR (-15): [0m
+[91m[16:46:06] ⚠️ ERROR (-15): [0m
+[91m[16:46:10] ⚠️ ERROR (-15): [0m
+[91m[16:46:14] ⚠️ ERROR (-15): [0m
+[91m[16:46:18] ⚠️ ERROR (-15): [0m
+[91m[16:46:22] ⚠️ ERROR (-15): [0m
+[91m[16:46:26] ⚠️ ERROR (-15): [0m
+[91m[16:46:30] ⚠️ ERROR (-15): [0m
+[91m[16:46:34] ⚠️ ERROR (-15): [0m
+[91m[16:46:38] ⚠️ ERROR (-15): [0m
+[91m[16:46:42] ⚠️ ERROR (-15): [0m
+[91m[16:46:46] ⚠️ ERROR (-15): [0m
+[91m[16:46:50] ⚠️ ERROR (-15): [0m
+[91m[16:46:54] ⚠️ ERROR (-15): [0m
+[91m[16:46:58] ⚠️ ERROR (-15): [0m
+[91m[16:47:02] ⚠️ ERROR (-15): [0m
+[91m[16:47:06] ⚠️ ERROR (-15): [0m
+[91m[16:47:10] ⚠️ ERROR (-15): [0m
+[91m[16:47:14] ⚠️ ERROR (-15): [0m
+[91m[16:47:18] ⚠️ ERROR (-15): [0m
+[91m[16:47:21] ⚠️ ERROR (-15): [0m
+[91m[16:47:25] ⚠️ ERROR (-15): [0m
+[91m[16:47:29] ⚠️ ERROR (-15): [0m
+[91m[16:47:33] ⚠️ ERROR (-15): [0m
+[91m[16:47:37] ⚠️ ERROR (-15): [0m
+[91m[16:47:41] ⚠️ ERROR (-15): [0m
+[91m[16:47:45] ⚠️ ERROR (-15): [0m
+[91m[16:47:49] ⚠️ ERROR (-15): [0m
+[91m[16:47:53] ⚠️ ERROR (-15): [0m
+[91m[16:47:57] ⚠️ ERROR (-15): [0m
+[91m[16:48:01] ⚠️ ERROR (-15): [0m
+[91m[16:48:05] ⚠️ ERROR (-15): [0m
+[91m[16:48:09] ⚠️ ERROR (-15): [0m
+[91m[16:48:13] ⚠️ ERROR (-15): [0m
+[91m[16:48:17] ⚠️ ERROR (-15): [0m
+[91m[16:48:21] ⚠️ ERROR (-15): [0m
+[91m[16:48:25] ⚠️ ERROR (-15): [0m
+[91m[16:48:29] ⚠️ ERROR (-15): [0m
+[91m[16:48:33] ⚠️ ERROR (-15): [0m
+[91m[16:48:37] ⚠️ ERROR (-15): [0m
+[91m[16:48:41] ⚠️ ERROR (-15): [0m
+[91m[16:48:45] ⚠️ ERROR (-15): [0m

@@ -1,1 +1,0 @@
-{"percent": 100, "message": "Despliegue finalizado.", "status": "completed", "metrics": {"cpu": 8.14, "ram": 46.54}, "ssh_cmd": "root@sylo", "web_url": "http://agnohnjownogwnko.sylobi.org", "os_info": "os_img", "installed_tools": ["alpine", "nginx"], "last_update": 1769788902.4160879}

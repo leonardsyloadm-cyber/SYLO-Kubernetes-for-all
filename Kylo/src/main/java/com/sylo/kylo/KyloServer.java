@@ -12,7 +12,17 @@ public class KyloServer {
     private static KyloWebServer webServer;
 
     public static void main(String[] args) {
-        System.out.println("💎 KyloDB v32 Turbo-Core & SQL Brain Online...");
+        System.out.println("💎 KyloDB v34 AUTO-WIPE SERVER Online...");
+
+        // AUTO-WIPE LOGIC
+        // User requested: "cada vez que iniciemos el java ... se borren todos los datos
+        // actuales y se reinicie"
+        java.io.File systemDir = new java.io.File("kylo_system");
+        if (systemDir.exists()) {
+            System.out.println("🧹 Auto-Wipe: Deleting previous data...");
+            deleteRecursively(systemDir);
+            System.out.println("✨ System Cleaned.");
+        }
 
         // Init Engine
         // Check if we are in Docker (Volume mounted at /app/kylo_storage)
@@ -34,15 +44,17 @@ public class KyloServer {
 
         if (!dbFile.exists()) {
             System.out.println("⚠️ Fresh DB detected. Wiping stale metadata to prevent corruption...");
-            new java.io.File("kylo_system/indexes/index_roots.dat").delete();
-            new java.io.File("kylo_system/indexes/index_names.dat").delete();
-            new java.io.File("kylo_system/indexes/foreign_keys.dat").delete();
-            new java.io.File("kylo_system/settings/indexes.dat").delete();
-            new java.io.File("kylo_system/settings/constraints.dat").delete();
-            new java.io.File("kylo_system/views/views.dat").delete();
+            // Clean up old single-file DB artifacts if they exist
+            new java.io.File("kylo_system/settings/catalog.dat").delete();
+            // Note: We are keeping catalog.dat but maybe we should ensure it matches new
+            // storage?
+            // Actually, if we switch to multi-file, the old Single File DB is useless.
+            // But Catalog.dat stores schema.
+            // Schema is fine. Data was the problem.
         }
 
-        engine = new ExecutionEngine(dbFile.getAbsolutePath());
+        // Use dataDir for Multi-File Storage
+        engine = new ExecutionEngine(dataDir.getAbsolutePath());
 
         // Init default DB
         if (!SYSTEM_DBS.contains("default")) {
@@ -53,7 +65,7 @@ public class KyloServer {
         new com.sylo.kylo.core.security.SystemBootstrapper(engine).bootstrap();
 
         // Start Operation Impostor (MySQL Layer)
-        new com.sylo.kylo.net.KyloProtocolServer(3307, engine).start();
+        new com.sylo.kylo.net.KyloProtocolServer(3308, engine).start();
 
         // Start Sylo Architect (Web Server)
         try {
@@ -96,4 +108,16 @@ public class KyloServer {
     // For now, let's keep it here but I need to link WebServer to it?
     // The previous WebServer code mocked execution.
     // I should update KyloWebServer to delegate to basic execution.
+
+    private static void deleteRecursively(java.io.File file) {
+        if (file.isDirectory()) {
+            java.io.File[] files = file.listFiles();
+            if (files != null) {
+                for (java.io.File c : files) {
+                    deleteRecursively(c);
+                }
+            }
+        }
+        file.delete();
+    }
 }

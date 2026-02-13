@@ -4,7 +4,8 @@ import java.util.List;
 import java.util.ArrayList;
 import java.util.Collections;
 
-public class Schema {
+public class Schema implements java.io.Serializable {
+    private static final long serialVersionUID = 1L;
     private final List<Column> columns;
 
     public Schema(List<Column> columns) {
@@ -18,7 +19,7 @@ public class Schema {
     public int getColumnCount() {
         return columns.size();
     }
-    
+
     public Column getColumn(int index) {
         return columns.get(index);
     }

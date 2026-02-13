@@ -161,6 +161,9 @@ class ConnectionHandler implements Runnable {
 
     private void close() {
         try {
+            if (dispatcher != null) {
+                dispatcher.close();
+            }
             socket.close();
         } catch (Exception e) {
         }

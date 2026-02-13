@@ -40,12 +40,20 @@ public class BPlusTreeIndex implements Index {
         int intKey;
         if (key instanceof Integer) {
             intKey = (Integer) key;
+        } else if (key instanceof Long) {
+            // BIGINT support - cast to int (potential overflow for very large values)
+            intKey = ((Long) key).intValue();
         } else if (key instanceof String) {
             // Support for System Tables/Legacy String Indices via HashCode
             intKey = key.hashCode();
+        } else if (key instanceof java.util.UUID) {
+            // Convert UUID to String, then hash
+            String uuidStr = key.toString();
+            intKey = uuidStr.hashCode();
+            System.out.println("DEBUG INDEX INSERT: UUID=" + key + " -> hashCode=" + intKey);
         } else {
             // Log the type for debugging
-            throw new IllegalArgumentException("BPlusTree only supports Integer/String keys. Got: "
+            throw new IllegalArgumentException("BPlusTree only supports Integer/Long/String/UUID keys. Got: "
                     + (key == null ? "null" : key.getClass().getName()));
         }
 
@@ -376,8 +384,16 @@ public class BPlusTreeIndex implements Index {
         int intKey;
         if (key instanceof Integer) {
             intKey = (Integer) key;
+        } else if (key instanceof Long) {
+            // BIGINT support
+            intKey = ((Long) key).intValue();
         } else if (key instanceof String) {
             intKey = key.hashCode();
+        } else if (key instanceof java.util.UUID) {
+            // Convert UUID to String, then hash
+            String uuidStr = key.toString();
+            intKey = uuidStr.hashCode();
+            System.out.println("DEBUG INDEX SEARCH: UUID=" + key + " -> hashCode=" + intKey);
         } else {
             return -1;
         }

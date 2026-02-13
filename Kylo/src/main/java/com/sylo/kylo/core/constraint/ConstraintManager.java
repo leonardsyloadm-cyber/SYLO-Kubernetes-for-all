@@ -35,9 +35,25 @@ public class ConstraintManager {
         return tableConstraints.getOrDefault(tableName, Collections.emptyList());
     }
 
+    public Set<String> getAllKeys() {
+        return tableConstraints.keySet();
+    }
+
     public void clearConstraints(String tableName) {
         tableConstraints.remove(tableName);
         save();
+    }
+
+    public void removeConstraint(String tableName, String constraintName) {
+        List<Constraint> consts = tableConstraints.get(tableName);
+        if (consts != null) {
+            consts.removeIf(c -> c.getName().equalsIgnoreCase(constraintName));
+            if (consts.isEmpty()) {
+                tableConstraints.remove(tableName);
+            }
+            save();
+            System.out.println("Constraint " + constraintName + " removed from " + tableName);
+        }
     }
 
     // Validate Insert: Check FKs
@@ -84,12 +100,53 @@ public class ConstraintManager {
 
         // Search in Parent Index
         IndexManager idxMgr = Catalog.getInstance().getIndexManager();
-        if (!idxMgr.hasIndex(refTable, refCol)) {
-            throw new RuntimeException(
-                    "Foreign Key Violation: Referenced column " + refTable + "." + refCol + " MUST be indexed.");
+
+        // Check if column is indexed OR is part of a PRIMARY KEY / UNIQUE constraint
+        boolean hasValidIndex = idxMgr.hasIndex(refTable, refCol);
+
+        if (!hasValidIndex) {
+            // Also accept if column is part of PRIMARY KEY or UNIQUE constraint
+            boolean isPKorUnique = false;
+
+            // Try to find constraints for refTable - refTable might not have schema prefix
+            // So we check both refTable directly and also try to resolve it with current
+            // schema
+            List<Constraint> refTableConstraints = tableConstraints.get(refTable);
+
+            // If not found, try with schema prefix from current table's schema
+            if (refTableConstraints == null && c.getTable().contains(":")) {
+                String schemaPrefix = c.getTable().substring(0, c.getTable().indexOf(":"));
+                String fullRefTable = schemaPrefix + ":" + refTable;
+                refTableConstraints = tableConstraints.get(fullRefTable);
+            }
+
+            if (refTableConstraints != null) {
+                for (Constraint constraint : refTableConstraints) {
+                    if ((constraint.getType() == Constraint.Type.PRIMARY_KEY ||
+                            constraint.getType() == Constraint.Type.UNIQUE)) {
+                        if (constraint.getColumns().contains(refCol)) {
+                            isPKorUnique = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!isPKorUnique) {
+                throw new RuntimeException(
+                        "Foreign Key Violation: Referenced column " + refTable + "." + refCol + " MUST be indexed.");
+            }
         }
 
-        com.sylo.kylo.core.index.BPlusTreeIndex idx = idxMgr.getIndex(refTable, refCol, bpm);
+        // Get the index - need to use full table name with schema prefix
+        String fullRefTable = refTable;
+        if (!idxMgr.hasIndex(refTable, refCol) && c.getTable().contains(":")) {
+            // Construct full table name with schema prefix
+            String schemaPrefix = c.getTable().substring(0, c.getTable().indexOf(":"));
+            fullRefTable = schemaPrefix + ":" + refTable;
+        }
+
+        com.sylo.kylo.core.index.BPlusTreeIndex idx = idxMgr.getIndex(fullRefTable, refCol, bpm);
         long rid = idx.search(key);
 
         if (rid == -1) {

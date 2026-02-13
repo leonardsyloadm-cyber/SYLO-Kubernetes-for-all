@@ -74,7 +74,7 @@ public class LogicalPlanner {
                     com.sylo.kylo.core.structure.KyloType type = schema.getColumn(colIdx).getType();
                     Object key = parseValue(type, valStr);
 
-                    com.sylo.kylo.core.storage.BufferPoolManager bpm = engine.getBufferPool();
+                    com.sylo.kylo.core.storage.BufferPoolManager bpm = engine.getBufferPool(tableName);
                     com.sylo.kylo.core.index.BPlusTreeIndex idx = idxMgr.getIndex(tableName, colName, bpm);
 
                     if (idx != null) {

@@ -13,7 +13,10 @@ import java.util.List;
 public class ResultSetWriter {
 
     // MySQL Types
+    // MySQL Types
     public static final int MYSQL_TYPE_DECIMAL = 0x00;
+    public static final int MYSQL_TYPE_TINY = 0x01; // TINYINT
+    public static final int MYSQL_TYPE_SHORT = 0x02; // SMALLINT
     public static final int MYSQL_TYPE_LONG = 0x03; // INT
     public static final int MYSQL_TYPE_FLOAT = 0x04;
     public static final int MYSQL_TYPE_DOUBLE = 0x05;
@@ -22,7 +25,10 @@ public class ResultSetWriter {
     public static final int MYSQL_TYPE_DATE = 0x0A;
     public static final int MYSQL_TYPE_TIME = 0x0B;
     public static final int MYSQL_TYPE_DATETIME = 0x0C;
+    public static final int MYSQL_TYPE_YEAR = 0x0D;
     public static final int MYSQL_TYPE_VARCHAR = 0x0F;
+    public static final int MYSQL_TYPE_NEWDECIMAL = 0xF6; // DECIMAL
+    public static final int MYSQL_TYPE_ENUM = 0xF7;
     public static final int MYSQL_TYPE_BLOB = 0xFC;
     public static final int MYSQL_TYPE_VAR_STRING = 0xFD;
     public static final int MYSQL_TYPE_STRING = 0xFE;
@@ -98,8 +104,17 @@ public class ResultSetWriter {
 
         for (int i = 0; i < row.length; i++) {
             Object val = row[i];
+
+            String sVal;
+            if (val == null) {
+                sVal = null;
+            } else if (val instanceof Boolean) {
+                // Fix: Boolean must be sent as "1" or "0" for TinyInt
+                sVal = ((Boolean) val) ? "1" : "0";
+            } else {
+                sVal = val.toString();
+            }
             // MySQL Text Protocol sends everything as Length Encoded Strings!
-            String sVal = val == null ? null : val.toString();
             MySQLPacket.writeLenEncString(buf, sVal);
         }
 
@@ -118,22 +133,32 @@ public class ResultSetWriter {
             return MYSQL_TYPE_FLOAT;
         if (type instanceof com.sylo.kylo.core.structure.KyloDouble)
             return MYSQL_TYPE_DOUBLE;
+        if (type instanceof com.sylo.kylo.core.structure.KyloDecimal)
+            return MYSQL_TYPE_NEWDECIMAL;
+
         if (type instanceof com.sylo.kylo.core.structure.KyloVarchar)
             return MYSQL_TYPE_VAR_STRING;
         if (type instanceof com.sylo.kylo.core.structure.KyloText)
             return MYSQL_TYPE_STRING;
+        if (type instanceof com.sylo.kylo.core.structure.KyloJson)
+            return MYSQL_TYPE_VAR_STRING; // JSON sent as String
+        if (type instanceof com.sylo.kylo.core.structure.KyloEnum)
+            return MYSQL_TYPE_VAR_STRING; // Enum sent as String
+
         if (type instanceof com.sylo.kylo.core.structure.KyloBlob)
             return MYSQL_TYPE_BLOB;
+
         if (type instanceof com.sylo.kylo.core.structure.KyloDate)
             return MYSQL_TYPE_DATE;
         if (type instanceof com.sylo.kylo.core.structure.KyloTime)
             return MYSQL_TYPE_TIME;
         if (type instanceof com.sylo.kylo.core.structure.KyloDateTime)
             return MYSQL_TYPE_DATETIME;
-        if (type instanceof com.sylo.kylo.core.structure.KyloTimestamp)
-            return MYSQL_TYPE_TIMESTAMP;
+        if (type instanceof com.sylo.kylo.core.structure.KyloYear)
+            return MYSQL_TYPE_YEAR;
+
         if (type instanceof com.sylo.kylo.core.structure.KyloBoolean)
-            return MYSQL_TYPE_LONG; // Tinyint?
+            return MYSQL_TYPE_TINY;
 
         return MYSQL_TYPE_VAR_STRING; // Default
     }

@@ -1205,19 +1205,47 @@
             for (const [db, tables] of Object.entries(tree)) {
                 let html = `<li><div class="node-row ${activeDB === db ? 'active' : ''}"><div class="toggle-icon" onclick="toggleSub(this)"><i class="fas fa-plus-square"></i></div><div style="flex:1" onclick="selectDB('${db}')"><i class="fas fa-database ic-db"></i> ${db}</div></div><ul style="display:none; list-style:none; padding:0;">`;
                 for (const [tbl, cols] of Object.entries(tables)) {
+                    // Skip Procedures or other metadata
+                    if (tbl === 'Procedures' || tbl === 'views') continue;
+
                     html += `<li><div class="node-row node-sub ${activeTbl === tbl && activeDB === db ? 'active' : ''}"><div class="toggle-icon" onclick="toggleSub(this)"><i class="fas fa-plus-square"></i></div><div style="flex:1" onclick="selectTable('${db}','${tbl}')"><i class="fas fa-table ic-tbl"></i> ${tbl}</div></div><ul style="display:none; list-style:none; padding:0;">`;
-                    cols.forEach(c => html += `<li><div class="node-row node-sub-sub"><i class="fas fa-columns ic-col"></i> ${c.split(':')[0]}</div></li>`);
+                    if (cols.length) {
+                        cols.forEach(c => html += `<li><div class="node-row node-sub-sub"><i class="fas fa-columns ic-col"></i> ${c.split(':')[0]}</div></li>`);
+                    } else {
+                        html += `<li><div class="node-row node-sub-sub" style="color:#e67e22; font-style:italic">Vacio</div></li>`;
+                    }
                     html += `</ul></li>`;
                 } html += `</ul></li>`; root.innerHTML += html;
             } root.innerHTML += '</ul>';
 
             // Auto-select first DB if none selected (Fix for empty dropdowns)
-            if ((!activeDB || !fullCatalog[activeDB]) && dbs.length > 0) {
-                selectDB(dbs[0]);
+            console.log("Tree Loaded:", tree);
+            if (dbs.length > 0) {
+                // If no active DB, or active DB not in list, select first
+                if (!activeDB || !tree[activeDB]) {
+                    console.log("Auto-selecting first DB:", dbs[0]);
+                    selectDB(dbs[0]);
+                }
+            } else {
+                document.getElementById('tree-root').innerHTML = '<div style="padding:20px; text-align:center; color:#7f8fa6">Sin Conexión o Sin Bases de Datos</div>';
             }
         }
 
-        function selectDB(db) { activeDB = db; activeTbl = ''; document.getElementById('lbl-db').innerText = db; fetch('/api/catalog').then(r => r.json()).then(d => { fullCatalog = d; tablesInDB = Object.keys(d[db] || {}); }); execSQL(`USE ${db}`, true); nav('struct'); loadStruct(); }
+        function selectDB(db) {
+            activeDB = db;
+            activeTbl = '';
+            document.getElementById('lbl-db').innerText = db;
+            document.getElementById('lbl-tbl').innerText = '...';
+            // Update tablesInDB from already loaded catalog
+            if (fullCatalog && fullCatalog[db]) {
+                tablesInDB = Object.keys(fullCatalog[db]).filter(k => k !== 'Procedures' && k !== 'views');
+            } else {
+                tablesInDB = [];
+            }
+            execSQL(`USE ${db}`, true);
+            nav('struct');
+            loadStruct();
+        }
 
         // --- BUILDER & DRAG/DROP VISUAL ---
         let dragSrc = null;
@@ -1284,13 +1312,13 @@
             if (t === 'INTO') {
                 cls = 'b-into';
                 // Generamos las opciones aqui mismo
-                let tblOpts = tablesInDB.length > 0 ? tablesInDB.map(tt => `<option value="${tt}">${tt}</option>`).join('') : '<option disabled>Sin tablas</option>';
+                let tblOpts = tablesInDB.length > 0 ? tablesInDB.filter(x => x !== 'Procedures' && x !== 'views').map(tt => `<option value="${tt}">${tt}</option>`).join('') : '<option disabled>Sin tablas</option>';
                 content = `${t} <select class="b-sel-tbl" onchange="updateContext(this)">${tblOpts}</select>`;
             }
             // Resto de bloques
             else if (t === 'FROM' || t === 'TABLE' || t === 'ON') {
                 cls = 'b-from';
-                let tblOpts = tablesInDB.length > 0 ? tablesInDB.map(tt => `<option value="${tt}">${tt}</option>`).join('') : '<option disabled>Sin tablas</option>';
+                let tblOpts = tablesInDB.length > 0 ? tablesInDB.filter(x => x !== 'Procedures' && x !== 'views').map(tt => `<option value="${tt}">${tt}</option>`).join('') : '<option disabled>Sin tablas</option>';
                 content = `${t} <select class="b-sel-tbl" onchange="updateContext(this)">${tblOpts}</select>`;
             }
             else if (t === 'WHERE') {
@@ -1333,7 +1361,7 @@
             </select>`;
             } else if (t === 'FK') {
                 cls = 'b-fk';
-                let tblOpts = tablesInDB.map(tt => `<option value="${tt}">${tt}</option>`).join('');
+                let tblOpts = tablesInDB.filter(x => x !== 'Procedures' && x !== 'views').map(tt => `<option value="${tt}">${tt}</option>`).join('');
 
                 // AUTOFILL FIX: Find the last column added in the canvas
                 let lastColName = '';
@@ -1508,6 +1536,7 @@
 
             h += `<div class="org-db">${activeDB}</div><div class="org-tables-row" style="--child-count:${Object.keys(d).length}">`;
             for (const [k, v] of Object.entries(d)) {
+                if (k === 'Procedures' || k === 'views') continue;
                 h += `<div class="org-table-group"><div class="org-table-card">${k}</div><div class="org-cols-container">`;
                 v.forEach(c => {
                     const [cName, cType] = c.split(':');
@@ -1712,8 +1741,8 @@
         function createIndexFromVis(db, tbl, preSelCol) {
             document.getElementById('idx-modal-overlay').style.display = 'flex';
             const sel = document.getElementById('idx-modal-tbl');
-            sel.innerHTML = tablesInDB.map(t => `<option value="${t}">${t}</option>`).join('');
-            sel.value = tbl || tablesInDB[0];
+            sel.innerHTML = tablesInDB.filter(t => t !== 'Procedures' && t !== 'views').map(t => `<option value="${t}">${t}</option>`).join('');
+            sel.value = tbl || tablesInDB.filter(t => t !== 'Procedures' && t !== 'views')[0];
             loadIdxCols(preSelCol); // Pass pre-selected col
         }
 
@@ -1843,7 +1872,7 @@
 
             if (activeDB && tablesInDB.length > 0) {
                 // Use cached global tables (fast & consistent)
-                tablesInDB.forEach(t => {
+                tablesInDB.filter(t => t !== 'Procedures' && t !== 'views').forEach(t => {
                     const full = activeDB + ":" + t;
                     tList.push({ val: full, disp: t });
                 });
@@ -1851,8 +1880,8 @@
                 // Fallback: Fetch if no cached state
                 const r = await fetch('/api/catalog');
                 const d = await r.json();
-                Object.keys(d.schemas || {}).forEach(db => {
-                    d.schemas[db].forEach(t => tList.push({ val: db + ":" + t, disp: db + ":" + t }));
+                Object.keys(d.schemas || {}).filter(db => db === activeDB).forEach(db => {
+                    d.schemas[db].filter(t => t !== 'Procedures' && t !== 'views').forEach(t => tList.push({ val: db + ":" + t, disp: db + ":" + t }));
                 });
             }
 

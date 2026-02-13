@@ -2,7 +2,8 @@ package com.sylo.kylo.core.catalog;
 
 import com.sylo.kylo.core.structure.KyloType;
 
-public class Column {
+public class Column implements java.io.Serializable {
+    private static final long serialVersionUID = 1L;
     private final String name;
     private final KyloType type;
     private final boolean nullable;

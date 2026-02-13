@@ -22,7 +22,7 @@ public class KyloWebServer {
 
     public KyloWebServer(ExecutionEngine executionEngine) throws IOException {
         this.executionEngine = executionEngine;
-        this.server = HttpServer.create(new InetSocketAddress(8080), 0);
+        this.server = HttpServer.create(new InetSocketAddress(8081), 0);
 
         // Static Content
         server.createContext("/", new StaticHandler());
@@ -37,7 +37,7 @@ public class KyloWebServer {
     }
 
     public void start() {
-        System.out.println("Sylo Architect Web Interface running on http://localhost:8080");
+        System.out.println("Sylo Architect Web Interface running on http://localhost:8081");
         server.start();
     }
 
@@ -155,56 +155,99 @@ public class KyloWebServer {
     private class CatalogHandler implements HttpHandler {
         @Override
         public void handle(HttpExchange t) throws IOException {
-            // Return Nested Tree structure: { "DBName": { "Table": [ "Col:Type", ... ] },
-            // ... }
-            Catalog cat = Catalog.getInstance();
-            StringBuilder json = new StringBuilder("{");
+            try {
+                // Return Nested Tree structure: { "DBName": { "Table": [ "Col:Type", ... ] },
+                // ... }
+                Catalog cat = Catalog.getInstance();
+                StringBuilder json = new StringBuilder("{");
 
-            boolean firstBin = true;
-            for (String dbName : cat.getDatabases()) {
+                System.out.println("WEB: Generating Catalog JSON...");
+                boolean firstBin = true;
+                for (String dbName : cat.getDatabases()) {
+                    if (dbName == null)
+                        continue;
 
-                if (!firstBin)
-                    json.append(",");
-                firstBin = false;
+                    if (!firstBin)
+                        json.append(",");
+                    firstBin = false;
 
-                json.append("\"").append(dbName).append("\": {");
+                    json.append("\"").append(dbName).append("\": {");
 
-                // Filter tables for this DB
-                boolean firstT = true;
-                for (String fullTableName : cat.getAllTableNames()) {
-                    // Check if table belongs to this DB
-                    // Format is usually "DB:Table" or just "Table" (assumed Default)
-                    String tDb = "Default";
-                    String tName = fullTableName;
-                    if (fullTableName.contains(":")) {
-                        String[] parts = fullTableName.split(":");
-                        tDb = parts[0];
-                        tName = parts[1];
-                    }
+                    // Filter tables for this DB
+                    boolean firstT = true;
+                    for (String fullTableName : cat.getAllTableNames()) {
+                        if (fullTableName == null)
+                            continue;
 
-                    if (tDb.equalsIgnoreCase(dbName)) {
-                        if (!firstT)
-                            json.append(",");
-                        firstT = false;
-
-                        Schema schema = cat.getTableSchema(fullTableName);
-                        json.append("\"").append(tName).append("\": [");
-
-                        for (int i = 0; i < schema.getColumnCount(); i++) {
-                            if (i > 0)
-                                json.append(",");
-                            json.append("\"").append(schema.getColumn(i).getName()).append(":")
-                                    .append(schema.getColumn(i).getType()).append("\"");
+                        // Check if table belongs to this DB
+                        // Format is usually "DB:Table" or just "Table" (assumed Default)
+                        String tDb = "Default";
+                        String tName = fullTableName;
+                        if (fullTableName.contains(":")) {
+                            String[] parts = fullTableName.split(":");
+                            if (parts.length > 0)
+                                tDb = parts[0];
+                            if (parts.length > 1)
+                                tName = parts[1];
                         }
-                        json.append("]");
+
+                        if (tDb.equalsIgnoreCase(dbName)) {
+                            if (!firstT)
+                                json.append(",");
+                            firstT = false;
+
+                            Schema schema = cat.getTableSchema(fullTableName);
+                            if (schema != null) {
+                                json.append("\"").append(tName).append("\": [");
+
+                                for (int i = 0; i < schema.getColumnCount(); i++) {
+                                    if (i > 0)
+                                        json.append(",");
+                                    json.append("\"").append(schema.getColumn(i).getName()).append(":")
+                                            .append(schema.getColumn(i).getType()).append("\"");
+                                }
+                                json.append("]");
+                            } else {
+                                json.append("\"").append(tName).append("\": []"); // Empty schema fallback
+                            }
+                        }
                     }
+
+                    if (!firstT) {
+                        json.append(",");
+                    }
+                    json.append("\"Procedures\": [");
+                    boolean firstP = true;
+                    try {
+                        Map<String, com.sylo.kylo.core.routine.Routine> routines = Catalog.getInstance()
+                                .getRoutineManager().getAllRoutines();
+                        if (routines != null) {
+                            for (com.sylo.kylo.core.routine.Routine r : routines.values()) {
+                                if (r != null && r.getDb() != null && r.getDb().equalsIgnoreCase(dbName)) {
+                                    if (!firstP)
+                                        json.append(",");
+                                    firstP = false;
+                                    json.append("\"").append(r.getName()).append(" (").append(r.getLanguage())
+                                            .append(")\"");
+                                }
+                            }
+                        }
+                    } catch (Exception e) {
+                        System.err.println("WEB: Error listing procedures: " + e.getMessage());
+                    }
+                    json.append("]");
+
+                    json.append("}");
                 }
                 json.append("}");
-            }
-            json.append("}");
 
-            t.getResponseHeaders().set("Content-Type", "application/json");
-            sendResponse(t, 200, json.toString());
+                t.getResponseHeaders().set("Content-Type", "application/json");
+                sendResponse(t, 200, json.toString());
+            } catch (Exception e) {
+                System.err.println("WEB: Catalog Error: " + e.getMessage());
+                e.printStackTrace();
+                sendResponse(t, 500, "{\"error\": \"" + e.getMessage() + "\"}");
+            }
         }
     }
 

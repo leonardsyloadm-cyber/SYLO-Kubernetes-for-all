@@ -40,6 +40,7 @@ public class CommandDispatcher {
             case COM_QUERY:
                 String query = new String(payload, 1, payload.length - 1, StandardCharsets.UTF_8);
                 System.out.println("SQL RECEIVED: " + query);
+                System.out.println("DEBUG: DISPATCHER ALIVE - Calling executeQuery"); // Added Log
 
                 bridge.executeQuery(query, out, sequenceId);
                 break;
@@ -48,5 +49,9 @@ public class CommandDispatcher {
                 MySQLPacket.writePacket(out, PacketBuilder.buildError(1000, "Unknown Command: " + command),
                         ++sequenceId);
         }
+    }
+
+    public void close() {
+        bridge.close();
     }
 }

@@ -5,6 +5,7 @@ set -eE -o pipefail
 # DEPLOY CUSTOM (PERSONALIZADO) - V27
 # Sintaxis Segura, Multi-OS y Limpieza
 # ==========================================
+# (Moves into proper place below)
 
 LOG_FILE="/tmp/deploy_custom_debug.log"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -42,6 +43,10 @@ OWNER_ID="${TF_VAR_owner_id:-admin}"
 
 # --- DEFAULTS ---
 [ -z "$ORDER_ID" ] && ORDER_ID="manual"
+
+# --- ISOLATION FIX (Correct Placement) ---
+export KUBECONFIG="$HOME/.kube/config_sylo_$ORDER_ID"
+touch "$KUBECONFIG"
 [ -z "$CPU_REQ" ] && CPU_REQ="2"
 [ -z "$RAM_REQ" ] && RAM_REQ="4"
 if [ -z "$SSH_USER_ARG" ]; then SSH_USER="cliente"; else SSH_USER="$SSH_USER_ARG"; fi
@@ -125,8 +130,24 @@ kubectl apply -f "$SCRIPT_DIR/toolkit-loader.yaml" >> "$LOG_FILE" 2>&1
 # Wait for Job completion
 kubectl wait --for=condition=complete job/toolkit-loader --timeout=120s >> "$LOG_FILE" 2>&1 || echo "Warning: Toolkit job timeout" >> "$LOG_FILE"
 
+# --- FIX: Ensure KUBECONFIG is populated ---
+minikube -p "$CLUSTER_NAME" update-context >> "$LOG_FILE" 2>&1
+
+# 🔥 HARD FIX: Force correct IP in Kubeconfig
+# Minikube sometimes writes localhost:80 or 127.0.0.1:xxx which fails inside Docker/Tofu
+REAL_IP=$(minikube -p "$CLUSTER_NAME" ip)
+echo "--- DEBUG: Real IP is $REAL_IP ---" >> "$LOG_FILE"
+
+if [ ! -z "$REAL_IP" ]; then
+    kubectl config set-cluster "$CLUSTER_NAME" --server="https://$REAL_IP:8443" --insecure-skip-tls-verify=true >> "$LOG_FILE" 2>&1
+    kubectl config set-context "$CLUSTER_NAME" --cluster="$CLUSTER_NAME" --user="$CLUSTER_NAME" >> "$LOG_FILE" 2>&1
+    kubectl config use-context "$CLUSTER_NAME" >> "$LOG_FILE" 2>&1
+fi
+
+echo "--- DEBUG KUBECONFIG (AFTER FIX) ---" >> "$LOG_FILE"
+kubectl config view >> "$LOG_FILE" 2>&1
+
 update_status 40 "Configurando Tofu..."
-kubectl config use-context "$CLUSTER_NAME" >> "$LOG_FILE" 2>&1
 cd "$SCRIPT_DIR"
 rm -f terraform.tfstate*
 tofu init -upgrade >> "$LOG_FILE" 2>&1
@@ -134,6 +155,7 @@ tofu init -upgrade >> "$LOG_FILE" 2>&1
 # --- APPLY ---
 update_status 50 "Aplicando Infraestructura..."
 tofu apply -auto-approve \
+    -var="kubeconfig_path=$KUBECONFIG" \
     -var="cluster_name=$CLUSTER_NAME" \
     -var="ssh_password=$SSH_PASS" \
     -var="ssh_user=$SSH_USER" \

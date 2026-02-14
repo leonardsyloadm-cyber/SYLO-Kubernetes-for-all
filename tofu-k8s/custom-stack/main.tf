@@ -6,9 +6,12 @@ terraform {
   }
 }
 
+variable "kubeconfig_path" {
+  type = string
+}
+
 provider "kubernetes" {
-  config_path    = pathexpand("~/.kube/config")
-  config_context = var.cluster_name
+  config_path = var.kubeconfig_path
 }
 
 # ==========================================

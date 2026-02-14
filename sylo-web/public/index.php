@@ -186,7 +186,7 @@ require_once 'php/auth.php';
             <div id="mod-web-opts" style="display:none;" class="p-3 border rounded-3">
                 <label class="small fw-bold" data-i18n="modal.web_server">Servidor Web</label>
                 <select id="mod-web-type" class="form-select rounded-pill bg-white border-0 mb-2"><option value="nginx">Nginx</option><option value="apache">Apache</option></select>
-                <input id="mod-web-name" class="form-control rounded-pill bg-white border-0 mb-2" value="sylo_web" placeholder="Nombre App">
+                <input id="mod-web-name" class="form-control rounded-pill bg-white border-0 mb-2" value="sylo-web" placeholder="Nombre App">
                 <div class="input-group rounded-pill overflow-hidden"><input id="mod-sub" class="form-control border-0" placeholder="mi-app"><span class="input-group-text border-0 bg-white small">.sylobi.org</span></div>
             </div>
 
@@ -501,8 +501,10 @@ require_once 'php/auth.php';
             try {
                 const res = await fetch('index.php', { method:'POST', headers:{'Content-Type':'application/json', 'X-CSRF-Token': csrfToken}, body:JSON.stringify({action:'comprar', plan:curPlan, specs:specs}) });
                 const j = await res.json();
-                if(j.status === 'success') startPolling(j.order_id, specs); else { hideM('progressModal'); alert(j.mensaje); }
-            } catch(e) { hideM('progressModal'); alert("Error"); }
+                if(j.status === 'success') startPolling(j.order_id, specs); 
+                else if (j.status === 'auth_required') { alert(j.mensaje || "Sesión requerida"); openAuth(); }
+                else { hideM('progressModal'); alert(j.mensaje || "Error desconocido"); }
+            } catch(e) { hideM('progressModal'); alert("Error de red o servidor: " + e); }
         }
 
         function startPolling(oid, finalSpecs) {

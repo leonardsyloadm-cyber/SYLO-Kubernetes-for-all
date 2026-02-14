@@ -12,7 +12,7 @@ if (session_status() === PHP_SESSION_NONE) {
     session_start();
 }
 
-define('API_URL_BASE', 'http://172.17.0.1:8001/api/clientes'); // IP LINUX (Docker Gateway)
+define('API_URL_BASE', 'http://172.18.0.1:8001/api/clientes'); // IP LINUX (Docker Gateway - Detected)
 
 // AUTH & DB
 if (isset($_GET['action']) && $_GET['action'] == 'logout') { session_destroy(); header("Location: ../../public/index.php"); exit; }
@@ -101,6 +101,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && !in_arra
     if ($act == 'dismiss_plan') {
         $f_plan = __DIR__ . "/../../buzon-pedidos/plan_status_{$oid}.json";
         if (file_exists($f_plan)) @unlink($f_plan);
+        echo json_encode(['status'=>'ok']); exit;
+    }
+
+    // ACTION: Dismiss Tool Install
+    if ($act == 'dismiss_install_tool') {
+        $f_inst = __DIR__ . "/../../buzon-pedidos/install_status_{$oid}.json";
+        if (file_exists($f_inst)) @unlink($f_inst);
         echo json_encode(['status'=>'ok']); exit;
     }
 
@@ -305,6 +312,11 @@ if (isset($_GET['ajax_data'])) {
     // Priority 0: Plan Updates (Avoids Metrics Race Condition)
     if (file_exists($buzon_dir . "plan_status_{$oid}.json")) {
         $prog_data = json_decode(@file_get_contents($buzon_dir . "plan_status_{$oid}.json"), true);
+    }
+    // Priority 0.5: Tool Installation (Monitoring)
+    else if (file_exists($buzon_dir . "install_status_{$oid}.json")) {
+        $prog_data = json_decode(@file_get_contents($buzon_dir . "install_status_{$oid}.json"), true);
+        if ($prog_data) $prog_data['action'] = 'install_tool'; // Tag for Frontend
     }
     // Priority 1: Power Ops (Critical)
     else if (file_exists($buzon_dir . "power_status_{$oid}.json")) {
@@ -549,7 +561,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         ]);
         $stmt->execute([$deployment_id, $config]);
         
-        // 5. Create buzón action file
+    // 5. Create buzón action file
         $buzon_path = __DIR__ . '/../../buzon-pedidos';
         if (!is_dir($buzon_path)) {
             mkdir($buzon_path, 0755, true);
@@ -565,12 +577,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             'timestamp' => time()
         ];
         
+        // Reset status file
+        $status_file = $buzon_path . "/install_status_{$deployment_id}.json";
+        if (file_exists($status_file)) @unlink($status_file);
+        
         file_put_contents($action_file, json_encode($action_data, JSON_PRETTY_PRINT));
         
         echo json_encode([
             'success' => true,
             'message' => 'Instalación iniciada',
-            'grafana_url' => "http://localhost:80{$deployment_id}",
+            'grafana_url' => "http://localhost:30{$deployment_id}",
             'grafana_user' => 'admin',
             'grafana_password' => $grafana_password
         ]);

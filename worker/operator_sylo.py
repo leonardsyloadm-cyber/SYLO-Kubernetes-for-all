@@ -41,6 +41,17 @@ def signal_handler(signum, frame):
 def run_command(cmd, timeout=300, silent=False, check_error=False):
     with cmd_lock:
         try:
+            # 🔥 INJECTION: Detect profile and force KUBECONFIG
+            # This fixes the "localhost" issue by using the isolated config file we generated
+            import re
+            match = re.search(r'sylo-cliente-(\d+)', cmd)
+            if match:
+                oid = match.group(1)
+                adhoc_conf = os.path.expanduser(f"~/.kube/config_sylo_{oid}")
+                if os.path.exists(adhoc_conf):
+                    # Prepend export. Note: This works because shell=True
+                    cmd = f"export KUBECONFIG={adhoc_conf}; " + cmd
+            
             if not silent: log(f"CMD > {cmd}", C_YELLOW)
             res = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout, bufsize=10485760)
             if res.returncode != 0:
@@ -179,7 +190,8 @@ def handle_plan_update(oid, profile, new_specs_arg):
     try:
         # A. Fetch Full Specs (Target)
         report_progress(oid, "plan_update", "updating", 15, "Leyendo especificaciones...")
-        cmd_db = f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D kylo_main_db -e "SELECT cpu_cores, ram_gb, db_enabled, db_type, db_custom_name, web_enabled, web_type, web_custom_name, subdomain, os_image, ssh_user FROM order_specs WHERE order_id={oid}"'
+        # FIXED: Updated to query sylo_admin_db.k8s_deployments instead of old order_specs
+        cmd_db = f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D sylo_admin_db -e "SELECT cpu_cores, ram_gb, db_enabled, db_type, db_custom_name, web_enabled, web_type, web_custom_name, subdomain, os_image, ssh_user FROM k8s_deployments WHERE id={oid}"'
         raw = run_command(cmd_db, silent=True).strip()
         if not raw: raise Exception("No specs found in DB")
         
@@ -188,7 +200,7 @@ def handle_plan_update(oid, profile, new_specs_arg):
             "cpu": parts[0], "ram": parts[1],
             "db_en": parts[2], "db_type": parts[3], "db_name": parts[4],
             "web_en": parts[5], "web_type": parts[6], "web_name": parts[7],
-            "sub": parts[8], "os": parts[9], "user": parts[10], "owner": parts[10]
+            "sub": parts[8], "os": parts[9], "user": parts[10], "owner": parts[10] # user_id mapped to owner
         }
         
         # B. DETECT CURRENT STATE (For user feedback)
@@ -713,49 +725,41 @@ def process_task_queue():
 def ensure_monitoring_port_forward(oid, profile):
     global active_monitor_forwards, active_prometheus_forwards
     
-    # 1. GRAFANA (80xx)
-    grafana_port = f"80{oid}"
-    
-    # Check if monitoring is installed (via DB or known state)
     try:
-        cmd = f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D sylo_admin_db -e "SELECT status FROM k8s_tools WHERE deployment_id={oid} AND tool_name=\'monitoring\'"'
-        status = run_command(cmd, silent=True).strip().lower()
-        
-        if status != "active":
-            # Cleanup Grafana
-            if oid in active_monitor_forwards:
-                try: active_monitor_forwards[oid].terminate()
-                except: pass
-                del active_monitor_forwards[oid]
-            
-            # Cleanup Prometheus
-            if oid in active_prometheus_forwards:
-                try: active_prometheus_forwards[oid].terminate()
-                except: pass
-                del active_prometheus_forwards[oid]
-            return
-            
-        # --- GRAFANA ---
+        # 1. GRAFANA (30xx)
+        grafana_port = f"30{oid}"
         if oid not in active_monitor_forwards or active_monitor_forwards[oid].poll() is not None:
              # Cleanup specific port
             run_command(f"pkill -f ':{grafana_port}'", silent=True)
             
             cmd = ["minikube", "-p", profile, "kubectl", "--", "port-forward", "-n", profile, "svc/sylo-monitor-grafana", f"{grafana_port}:80", "--address", "0.0.0.0"]
-            proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+            # Use custom KUBECONFIG if exists
+            my_env = os.environ.copy()
+            adhoc_conf = os.path.expanduser(f"~/.kube/config_sylo_{oid}")
+            if os.path.exists(adhoc_conf): my_env["KUBECONFIG"] = adhoc_conf
+            
+            proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=my_env)
             active_monitor_forwards[oid] = proc
             
-        # --- PROMETHEUS (90xx) ---
-        prom_port = f"90{oid}"
+        # 2. PROMETHEUS (31xx)
+        prom_port = f"31{oid}"
         if oid not in active_prometheus_forwards or active_prometheus_forwards[oid].poll() is not None:
             # Cleanup specific port
             run_command(f"pkill -f ':{prom_port}'", silent=True)
             
             cmd = ["minikube", "-p", profile, "kubectl", "--", "port-forward", "-n", profile, "svc/sylo-monitor-kube-promethe-prometheus", f"{prom_port}:9090", "--address", "0.0.0.0"]
-            proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+            # Reuse env
+            my_env = os.environ.copy()
+            if os.path.exists(adhoc_conf): my_env["KUBECONFIG"] = adhoc_conf
+            
+            proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=my_env)
             active_prometheus_forwards[oid] = proc
         
     except Exception as e:
-        pass # Silent fail to avoid log spam
+        # log(f"⚠️ Monitoring Port-Forward Error: {e}", C_RED)
+        pass
 
 def ensure_port_forward(oid, profile, web_en):
     global active_port_forwards
@@ -783,8 +787,14 @@ def ensure_port_forward(oid, profile, web_en):
         # Check if port is in use (simple cleanup logic could go here)
         cmd = ["minikube", "-p", profile, "kubectl", "--", "port-forward", "service/web-service", f"{port}:80", "--address", "0.0.0.0"]
         
+        # 🔥 FIX: Inject KUBECONFIG for Popen
+        my_env = os.environ.copy()
+        adhoc_conf = os.path.expanduser(f"~/.kube/config_sylo_{oid}")
+        if os.path.exists(adhoc_conf):
+            my_env["KUBECONFIG"] = adhoc_conf
+
         # Run detached
-        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=my_env)
         active_port_forwards[oid] = proc
         time.sleep(1) # Give it a sec
         return f"http://localhost:{port}"
@@ -808,7 +818,8 @@ def process_metrics():
                     if oid in blocked_cids: continue
                     try:
                         check_stat = run_command(f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D sylo_admin_db -e "SELECT status FROM k8s_deployments WHERE id={oid}"', silent=True).strip().lower()
-                        if check_stat in ['stopped', 'stopping', 'cancelled', 'terminated']: continue
+                        # 🔥 FIX: Only run monitoring/port-forward if status is ACTIVE. Skip during creation/deletion.
+                        if check_stat != 'active': continue
                     except: pass
 
                     stats = run_command(f"docker stats {line} --no-stream --format '{{{{.CPUPerc}}}}|{{{{.MemPerc}}}}'", silent=True)
@@ -1145,28 +1156,37 @@ def install_monitoring_stack(oid, profile, config):
     try:
         log(f"   📦 Instalando Monitoring Stack (Prometheus + Grafana)...", C_CYAN)
         
+        # 0. Update DB & File Status
+        update_tool_status(oid, "monitoring", "installing")
+        # Pass 'install_tool' action to fix Modal Title in Frontend
+        update_install_status(oid, 10, "Iniciando instalación...", status="installing", action="install_tool")
+        
         # 1. Add Helm repo (idempotent)
         log("   ➕ Añadiendo repositorio Helm...", C_CYAN)
-        run_command("helm repo add prometheus-community https://prometheus-community.github.io/helm-charts", silent=True)
-        run_command("helm repo update", silent=True)
+        res_repo = run_command("helm repo add prometheus-community https://prometheus-community.github.io/helm-charts", silent=True, timeout=60)
+        if "Error" in res_repo: raise Exception(f"Helm Repo Add Failed: {res_repo}")
+        
+        # Update repo with timeout and error check
+        res_upd = run_command("helm repo update", silent=True, timeout=60)
+        if "Error" in res_upd or "failed" in res_upd.lower(): raise Exception(f"Helm Repo Update Failed: {res_upd}")
         
         # 2. Install kube-prometheus-stack with minimal resources
         log(f"   🚀 Instalando stack en namespace {namespace}...", C_CYAN)
         
-        # Minimal values for resource-constrained environments
+        # Minimal values for resource-constrained environments (UPDATED for stability)
         helm_cmd = f"""helm upgrade --install sylo-monitor prometheus-community/kube-prometheus-stack \
             --namespace {namespace} \
             --create-namespace \
-            --set prometheus.prometheusSpec.resources.requests.memory=200Mi \
-            --set prometheus.prometheusSpec.resources.limits.memory=400Mi \
+            --set prometheus.prometheusSpec.resources.requests.memory=250Mi \
+            --set prometheus.prometheusSpec.resources.limits.memory=512Mi \
             --set prometheus.prometheusSpec.resources.requests.cpu=100m \
-            --set prometheus.prometheusSpec.resources.limits.cpu=200m \
+            --set prometheus.prometheusSpec.resources.limits.cpu=300m \
             --set prometheus.prometheusSpec.retention=7d \
             --set grafana.adminPassword={grafana_password} \
-            --set grafana.resources.requests.memory=100Mi \
-            --set grafana.resources.limits.memory=200Mi \
+            --set grafana.resources.requests.memory=128Mi \
+            --set grafana.resources.limits.memory=512Mi \
             --set grafana.resources.requests.cpu=50m \
-            --set grafana.resources.limits.cpu=100m \
+            --set grafana.resources.limits.cpu=200m \
             --set grafana.persistence.enabled=false \
             --set alertmanager.enabled=false \
             --set nodeExporter.enabled=false \
@@ -1175,12 +1195,18 @@ def install_monitoring_stack(oid, profile, config):
             --timeout 10m \
             --wait"""
         
-        result = run_command(helm_cmd, silent=False)
+        # VISUAL PROGRESS: 30%
+        update_install_status(oid, 30, "Desplegando charts de Prometheus y Grafana (esto puede tardar unos minutos)...", status="installing")
+        
+        result = run_command(helm_cmd, timeout=900, silent=False)
         
         if "deployed" in result.lower() or "upgraded" in result.lower():
             log("   ✅ Helm installation successful", C_GREEN)
         else:
             raise Exception(f"Helm install failed: {result}")
+        
+        # VISUAL PROGRESS: 60%
+        update_install_status(oid, 60, "Esperando a que los Pods arranquen...")
         
         # 3. Wait for Grafana pod to be ready
         log("   ⏳ Esperando a que Grafana esté listo...", C_CYAN)
@@ -1191,7 +1217,12 @@ def install_monitoring_stack(oid, profile, config):
         
         # 4. Setup port-forward for Grafana
         log("   🌐 Configurando port-forward para Grafana...", C_CYAN)
+        
+        # VISUAL PROGRESS: 80%
+        update_install_status(oid, 80, "Configurando acceso y puertos...")
+        
         setup_grafana_port_forward(oid, profile, namespace)
+        setup_prometheus_port_forward(oid, profile, namespace) # Add Prometheus too!
         
         # 5. Update database status
         log("   💾 Actualizando estado en base de datos...", C_CYAN)
@@ -1200,17 +1231,22 @@ def install_monitoring_stack(oid, profile, config):
         log(f"   ✅ MONITORING STACK INSTALADO CORRECTAMENTE", C_GREEN)
         log(f"   🔗 Grafana URL: http://localhost:80{oid}", C_CYAN)
         log(f"   👤 Usuario: admin", C_CYAN)
+        log(f"   👤 Usuario: admin", C_CYAN)
         log(f"   🔑 Password: {grafana_password}", C_CYAN)
+        
+        # VISUAL PROGRESS: 100%
+        update_install_status(oid, 100, "Instalación Completada")
         
     except Exception as e:
         log(f"   ❌ Error instalando monitoring: {e}", C_RED)
+        update_install_status(oid, 0, f"Error: {str(e)}", status="error")
         update_tool_status(oid, "monitoring", "error")
 
 def setup_grafana_port_forward(oid, profile, namespace):
     """
-    Configura port-forward para acceder a Grafana via localhost:80XX
+    Configura port-forward para acceder a Grafana via localhost:30XX
     """
-    port = f"80{oid}"
+    port = f"30{oid}" # Changed from 80{oid} to avoid conflict
     
     try:
         # Kill any existing port-forward for this port
@@ -1262,6 +1298,30 @@ def delete_tool_record(oid, tool_name):
     """
     cmd = f"""docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D sylo_admin_db -e "DELETE FROM k8s_tools WHERE deployment_id={oid} AND tool_name='{tool_name}'" """
     run_command(cmd, silent=True)
+
+def setup_prometheus_port_forward(oid, profile, namespace):
+    port = f"31{oid}" # Prometheus Port
+    try:
+        run_command(f"pkill -f 'port-forward.*{port}:{port}'", silent=True)
+        # Service name usually: sylo-monitor-kube-promethe-prometheus based on helm chart
+        # We need to verify the exact service name or use a label selector if possible, but port-forward to svc is standard.
+        # Assuming standard prometheus-community chart names:
+        # release-name-kube-prometheus-stack-prometheus
+        # But here release is 'sylo-monitor'
+        # So: sylo-monitor-kube-promethe-prometheus
+        cmd = f"minikube -p {profile} kubectl -- port-forward -n {namespace} svc/sylo-monitor-kube-promethe-prometheus {port}:9090 --address=0.0.0.0 > /dev/null 2>&1 &"
+        run_command(cmd, silent=True)
+        log(f"   ✅ Prometheus Port-forward: localhost:{port}", C_GREEN)
+    except Exception as e:
+        log(f"   ⚠️ Error Prometheus Port-forward: {e}", C_YELLOW)
+
+def update_install_status(oid, percent, msg, status="installing", action="install_tool"):
+    f = os.path.join(BUZON, f"install_status_{oid}.json")
+    with open(f, 'w') as fh:
+        # Include action in JSON so frontend can set Modal Title
+        json.dump({"percent": percent, "msg": msg, "status": status, "action": action}, fh)
+
+
 
 
 

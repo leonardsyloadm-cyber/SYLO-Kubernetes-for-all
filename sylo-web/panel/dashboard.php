@@ -1,6 +1,23 @@
 <?php
 // view: sylo-web/panel/dashboard.php
 require_once 'php/data.php';
+
+// FETCH MONITORING CREDENTIALS if installed (Hace que aparezcan las credenciales de grafana si lo tenemos instalado)
+$monitoring_creds = null;
+if (isset($installed_tools) && in_array('monitoring', $installed_tools) && isset($current['id'])) {
+    try {
+        $stmt = $conn->prepare("SELECT config_json FROM k8s_tools WHERE deployment_id = ? AND tool_name = 'monitoring'");
+        $stmt->execute([$current['id']]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($row && !empty($row['config_json'])) {
+            $mon_cfg = json_decode($row['config_json'], true);
+            $monitoring_creds = [
+                'user' => 'admin',
+                'pass' => $mon_cfg['grafana_password'] ?? 'admin'
+            ];
+        }
+    } catch(Exception $e) {}
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -156,6 +173,12 @@ require_once 'php/data.php';
                     <div class="mt-3 text-secondary small select-none"># SSH ROOT ACCESS</div>
                     <div><span class="text-secondary select-none">CMD:</span>  <span class="text-success" id="disp-ssh-cmd"><?=htmlspecialchars($creds['ssh_cmd'] ?? 'Connecting...')?></span></div>
                     <div><span class="text-secondary select-none">PASS:</span> <span class="text-warning" id="disp-ssh-pass"><?=htmlspecialchars($creds['ssh_pass'] ?? 'sylo1234')?></span></div>
+                    
+                    <?php if($monitoring_creds): ?>
+                        <div class="mt-3 text-secondary small select-none"># MONITORING ACCESS (Grafana)</div>
+                        <div><span class="text-secondary select-none">USER:</span> <span class="text-white">admin</span></div>
+                        <div><span class="text-secondary select-none">PASS:</span> <span class="text-warning"><?=htmlspecialchars($monitoring_creds['pass'])?></span></div>
+                    <?php endif; ?>
                 </div>
             </div>
 
@@ -235,10 +258,10 @@ require_once 'php/data.php';
                             
                             <div class="mt-auto">
                                 <?php if ($has_monitoring): ?>
-                                    <a href="http://localhost:80<?=$current['id']?>" target="_blank" class="btn btn-success w-100 mb-2">
+                                    <a href="http://localhost:30<?=$current['id']?>" target="_blank" class="btn btn-success w-100 mb-2">
                                         <i class="bi bi-box-arrow-up-right me-2"></i>Abrir Grafana
                                     </a>
-                                    <a href="http://localhost:90<?=$current['id']?>" target="_blank" class="btn btn-danger w-100 mb-2 bg-gradient text-white" style="background-color: #e6522c; border-color: #e6522c;">
+                                    <a href="http://localhost:31<?=$current['id']?>" target="_blank" class="btn btn-danger w-100 mb-2 bg-gradient text-white" style="background-color: #e6522c; border-color: #e6522c;">
                                         <i class="bi bi-fire me-2"></i>Abrir Prometheus
                                     </a>
                                     <button class="btn btn-outline-danger w-100 btn-sm" onclick="uninstallMonitoring()">
@@ -675,8 +698,9 @@ function installMonitoring() {
     .then(r => r.json())
     .then(data => {
         if (data.success) {
-            alert('Instalación iniciada. La página se recargará en 2 minutos.');
-            setTimeout(() => location.reload(), 120000);
+            // Visual feedback handled by polling
+            // Just show a quick toast or let the modal take over
+            alert('Instalación iniciada. Espere un momento...');
         } else {
             alert('Error: ' + (data.error || 'Desconocido'));
         }

@@ -49,18 +49,22 @@ if (isset($_SESSION['user_id'])) {
     } catch(Exception $e) {}
 }
 
-// --- 2. STATUS CHECK ---
+// --- 2. STATUS CHECK (DIRECT READ FIX) ---
 if (isset($_GET['check_status'])) {
     header('Content-Type: application/json');
     $id = filter_var($_GET['check_status'], FILTER_VALIDATE_INT);
-    $ch = curl_init(API_URL . "/estado/" . $id);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 2);
-    $res = curl_exec($ch);
-    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-    if ($code === 200 && $res) echo $res;
-    else echo json_encode(["percent" => 10, "message" => "Conectando al Núcleo...", "status" => "pending"]);
+    
+    // Ruta directa al buzón (Mejor rendimiento y fiabilidad que cURL loopback)
+    $buzon_dir = __DIR__ . "/../../buzon-pedidos/";
+    $status_file = $buzon_dir . "status_{$id}.json";
+    
+    if (file_exists($status_file)) {
+        // Leer directamente del disco
+        echo file_get_contents($status_file);
+    } else {
+        // Fallback: Si no existe, simulamos 'pending'
+        echo json_encode(["percent" => 10, "message" => "Conectando al Núcleo...", "status" => "pending"]);
+    }
     exit;
 }
 
@@ -115,7 +119,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
     }
     if ($action === 'logout') { session_destroy(); echo json_encode(["status"=>"success"]); exit; }
     if ($action === 'comprar') {
-        if (!isset($_SESSION['user_id'])) exit(json_encode(["status"=>"auth_required"]));
+        if (!isset($_SESSION['user_id'])) exit(json_encode(["status"=>"auth_required", "mensaje"=>"Sesión expirada. Por favor, loguéate de nuevo."]));
         $plan = $input['plan']; // 🛡️ Removed htmlspecialchars (Input Validation only)
         $s = $input['specs']; 
         try {

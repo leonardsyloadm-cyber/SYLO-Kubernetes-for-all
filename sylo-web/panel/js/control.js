@@ -334,13 +334,13 @@ function loadData() {
 
             try {
                 if (d.status) {
-                    // --- POWER & PLAN UPDATE PROGRESS POLLING ---
+                    // --- POWER & PLAN UPDATE & INSTALL PROGRESS POLLING ---
                     // FIX: Check if we have an active operation OR if backend reports one
-                    if (activePowerOp || (d.general_progress && d.general_progress.action === 'plan_update')) {
+                    if (activePowerOp || (d.general_progress && (d.general_progress.action === 'plan_update' || d.general_progress.action === 'install_tool'))) {
                         const gp = d.general_progress;
 
-                        // Auto-open modal if plan update detected and not open
-                        if (gp && gp.action === 'plan_update' && !powerModal) {
+                        // Auto-open modal if operation detected and not open
+                        if (gp && (gp.action === 'plan_update' || gp.action === 'install_tool') && !powerModal) {
                             const modalEl = document.getElementById('powerModal');
                             if (modalEl) {
                                 powerModal = new bootstrap.Modal(modalEl);
@@ -350,6 +350,14 @@ function loadData() {
                                 if (planModalEl) {
                                     const pm = bootstrap.Modal.getInstance(planModalEl);
                                     if (pm) pm.hide();
+                                }
+
+                                // Dynamic Title
+                                const titleEl = modalEl.querySelector('.modal-title');
+                                if (titleEl) {
+                                    if (gp.action === 'install_tool') titleEl.innerText = "Instalación de Software";
+                                    else if (gp.action === 'plan_update') titleEl.innerText = "Actualización de Plan";
+                                    else titleEl.innerText = "Control de Energía";
                                 }
                             }
                         }
@@ -364,8 +372,9 @@ function loadData() {
                         // 1. Prioritize REAL PROGRESS from Operator (if API updated)
                         if (gp) {
                             // Check if general_progress matches our power op intent or is plan update
+                            // Check if general_progress matches our power op intent or is plan/install update
                             if (
-                                gp.action === 'plan_update' ||
+                                gp.action === 'plan_update' || gp.action === 'install_tool' ||
                                 (gp.status && (
                                     gp.status.includes('stopping') || gp.status.includes('starting') || gp.status.includes('restarting') ||
                                     gp.status === 'stopped' || gp.status === 'active' || gp.status === 'online' || gp.status === 'terminated' ||
@@ -373,6 +382,13 @@ function loadData() {
                                 ))) {
                                 targetProgress = parseInt(gp.percent) || parseInt(gp.progress) || 10;
                                 if (targetProgress >= 100) isComplete = true;
+                                if (gp.status === 'error') {
+                                    isComplete = true;
+                                    targetProgress = 100; // Fill bar to show error clearly
+                                    if (pBar) { pBar.classList.remove('bg-primary'); pBar.classList.add('bg-danger'); }
+                                } else {
+                                    if (pBar) { pBar.classList.remove('bg-danger'); pBar.classList.add('bg-primary'); }
+                                }
                                 if (gp.msg) customMsg = gp.msg;
                             }
                         }
@@ -388,6 +404,7 @@ function loadData() {
                         else if (activePowerOp === 'start') key = 'power.progress_starting';
                         else if (activePowerOp === 'restart') key = 'power.progress_restarting';
                         else if (gp && gp.action === 'plan_update') key = 'plan.updating';
+                        else if (gp && gp.action === 'install_tool') key = 'tool.installing';
 
                         pTxt.setAttribute('data-i18n', key);
                         pTxt.innerHTML = customMsg || window.SyloLang?.get(key) || "Procesando...";
@@ -398,7 +415,13 @@ function loadData() {
                             activePowerOp = null;
                             setTimeout(() => {
                                 if (powerModal) powerModal.hide();
-                                showToast(window.SyloLang?.get('power.completed') || "Operación Completada", 'success');
+
+                                if (gp && gp.status === 'error') {
+                                    showToast(customMsg || "Error en la operación", 'error');
+                                } else {
+                                    showToast(window.SyloLang?.get('power.completed') || "Operación Completada", 'success');
+                                }
+
                                 if (gp && gp.action === 'plan_update') {
                                     // FIX: Dismiss status file BEFORE reloading to prevent loop
                                     if (pollingInterval) clearInterval(pollingInterval);
@@ -409,6 +432,16 @@ function loadData() {
                                         .then(() => {
                                             window.location.reload();
                                         })
+                                        .catch(() => window.location.reload());
+                                }
+
+                                if (gp && gp.action === 'install_tool') {
+                                    if (pollingInterval) clearInterval(pollingInterval);
+                                    fetch('php/data.php?ajax_action=1', {
+                                        method: 'POST',
+                                        body: new URLSearchParams({ action: 'dismiss_install_tool', order_id: orderId })
+                                    })
+                                        .then(() => window.location.reload())
                                         .catch(() => window.location.reload());
                                 }
                             }, 1000);
@@ -432,6 +465,14 @@ function loadData() {
                             if (modalEl) {
                                 powerModal = new bootstrap.Modal(modalEl);
                                 powerModal.show();
+
+                                // Dynamic Title
+                                const titleEl = modalEl.querySelector('.modal-title');
+                                if (titleEl) {
+                                    if (gp.action === 'install_tool') titleEl.innerText = "Instalación de Software";
+                                    else if (gp.action === 'plan_update') titleEl.innerText = "Actualización de Plan";
+                                    else titleEl.innerText = "Control de Energía";
+                                }
                             }
                         }
 
@@ -701,44 +742,16 @@ function loadData() {
                         body.scrollTop = body.scrollHeight;
                         showToast(window.SyloLang?.get('chat.received') || "Mensaje de soporte recibido", "info");
                     }
-                } catch (e) { }
+                }
+            } catch (e) { }
 
-            })
+        })
         .catch(err => { console.log("Esperando datos...", err); });
 }
 pollingInterval = setInterval(loadData, 500);
 
-function setBtnState(disabled, text = null, progress = null) {
-    const btn = document.getElementById('btn-ver-web');
-    const txt = document.getElementById('web-btn-text');
-    if (!btn) return;
+// Duplicate function removed. Using the improved version at line 198.
 
-    if (disabled) {
-        btn.classList.add('disabled');
-        btn.setAttribute('aria-disabled', 'true');
-        btn.style.pointerEvents = 'none'; // Force block cliks
-    } else {
-        btn.classList.remove('disabled');
-        btn.removeAttribute('aria-disabled');
-        btn.style.pointerEvents = 'auto'; // Force enable clicks
-
-        // Restore default text if enabling and no specific text is passed
-        // This ensures it doesn't get stuck on "Web Actualizada"
-        if (!text && txt) {
-            const label = window.SyloLang?.get('dashboard.view_site') || 'Ver Sitio Web';
-            txt.innerHTML = `<i class="bi bi-box-arrow-up-right me-2"></i><span data-i18n="dashboard.view_site">${label}</span>`;
-        }
-    }
-
-    if (text && txt) {
-        if (progress !== null && progress !== undefined) {
-            // Visualize progress in text or button background could be cool, but simple text for now
-            txt.innerHTML = `${text} (${progress}%)`;
-        } else {
-            txt.innerHTML = text;
-        }
-    }
-}
 
 function submitPlanChange() {
     const form = document.getElementById('planForm');

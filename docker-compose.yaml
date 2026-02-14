@@ -26,27 +26,27 @@ services:
     image: mysql:5.7
     container_name: kylo-main-db
     environment:
-      MYSQL_DATABASE: kylo_main_db
+      MYSQL_DATABASE: sylo_admin_db
       MYSQL_USER: sylo_app
       MYSQL_PASSWORD: sylo_app_pass
-      MYSQL_ROOT_PASSWORD: root
+      MYSQL_ROOT_PASSWORD: SyloRoot!2026Secure
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"
     volumes:
-      - ./sylo-web/init_kylo.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./sylo-web/Sylo_db.sql:/docker-entrypoint-initdb.d/init.sql
       - db_data:/var/lib/mysql
     networks:
       - sylo-network
 
   # --- 3. NUEVO: KYLO DB ENGINE (Tu Motor Java Propio) ---
   kylo-db:
-    build: ./Kylo             # Busca el Dockerfile dentro de la carpeta Kylo
+    build: ./Kylo # Busca el Dockerfile dentro de la carpeta Kylo
     container_name: kylo-db-core
     ports:
-      - "8082:8080"           # Mapeamos la GUI de Kylo al puerto 8082 de tu PC
-      - "5000:5000"           # Puerto de datos TCP de Kylo
+      - "8082:8080" # Mapeamos la GUI de Kylo al puerto 8082 de tu PC
+      - "5000:5000" # Puerto de datos TCP de Kylo
     networks:
-      - sylo-network          # Se conecta a la misma red para hablar con la web si hace falta
+      - sylo-network # Se conecta a la misma red para hablar con la web si hace falta
     restart: unless-stopped
 
 volumes:

@@ -368,7 +368,19 @@ def process_order(json_file):
         ssh_user = specs.get("ssh_user", "usuario")
         os_requested = specs.get("os_image", "ubuntu") # Lo que eligió en la web
         
-        log(f"👉 PROCESANDO ID: {oid} | User: {owner_id} | Plan: {plan_raw} | ReqOS: {os_requested}", Colors.GREEN)
+        # --- SANITIZATION (FIX INVALID SUBDOMAIN ERROR) ---
+        # Aseguramos que no haya caracteres inválidos para DNS (como guiones bajos)
+        import re
+        def sanitize_dns(val):
+            return re.sub(r'[^a-zA-Z0-9-]', '-', str(val)).lower().strip('-')
+
+        subdomain = sanitize_dns(subdomain)
+        
+        # También sanitizamos nombres de servicios si existen en specs (para Custom/Oro)
+        if "db_custom_name" in specs: specs["db_custom_name"] = sanitize_dns(specs["db_custom_name"])
+        if "web_custom_name" in specs: specs["web_custom_name"] = sanitize_dns(specs["web_custom_name"])
+
+        log(f"👉 PROCESANDO ID: {oid} | User: {owner_id} | Plan: {plan_raw} | ReqOS: {os_requested} | Sub: {subdomain}", Colors.GREEN)
         update_db_state(oid, "creating")
         
         cluster_profile = f"sylo-cliente-{oid}"

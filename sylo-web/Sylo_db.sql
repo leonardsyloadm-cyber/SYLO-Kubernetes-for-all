@@ -86,29 +86,9 @@ CREATE TABLE sylo_drive_buckets (
     CONSTRAINT fk_drive_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
--- FASE 2: MIGRACIÓN DE DATOS RELACIONALES (SQL)
-
--- 1. Migrar Usuarios
-INSERT INTO sylo_admin_db.users (id, username, email, password_hash, full_name, role, tipo_usuario, documento_identidad, telefono, company_name, direccion, created_at)
-SELECT id, username, email, password_hash, full_name, role, tipo_usuario, dni, telefono, company_name, calle, created_at 
-FROM kylo_main_db.users;
-
--- 2. Migrar Planes
-INSERT INTO sylo_admin_db.plans (id, name, base_price, base_cpu, base_ram, base_storage, description)
-SELECT id, name, price, cpu_cores, ram_gb, 20, description 
-FROM kylo_main_db.plans;
-
--- 3. Migrar y Fusionar Orders + Specs -> k8s_deployments
-INSERT INTO sylo_admin_db.k8s_deployments (
-    id, user_id, plan_id, status, cluster_alias, subdomain, ip_address, 
-    os_image, cpu_cores, ram_gb, storage_gb, 
-    web_enabled, web_type, web_custom_name, 
-    db_enabled, db_type, db_custom_name, ssh_user, created_at
-)
-SELECT 
-    o.id, o.user_id, o.plan_id, o.status, os.cluster_alias, CONCAT(os.subdomain, '-', o.id), o.ip_address, 
-    os.os_image, os.cpu_cores, os.ram_gb, os.storage_gb, 
-    IF(os.web_enabled, 1, 0), IF(os.web_type IS NULL OR os.web_type = '', 'ninguno', os.web_type), os.web_custom_name, 
-    IF(os.db_enabled, 1, 0), IF(os.db_type IS NULL OR os.db_type = '', 'ninguno', os.db_type), os.db_custom_name, os.ssh_user, o.purchase_date
-FROM kylo_main_db.orders o
-JOIN kylo_main_db.order_specs os ON o.id = os.order_id;
+-- 2. Planes Estándar (OBLIGATORIO: Necesario para que la web funcione)
+INSERT INTO plans (name, base_price, base_cpu, base_ram, base_storage, description) VALUES
+('Bronce', 5.00, 1, 1, 10, 'K8s Simple (Alpine)'),
+('Plata', 15.00, 2, 2, 20, 'K8s + DB HA'),
+('Oro', 30.00, 4, 4, 40, 'Full Stack HA'),
+('Personalizado', 0.00, 0, 0, 10, 'Configurable');

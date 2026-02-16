@@ -86,10 +86,35 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
 
     if ($action === 'register') {
         try {
-            if ($input['password'] !== $input['password_confirm']) throw new Exception("Pass mismatch");
+            if ($input['password'] !== $input['password_confirm']) throw new Exception("Las contraseñas no coinciden");
+            if (strlen($input['password']) < 6) throw new Exception("La contraseña debe tener al menos 6 caracteres");
+            if (!preg_match('/[0-9]/', $input['password'])) throw new Exception("La contraseña debe incluir al menos un número");
+            if (!preg_match('/[\W_]/', $input['password'])) throw new Exception("La contraseña debe incluir al menos un carácter especial");
             // 🛡️ Store RAW, Sanitize on OUTPUT. Prevents double-encoding and database corruption.
             $user = $input['username']; // Removed htmlspecialchars
             $email = filter_var($input['email'], FILTER_VALIDATE_EMAIL);
+            if (!$email || !checkdnsrr(explode('@', $email)[1], 'MX')) {
+                 if (!$email || strpos($email, '.') === false) throw new Exception("Formato de email inválido");
+            }
+            // Typo Check
+            $domain = strtolower(explode('@', $email)[1]);
+            $typos = ['gmail.co', 'hotmail.co', 'yahoo.co', 'outlook.co', 'gmil.com', 'hotmil.com', 'gm.com'];
+            if (in_array($domain, $typos)) throw new Exception("Parece que hay un error en el dominio del email ($domain). ¿Quiso decir .com?");
+            
+            // DNI Validation (Autonomo only)
+            if ($input['tipo_usuario'] === 'autonomo') {
+                $dni = strtoupper($input['dni']);
+                if (!preg_match('/^[XYZ0-9][0-9]{7}[TRWAGMYFPDXBNJZSQVHLCKE]$/', $dni)) {
+                    throw new Exception("Formato DNI/NIE incorrecto. (Ej: 12345678Z)");
+                }
+                $num = substr($dni, 0, 8);
+                $num = str_replace(['X', 'Y', 'Z'], ['0', '1', '2'], $num);
+                $letter = substr($dni, 8, 1);
+                $letters = "TRWAGMYFPDXBNJZSQVHLCKE";
+                if ($letter !== $letters[(int)$num % 23]) {
+                    throw new Exception("Letra DNI/NIE incorrecta.");
+                }
+            }
             $pass = password_hash($input['password'], PASSWORD_BCRYPT);
             $tipo = $input['tipo_usuario'];
             $fn = ($tipo === 'autonomo') ? $input['full_name'] : $input['contact_name'];

@@ -283,8 +283,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && !in_arra
         }
 
         if ($act == 'destroy_k8s') {
-            // 1. Mark as destroying in DB
-            $stmt = $conn->prepare("UPDATE k8s_deployments SET status='destroying' WHERE id=?");
+            // 1. Mark as terminating in DB (ENUM valid value)
+            $stmt = $conn->prepare("UPDATE k8s_deployments SET status='terminating' WHERE id=?");
             $stmt->execute([$oid]);
 
             // 2. Create Trigger for Operator
@@ -320,7 +320,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && !in_arra
         error_log("Critical Error in data.php: " . $e->getMessage());
         if(isset($_GET['ajax_action'])) {
             http_response_code(500);
-            echo json_encode(['status'=>'error', 'message'=>'Error interno del servidor.']);
+            echo json_encode(['status'=>'error', 'message'=>'Error interno del servidor: ' . $e->getMessage()]);
         } else {
             // Redirect with error param so dashboard can show it (if implemented) or at least not show white screen
             header("Location: ../dashboard.php?id=".(isset($oid)?$oid:'')."&error=internal_error"); 
@@ -466,8 +466,18 @@ if (isset($_GET['ajax_data'])) {
 // UPDATE PROFILE
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] == 'update_profile') {
     // Map params to new schema
+    // Validate Email
+    $email = filter_var($_POST['email'], FILTER_VALIDATE_EMAIL);
+    if (!$email || !checkdnsrr(explode('@', $email)[1], 'MX')) {
+        die("Error: Formato de email inválido o dominio inexistente.");
+    }
+    // Typo Check (Centralized logic)
+    $domain = strtolower(explode('@', $email)[1]);
+    $typos = ['gmail.co', 'hotmail.co', 'yahoo.co', 'outlook.co', 'gmil.com', 'hotmil.com', 'gm.com'];
+    if (in_array($domain, $typos)) die("Error: Dominio de email sospechoso ($domain). Por favor use un proveedor estándar.");
+
     $sql = "UPDATE users SET full_name=?, email=?, documento_identidad=?, telefono=?, company_name=?, direccion=? WHERE id=?";
-    $conn->prepare($sql)->execute([$_POST['full_name'], $_POST['email'], $_POST['dni'], $_POST['telefono'], $_POST['company_name'], $_POST['calle'], $user_id]);
+    $conn->prepare($sql)->execute([$_POST['full_name'], $email, $_POST['dni'], $_POST['telefono'], $_POST['company_name'], $_POST['calle'], $user_id]);
     header("Location: ../dashboard.php"); exit;
 }
 $stmt = $conn->prepare("SELECT * FROM users WHERE id = ?"); $stmt->execute([$user_id]); 

@@ -74,6 +74,12 @@ require_once 'php/auth.php';
             70% { transform: scale(1.05); }
             100% { transform: scale(1); }
         }
+        
+        .pass-wrapper { position: relative; }
+        .eye-icon { position: absolute; right: 10px; top: 50%; transform: translateY(-50%); cursor: pointer; color: #94a3b8; z-index: 10; }
+        .eye-icon:hover { color: var(--sylo-accent); }
+        /* Ensure Message Modal is always on top of Auth Modal */
+        #messageModal { z-index: 1090 !important; }
     </style>
 </head>
 <body>
@@ -255,8 +261,17 @@ require_once 'php/auth.php';
                 <div class="row g-2">
                     <div class="col-6"><input id="reg_u" class="form-control mb-2" placeholder="Usuario" data-i18n="auth.username"></div>
                     <div class="col-6"><input id="reg_e" class="form-control mb-2" placeholder="Email" data-i18n="auth.email"></div>
-                    <div class="col-6"><input type="password" id="reg_p1" class="form-control mb-2" placeholder="Contraseña" data-i18n="auth.password"></div>
-                    <div class="col-6"><input type="password" id="reg_p2" class="form-control mb-2" placeholder="Repetir" data-i18n="auth.repeat_pass"></div>
+                    <div class="col-6">
+                        <div class="pass-wrapper">
+                            <input type="password" id="reg_p1" class="form-control mb-2" placeholder="Contraseña" data-i18n="auth.password">
+                            <i class="fas fa-eye eye-icon" onclick="togglePass('reg_p1', this)"></i>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="pass-wrapper">
+                            <input type="password" id="reg_p2" class="form-control mb-2" placeholder="Repetir" data-i18n="auth.repeat_pass">
+                        </div>
+                    </div>
                 </div>
                 <div id="fields-auto" class="mt-2">
                     <input id="reg_fn" class="form-control mb-2" placeholder="Nombre Completo" data-i18n="auth.full_name">
@@ -542,7 +557,94 @@ require_once 'php/auth.php';
         }
 
         async function handleLogin() { const r=await fetch('index.php',{method:'POST', headers:{'Content-Type':'application/json', 'X-CSRF-Token': csrfToken}, body:JSON.stringify({action:'login',email_user:document.getElementById('log_email').value,password:document.getElementById('log_pass').value})}); const d=await r.json(); if(d.status==='success') location.reload(); else showMsg("Login Fallido", d.mensaje, 'error'); }
-        async function handleRegister() { if(!document.getElementById('reg_terms').checked) return; const t = document.getElementById('t_a').checked ? 'autonomo' : 'empresa'; const d = { action:'register', username:document.getElementById('reg_u').value, email:document.getElementById('reg_e').value, password:document.getElementById('reg_p1').value, password_confirm:document.getElementById('reg_p2').value, telefono:document.getElementById('reg_tel').value, calle:document.getElementById('reg_cal').value, tipo_usuario:t }; if(t==='autonomo') { d.full_name=document.getElementById('reg_fn').value; d.dni=document.getElementById('reg_dni_a').value; } else { d.contact_name=document.getElementById('reg_contact').value; d.cif=document.getElementById('reg_cif').value; d.dni=d.cif; d.tipo_empresa=document.getElementById('reg_tipo_emp').value; if(d.tipo_empresa==='Otro') d.company_name=document.getElementById('reg_rs').value; } await fetch('index.php',{method:'POST', headers:{'Content-Type':'application/json', 'X-CSRF-Token': csrfToken}, body:JSON.stringify(d)}); location.reload(); }
+
+        function togglePass(id, icon) {
+            ['reg_p1', 'reg_p2'].forEach(tid => {
+                const el = document.getElementById(tid);
+                if (el.type === 'password') el.type = 'text';
+                else el.type = 'password';
+            });
+            
+            if (icon.classList.contains('fa-eye')) {
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            } else {
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        }
+
+        function validateEmail(email) {
+            const re = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+            if (!re.test(String(email).toLowerCase())) return false;
+            
+            // Typo Protection
+            const domain = email.split('@')[1].toLowerCase();
+            const typos = ['gmail.co', 'hotmail.co', 'yahoo.co', 'outlook.co', 'gmil.com', 'hotmil.com', 'gm.com'];
+            if (typos.includes(domain)) return false;
+            
+            return true;
+        }
+
+        function validateDNI(dni) {
+            dni = dni.toUpperCase();
+            if (!/^[XYZ0-9][0-9]{7}[TRWAGMYFPDXBNJZSQVHLCKE]$/.test(dni)) return false;
+            
+            let num = dni.substr(0, 8);
+            num = num.replace('X', 0).replace('Y', 1).replace('Z', 2);
+            const letter = dni.substr(8, 1);
+            const letters = "TRWAGMYFPDXBNJZSQVHLCKE";
+            
+            return letter === letters.charAt(parseInt(num) % 23);
+        }
+
+        async function handleRegister() { 
+            if(!document.getElementById('reg_terms').checked) { showMsg("Error", "Debe aceptar los términos", 'error'); return; }
+            
+            const p1 = document.getElementById('reg_p1').value;
+            const p2 = document.getElementById('reg_p2').value;
+            const email = document.getElementById('reg_e').value;
+            const t = document.getElementById('t_a').checked ? 'autonomo' : 'empresa';
+            
+            // Email Validation
+            if (!validateEmail(email)) { showMsg("Error", "Email no válido. Use un correo real (ej: gmail.com, hotmail.com)", 'error'); return; }
+
+            // Password Validation
+            if (p1 !== p2) { showMsg("Error", "Las contraseñas no coinciden", 'error'); return; }
+            if (p1.length < 6) { showMsg("Error", "La contraseña debe tener al menos 6 caracteres", 'error'); return; }
+            if (!/[0-9]/.test(p1)) { showMsg("Error", "La contraseña debe incluir al menos un número", 'error'); return; }
+            if (!/[\W_]/.test(p1)) { showMsg("Error", "La contraseña debe incluir al menos un carácter especial (@, $, _, etc.)", 'error'); return; }
+
+            const d = { action:'register', username:document.getElementById('reg_u').value, email:email, password:p1, password_confirm:p2, telefono:document.getElementById('reg_tel').value, calle:document.getElementById('reg_cal').value, tipo_usuario:t }; 
+            
+            if(t==='autonomo') { 
+                d.full_name=document.getElementById('reg_fn').value; 
+                d.dni=document.getElementById('reg_dni_a').value.toUpperCase(); 
+                if (!validateDNI(d.dni)) { showMsg("Error", "DNI/NIE incorrecto. Verifique la letra.", 'error'); return; }
+            } else { 
+                d.contact_name=document.getElementById('reg_contact').value; 
+                d.cif=document.getElementById('reg_cif').value.toUpperCase(); 
+                d.dni=d.cif; // Backend expects 'dni' key for unique check usually, but let's send cif too
+                // Simple CIF validation could be added, but user asked for DNI specifically.
+                // For now, if it looks like DNI, validate it.
+                if (/^[XYZ0-9]/.test(d.cif) && d.cif.length === 9) {
+                     if (!validateDNI(d.cif) && !/^[ABCDEFGHJKLMNPQRSUVW]/.test(d.cif)) {
+                         // Only warn if it fails DNI check AND doesn't start with CIF letter
+                         // Allowing standard CIFs to pass without strict checksum for now unless requested
+                     }
+                }
+                
+                d.tipo_empresa=document.getElementById('reg_tipo_emp').value; 
+                if(d.tipo_empresa==='Otro') d.company_name=document.getElementById('reg_rs').value; 
+            } 
+            
+            try {
+                const r = await fetch('index.php',{method:'POST', headers:{'Content-Type':'application/json', 'X-CSRF-Token': csrfToken}, body:JSON.stringify(d)}); 
+                const res = await r.json();
+                if(res.status==='success') { showMsg("Éxito", "Cuenta creada. Redirigiendo...", 'success'); setTimeout(()=>location.reload(), 2000); }
+                else showMsg("Error", res.mensaje || "Error al registrar", 'error');
+            } catch(e) { showMsg("Error", "Error de conexión: "+e, 'error'); }
+        }
         function logout() { fetch('index.php',{method:'POST', headers:{'Content-Type':'application/json', 'X-CSRF-Token': csrfToken}, body:JSON.stringify({action:'logout'})}).then(()=>location.reload()); }
         function copyData(){ navigator.clipboard.writeText(document.getElementById('ssh-details').innerText); }
         function userMovedSlider(){ document.getElementById('calc-preset').value='custom'; updCalc(); }

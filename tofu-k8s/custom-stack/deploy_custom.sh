@@ -101,12 +101,11 @@ update_status 0 "Iniciando Custom ($OS_IMAGE_ARG)..."
 
 # --- LIMPIEZA PROFUNDA ---
 update_status 5 "Limpiando recursos..."
-ZOMBIES=$(minikube profile list 2>/dev/null | grep "\-$ORDER_ID" | awk '{print $2}' || true)
-for ZOMBIE in $ZOMBIES; do 
-    minikube delete -p "$ZOMBIE" --purge >> "$LOG_FILE" 2>&1 || true
-done
+# Explicitly delete the specific cluster for this order
+minikube delete -p "$CLUSTER_NAME" >> "$LOG_FILE" 2>&1 || true
 docker volume prune -f >> "$LOG_FILE" 2>&1 || true
 docker network prune -f >> "$LOG_FILE" 2>&1 || true
+docker network rm "sylo-cliente-$ORDER_ID" >> "$LOG_FILE" 2>&1 || true
 
 # --- MINIKUBE ---
 # --- MINIKUBE ---

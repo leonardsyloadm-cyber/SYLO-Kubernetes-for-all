@@ -57,7 +57,7 @@ def run_command(cmd, timeout=300, silent=False, check_error=False):
             res = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout, bufsize=10485760)
             if res.returncode != 0:
                 err_msg = res.stderr.strip()[:300]
-                if "grep" not in cmd: log(f"⚠️ ERROR ({res.returncode}): {err_msg}", C_RED)
+                if "grep" not in cmd and not silent: log(f"⚠️ ERROR ({res.returncode}): {err_msg}", C_RED)
                 if check_error: raise Exception(f"CMD Failed: {err_msg}")
             elif not silent:
                 preview = res.stdout.strip()[:100].replace('\n', ' ')
@@ -424,7 +424,8 @@ def create_client(oid, plan_id, specs):
     try:
         # IP Calculation (Subnet Sharding: 192.168.50+OID.x)
         oct3 = 50 + int(oid)
-        static_ip = f"192.168.{oct3}.2"
+        # static_ip = f"192.168.{oct3}.2"
+        static_ip = "" # Force dynamic IP to avoid Docker network conflicts
         
         # Script Selection
         script = "tofu-k8s/k8s-simple/deploy_simple.sh"

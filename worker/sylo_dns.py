@@ -11,7 +11,7 @@ DB_CONFIG = {
     "user": "sylo_app",
     "password": "sylo_app_pass",
     "database": "sylo_admin_db",
-    "port": 3308,
+    "port": 3306,
     "connection_timeout": 10
 }
 

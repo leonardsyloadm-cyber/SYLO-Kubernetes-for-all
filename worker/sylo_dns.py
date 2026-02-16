@@ -10,7 +10,8 @@ DB_CONFIG = {
     "host": "127.0.0.1",
     "user": "sylo_app",
     "password": "sylo_app_pass",
-    "database": "kylo_main_db",
+    "database": "sylo_admin_db",
+    "port": 3308,
     "connection_timeout": 10
 }
 
@@ -30,14 +31,13 @@ def get_active_hosts():
         conn = get_db_connection()
         cursor = conn.cursor(dictionary=True)
         
-        # JOIN entre orders y order_specs para sacar IP y Subdominio
+        # Usamos k8s_deployments (Unified Schema)
         query = """
-            SELECT o.ip_address, s.subdomain 
-            FROM orders o
-            JOIN order_specs s ON o.id = s.order_id
-            WHERE o.status = 'active' 
-            AND o.ip_address IS NOT NULL 
-            AND o.ip_address != ''
+            SELECT ip_address, subdomain 
+            FROM k8s_deployments
+            WHERE status IN ('active', 'completed') 
+            AND ip_address IS NOT NULL 
+            AND ip_address != ''
         """
         cursor.execute(query)
         results = cursor.fetchall()

@@ -99,7 +99,7 @@ try:
     import pymysql
     PYMYSQL_INSTALLED = True
 except ImportError: PYMYSQL_INSTALLED = False
-DB_CONFIG = {"host": "127.0.0.1", "user": "root", "password": "root", "database": "kylo_main_db", "port": 3306}
+DB_CONFIG = {"host": "127.0.0.1", "user": "root", "password": "root", "database": "sylo_admin_db", "port": 3306}
 
 # ================= UI HELPERS =================
 class ModernCard(ctk.CTkFrame):
@@ -122,12 +122,12 @@ class DatabaseManager(ctk.CTkToplevel):
     def __init__(self, parent):
         super().__init__(parent)
         self.title("Sylo Data Studio"); self.geometry("1400x900"); self.configure(fg_color=C_BG_MAIN)
-        self.parent_app = parent; self.current_table = "orders"; self.dirty_ids = set()
+        self.parent_app = parent; self.current_table = "k8s_deployments"; self.dirty_ids = set()
         self.grid_columnconfigure(1, weight=1); self.grid_rowconfigure(0, weight=1)
         
         self.sidebar = ctk.CTkFrame(self, width=250, fg_color=C_BG_SIDEBAR, corner_radius=0); self.sidebar.grid(row=0, column=0, sticky="nsew")
         ctk.CTkLabel(self.sidebar, text="DATA STUDIO", font=FONT_HEAD, text_color=C_ACCENT_CYAN).pack(pady=30)
-        for t in ["users", "orders", "order_specs", "plans"]:
+        for t in ["k8s_deployments", "users", "plans"]:
             ctk.CTkButton(self.sidebar, text=t.upper(), fg_color="transparent", border_width=1, border_color=C_BORDER_GLOW, hover_color=C_ACCENT_BLUE, anchor="w", command=lambda x=t: self.switch_table(x)).pack(fill="x", padx=20, pady=5)
         
         self.main_area = ctk.CTkFrame(self, fg_color="transparent"); self.main_area.grid(row=0, column=1, sticky="nsew", padx=20, pady=20)
@@ -667,7 +667,7 @@ class OktopusApp(ctk.CTk):
             for w in self.finance_scroll.winfo_children():
                 if isinstance(w, ctk.CTkFrame) and w != self.finance_scroll.winfo_children()[0]: w.destroy()
             conn = pymysql.connect(**DB_CONFIG, cursorclass=pymysql.cursors.DictCursor)
-            with conn.cursor() as c: c.execute("SELECT o.id, u.username, p.name as plan, p.price, COALESCE(os.cpu_cores, p.cpu_cores) as cpu, COALESCE(os.ram_gb, p.ram_gb) as ram FROM orders o JOIN users u ON o.user_id=u.id JOIN plans p ON o.plan_id=p.id LEFT JOIN order_specs os ON o.id=os.order_id WHERE o.status IN ('active', 'suspended')")
+            with conn.cursor() as c: c.execute("SELECT d.id, u.username, p.name as plan, p.price, COALESCE(d.cpu_cores, p.cpu_cores) as cpu, COALESCE(d.ram_gb, p.ram_gb) as ram FROM k8s_deployments d JOIN users u ON d.user_id=u.id JOIN plans p ON d.plan_id=p.id WHERE d.status IN ('active', 'completed')")
             rows = c.fetchall(); conn.close()
             tr, tc = 0, 0
             for r in rows:

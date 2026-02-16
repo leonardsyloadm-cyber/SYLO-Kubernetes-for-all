@@ -20,6 +20,7 @@ blocked_cids = set() # Prevent metrics reporting during power ops
 active_port_forwards = {} # {oid: subprocess.Popen}
 active_monitor_forwards = {} # {oid: subprocess.Popen} for Grafana
 active_prometheus_forwards = {} # {oid: subprocess.Popen} for Prometheus
+LAST_SELF_HEAL = {} # {oid: timestamp} to prevent infinite loops
 
 # ==============================================================================
 # 🎨 LOGS
@@ -562,6 +563,7 @@ def _power_up_logic(oid, profile, is_restart=False):
     try:
         fixed_ip = run_command(f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D sylo_admin_db -e "SELECT ip_address FROM k8s_deployments WHERE id={oid}"', silent=True).strip()
     except: fixed_ip = ""
+    if fixed_ip == "NULL": fixed_ip = ""
 
     # 2. OBTENER RAM CONTRATADA (Specs)
     try:
@@ -612,6 +614,15 @@ def _power_up_logic(oid, profile, is_restart=False):
     
     if not found_pod:
         log(f"⚠️ Alerta: Pods no encontrados. Intentando Self-Healing...", C_YELLOW)
+        
+        # COOLDOWN CHECK (10 Minutes)
+        now = time.time()
+        if oid in LAST_SELF_HEAL and (now - LAST_SELF_HEAL[oid] < 600):
+            log(f"⏳ Self-Healing en cooldown para {oid}. Saltando reparación para evitar bucles.", C_YELLOW)
+            report_progress(oid, "power", op_type, 100, "Self-Healing pospuesto (Cooldown).")
+            return
+
+        LAST_SELF_HEAL[oid] = now
         report_progress(oid, "power", op_type, 80, "Aplicando Self-Healing...")
         
         specs_json = run_command(f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D sylo_admin_db -e "SELECT JSON_OBJECT(\'cpu\', cpu_cores, \'ram\', ram_gb, \'storage\', storage_gb, \'db_en\', db_enabled, \'db_type\', db_type, \'web_en\', web_enabled, \'web_type\', web_type, \'ssh_user\', ssh_user, \'os\', os_image, \'db_name\', db_custom_name, \'web_name\', web_custom_name, \'subdomain\', subdomain) FROM k8s_deployments WHERE id={oid}"', silent=True).strip()
@@ -619,9 +630,9 @@ def _power_up_logic(oid, profile, is_restart=False):
         if specs_json and "{" in specs_json:
             sp = json.loads(specs_json)
             deploy_script = os.path.join(BASE_DIR, "tofu-k8s/custom-stack/deploy_custom.sh")
-            cmd_repair = f"bash {deploy_script} {oid} {sp['cpu']} {sp['ram']} {sp['storage']} {sp['db_en']} \"{sp['db_type']}\" {sp['web_en']} \"{sp['web_type']}\" \"{sp['ssh_user']}\" \"{sp['os']}\" \"{sp['db_name']}\" \"{sp['web_name']}\" \"{sp['subdomain']}\""
+            cmd_repair = f"bash {deploy_script} {oid} {sp['cpu']} {sp['ram']} {sp['storage']} {sp['db_en']} \"{sp['db_type']}\" {sp['web_en']} \"{sp['web_type']}\" \"{sp['ssh_user']}\" \"{sp['os']}\" \"{sp['db_name']}\" \"{sp['web_name']}\" \"{sp['subdomain']}\" \"{fixed_ip}\""
             
-            run_command(cmd_repair, check_error=True)
+            run_command(cmd_repair, check_error=True, timeout=300)
             log("✅ Reconstrucción completada.", C_GREEN)
             time.sleep(5)
         else:
@@ -727,7 +738,7 @@ def ensure_monitoring_port_forward(oid, profile):
     
     try:
         # 1. GRAFANA (30xx)
-        grafana_port = f"30{oid}"
+        grafana_port = 3000 + int(oid)
         if oid not in active_monitor_forwards or active_monitor_forwards[oid].poll() is not None:
              # Cleanup specific port
             run_command(f"pkill -f ':{grafana_port}'", silent=True)
@@ -743,7 +754,7 @@ def ensure_monitoring_port_forward(oid, profile):
             active_monitor_forwards[oid] = proc
             
         # 2. PROMETHEUS (31xx)
-        prom_port = f"31{oid}"
+        prom_port = 3100 + int(oid)
         if oid not in active_prometheus_forwards or active_prometheus_forwards[oid].poll() is not None:
             # Cleanup specific port
             run_command(f"pkill -f ':{prom_port}'", silent=True)
@@ -804,9 +815,16 @@ def ensure_port_forward(oid, profile, web_en):
 
 def process_metrics():
     log("📊 Métricas activas.", C_GREEN)
+    last_pf_check = {}  # Cache for port-forward checks to avoid spamming
+
     while not shutdown_event.is_set():
         try:
-            raw = run_command("docker ps --format '{{.Names}}'", silent=True)
+            # Gather running containers only
+            raw = run_command("docker ps --format '{{.Names}}'", silent=True, timeout=5)
+            if not raw:
+                time.sleep(2)
+                continue
+
             for line in raw.splitlines():
                 if "sylo-cliente-" in line and "-sidecar" not in line and "preload" not in line:
                     parts = line.split('-')
@@ -816,28 +834,36 @@ def process_metrics():
                     else: continue
                     
                     if oid in blocked_cids: continue
+                    
+                    # 1. OPTIMIZATION: Check Status in DB first
                     try:
-                        check_stat = run_command(f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D sylo_admin_db -e "SELECT status FROM k8s_deployments WHERE id={oid}"', silent=True).strip().lower()
-                        # 🔥 FIX: Only run monitoring/port-forward if status is ACTIVE. Skip during creation/deletion.
+                        check_stat = run_command(f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D sylo_admin_db -e "SELECT status FROM k8s_deployments WHERE id={oid}"', silent=True, timeout=3).strip().lower()
                         if check_stat != 'active': continue
                     except: pass
 
-                    stats = run_command(f"docker stats {line} --no-stream --format '{{{{.CPUPerc}}}}|{{{{.MemPerc}}}}'", silent=True)
+                    # 2. ROBUST METRICS COLLECTION
+                    stats = run_command(f"docker stats {line} --no-stream --format '{{{{.CPUPerc}}}}|{{{{.MemPerc}}}}'", silent=True, timeout=3)
                     c, r = 0.0, 0.0
                     try:
                         if "|" in stats:
                             parts = stats.split('|')
                             def parse_metric(val):
+                                # Remove % and clear ANSI codes if any
                                 val = val.strip().replace('%', '')
+                                # Handle comma vs dot
                                 if ',' in val and '.' not in val: val = val.replace(',', '.')
                                 return float(val)
                             c = parse_metric(parts[0])
                             r = parse_metric(parts[1])
-                    except: pass
+                    except Exception as e:
+                        # log(f"Error parsing metrics {oid}: {e}", C_YELLOW)
+                        pass
                     
                     try:
+                        # 3. DB SYNC & PORT FORWARD
                         db_cmd = f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D sylo_admin_db -e "SELECT subdomain, os_image, web_enabled, web_type, db_enabled, db_type FROM k8s_deployments WHERE id={oid}"'
-                        raw_data = run_command(db_cmd, silent=True).strip()
+                        raw_data = run_command(db_cmd, silent=True, timeout=3).strip()
+                        
                         sub, os_img, web_en, web_type, db_en, db_type = "", "Linux", "0", "", "0", ""
                         if raw_data:
                             cols = raw_data.split('\t')
@@ -847,23 +873,49 @@ def process_metrics():
                                 web_en = cols[2]; web_type = cols[3] if cols[3] != "NULL" else ""
                                 db_en = cols[4]; db_type = cols[5] if cols[5] != "NULL" else ""
 
-                        # PORT FORWARD LOGIC
-                        pf_url = ensure_port_forward(oid, profile, web_en)
-                        url = pf_url if pf_url else (f"http://{sub}.sylobi.org" if sub else "...")
+                        # 4. THROTTLED PORT FORWARD CHECK (Once every 60s per OID)
+                        now = time.time()
+                        if oid not in last_pf_check or (now - last_pf_check[oid] > 60):
+                            pf_url = ensure_port_forward(oid, profile, web_en)
+                            ensure_monitoring_port_forward(oid, profile) # Self-heal monitoring too
+                            last_pf_check[oid] = now
+                            url = pf_url if pf_url else (f"http://{sub}.sylobi.org" if sub else "...")
+                        else:
+                            # Use cached/constructed URL logic if needed, or just assume it's fine
+                            # For reporting, we can't easily get the ephemeral port without checking, 
+                            # but we can try to guess or just allow '...' if it's stable.
+                            # Better: Assume standard port if verified recently.
+                            url = f"http://localhost:80{oid}" if web_en == "1" else "..."
 
                         tools = []
                         if os_img: tools.append(os_img)
                         if str(web_en) == "1" and web_type: tools.append(web_type)
                         if str(db_en) == "1" and db_type: tools.append(db_type)
                         
-                        # NEW: Ensure Monitoring Port Forward (Self-Healing)
-                        ensure_monitoring_port_forward(oid, profile)
+                        # Report to API (Mocked or Real)
+                        # We use localhost for the API call since the operator runs on the host (or same network)
+                        try:
+                            requests.post(f"{API_URL}/reportar/metricas", json={
+                                "id_cliente": int(oid), 
+                                "metrics": {"cpu": c, "ram": r}, 
+                                "ssh_cmd": "root@sylo", 
+                                "web_url": url, 
+                                "os_info": os_img, 
+                                "installed_tools": tools
+                            }, timeout=1)
+                        except: pass
                         
-                        requests.post(f"{API_URL}/reportar/metricas", json={"id_cliente":int(oid), "metrics":{"cpu":c,"ram":r}, "ssh_cmd": "root@sylo", "web_url": url, "os_info": "os_img", "installed_tools": tools}, timeout=1)
+                        # Check backups sparingly? No, this function was simple.
+                        # But report_backups_list might be heavy. Let's keep it for now.
                         report_backups_list(oid)
-                    except:
-                        requests.post(f"{API_URL}/reportar/metricas", json={"id_cliente":int(oid), "metrics":{"cpu":c,"ram":r}, "ssh_cmd": "root@sylo", "web_url": "...", "os_info": "Linux", "installed_tools": []}, timeout=1)
-        except: pass
+
+                    except Exception as e:
+                       # log(f"Metrics loop inner error {oid}: {e}", C_RED)
+                       pass
+        except Exception as e:
+            # log(f"Metrics loop error: {e}", C_RED)
+            time.sleep(1)
+        
         time.sleep(2)
 
 # 7. 🔄 UPDATE PLAN (Scaling & Reconciliation)
@@ -941,6 +993,39 @@ def handle_plan_update(oid, profile, new_specs_arg):
         # F. Validation
         report_progress(oid, "plan_update", "verifying", 90, "Verificando salud de servicios...")
         time.sleep(3)
+
+        # --- FIX: FORCE VISUAL SYNC (MOVED BEFORE 100%) ---
+        # Ensure Frontend sees "Ver Web" immediately
+        try:
+            report_progress(oid, "plan_update", "finalizing", 95, "Sincronizando acceso web...")
+            
+            # 1. Find Pod & Ensure Running
+            pod = None
+            for i in range(10):
+                pod = find_web_pod(profile)
+                if pod: break
+                time.sleep(1)
+                
+            # 2. Force Port Forward
+            if pod and specs['web_en'] == '1':
+                 # Use the shared helper
+                 web_url = ensure_port_forward(oid, profile, '1')
+                 
+                 if web_url:
+                     log(f"   🔗 Web Access Verified: {web_url}", C_GREEN)
+                     # Force write to disk so PHP picks it up instantly
+                     f_web = os.path.join(BUZON, f"web_status_{oid}.json")
+                     try: os.remove(f_web) 
+                     except: pass
+                     with open(f_web, 'w') as fh:
+                         json.dump({
+                             "status": "active",
+                             "web_url": web_url,
+                             "message": "Web Accesible",
+                             "percent": 100
+                         }, fh)
+        except Exception as e:
+            log(f"⚠️ Non-critical visual sync error: {e}", C_GREY)
         
         report_progress(oid, "plan_update", "active", 100, "Plan Actualizado Correctamente")
         log(f"✅ PLAN V{oid} ACTUALIZADO", C_GREEN)
@@ -952,6 +1037,8 @@ def handle_plan_update(oid, profile, new_specs_arg):
     except Exception as e:
         log(f"❌ Error Update Plan: {e}", C_RED)
         report_progress(oid, "plan_update", "error", 0, str(e))
+
+
 
 def _apply_db_manifest(profile, s):
     # Select Image & Port
@@ -1177,20 +1264,21 @@ def install_monitoring_stack(oid, profile, config):
         helm_cmd = f"""helm upgrade --install sylo-monitor prometheus-community/kube-prometheus-stack \
             --namespace {namespace} \
             --create-namespace \
-            --set prometheus.prometheusSpec.resources.requests.memory=250Mi \
-            --set prometheus.prometheusSpec.resources.limits.memory=512Mi \
-            --set prometheus.prometheusSpec.resources.requests.cpu=100m \
-            --set prometheus.prometheusSpec.resources.limits.cpu=300m \
-            --set prometheus.prometheusSpec.retention=7d \
+            --set prometheus.prometheusSpec.resources.requests.memory=100Mi \
+            --set prometheus.prometheusSpec.resources.limits.memory=256Mi \
+            --set prometheus.prometheusSpec.resources.requests.cpu=50m \
+            --set prometheus.prometheusSpec.resources.limits.cpu=200m \
+            --set prometheus.prometheusSpec.retention=2d \
             --set grafana.adminPassword={grafana_password} \
-            --set grafana.resources.requests.memory=128Mi \
-            --set grafana.resources.limits.memory=512Mi \
-            --set grafana.resources.requests.cpu=50m \
-            --set grafana.resources.limits.cpu=200m \
+            --set grafana.resources.requests.memory=64Mi \
+            --set grafana.resources.limits.memory=128Mi \
+            --set grafana.resources.requests.cpu=20m \
+            --set grafana.resources.limits.cpu=100m \
             --set grafana.persistence.enabled=false \
             --set alertmanager.enabled=false \
             --set nodeExporter.enabled=false \
-            --set kubeStateMetrics.enabled=true \
+            --set kubeStateMetrics.enabled=false \
+            --set prometheus.prometheusSpec.scrapeInterval=1m \
             --set grafana.service.type=ClusterIP \
             --timeout 10m \
             --wait"""
@@ -1229,7 +1317,7 @@ def install_monitoring_stack(oid, profile, config):
         update_tool_status(oid, "monitoring", "active")
         
         log(f"   ✅ MONITORING STACK INSTALADO CORRECTAMENTE", C_GREEN)
-        log(f"   🔗 Grafana URL: http://localhost:80{oid}", C_CYAN)
+        log(f"   🔗 Grafana URL: http://localhost:{3000 + int(oid)}", C_CYAN)
         log(f"   👤 Usuario: admin", C_CYAN)
         log(f"   👤 Usuario: admin", C_CYAN)
         log(f"   🔑 Password: {grafana_password}", C_CYAN)
@@ -1246,7 +1334,7 @@ def setup_grafana_port_forward(oid, profile, namespace):
     """
     Configura port-forward para acceder a Grafana via localhost:30XX
     """
-    port = f"30{oid}" # Changed from 80{oid} to avoid conflict
+    port = 3000 + int(oid) # Changed to 3000+ID to avoid conflict/privileged ports
     
     try:
         # Kill any existing port-forward for this port
@@ -1265,7 +1353,7 @@ def uninstall_monitoring_stack(oid, profile):
     Desinstala el stack de monitoring usando Helm.
     """
     namespace = profile
-    port = f"80{oid}"
+    port = 3000 + int(oid)
     
     try:
         log(f"   🗑️ Desinstalando Monitoring Stack...", C_YELLOW)
@@ -1289,7 +1377,7 @@ def update_tool_status(oid, tool_name, status):
     """
     Actualiza el estado de una herramienta en la base de datos.
     """
-    cmd = f"""docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D sylo_admin_db -e "UPDATE k8s_tools SET status='{status}', updated_at=NOW() WHERE deployment_id={oid} AND tool_name='{tool_name}'" """
+    cmd = f"""docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D sylo_admin_db -e "UPDATE k8s_tools SET status='{status}' WHERE deployment_id={oid} AND tool_name='{tool_name}'" """
     run_command(cmd, silent=True)
 
 def delete_tool_record(oid, tool_name):
@@ -1300,7 +1388,7 @@ def delete_tool_record(oid, tool_name):
     run_command(cmd, silent=True)
 
 def setup_prometheus_port_forward(oid, profile, namespace):
-    port = f"31{oid}" # Prometheus Port
+    port = 3100 + int(oid) # Prometheus Port
     try:
         run_command(f"pkill -f 'port-forward.*{port}:{port}'", silent=True)
         # Service name usually: sylo-monitor-kube-promethe-prometheus based on helm chart

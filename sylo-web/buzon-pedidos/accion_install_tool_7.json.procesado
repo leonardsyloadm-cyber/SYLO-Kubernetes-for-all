@@ -1,0 +1,7 @@
+{
+    "action": "INSTALL_TOOL",
+    "deployment_id": 7,
+    "tool": "monitoring",
+    "grafana_password": "admin",
+    "timestamp": 1234567890
+}

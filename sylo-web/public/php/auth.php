@@ -102,7 +102,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             $stmt->execute([$user, $fn, $email, $pass, $tipo, $dn, $input['telefono'], $cn, $te, $input['calle']]);
             $_SESSION['user_id'] = $conn->lastInsertId(); $_SESSION['username'] = $user; $_SESSION['company'] = $cn ?: 'Particular';
             echo json_encode(["status"=>"success"]);
-        } catch (Exception $e) { echo json_encode(["status"=>"error", "mensaje"=>$e->getMessage()]); }
+        } catch (Exception $e) { 
+            error_log("Register Error: " . $e->getMessage());
+            echo json_encode(["status"=>"error", "mensaje"=>"Error al registrar. Verifique sus datos o intente más tarde."]); 
+        }
         exit;
     }
     if ($action === 'login') {
@@ -176,7 +179,10 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
             curl_setopt($ch, CURLOPT_TIMEOUT, 1); curl_exec($ch); curl_close($ch);
             echo json_encode(["status"=>"success", "order_id"=>$oid]);
-        } catch (Exception $e) { echo json_encode(["status"=>"error", "mensaje"=>$e->getMessage()]); }
+        } catch (Exception $e) { 
+            error_log("Order Error: " . $e->getMessage());
+            echo json_encode(["status"=>"error", "mensaje"=>"Error procesando el pedido. Contacte con soporte."]); 
+        }
         exit;
     }
 }

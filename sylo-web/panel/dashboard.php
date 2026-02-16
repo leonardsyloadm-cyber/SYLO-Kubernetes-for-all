@@ -13,7 +13,8 @@ if (isset($installed_tools) && in_array('monitoring', $installed_tools) && isset
             $mon_cfg = json_decode($row['config_json'], true);
             $monitoring_creds = [
                 'user' => 'admin',
-                'pass' => $mon_cfg['grafana_password'] ?? 'admin'
+                'pass' => $mon_cfg['grafana_password'] ?? 'admin',
+                'url' => $mon_cfg['grafana_url'] ?? ('http://localhost:' . (3000 + intval($current['id'])))
             ];
         }
     } catch(Exception $e) {}
@@ -257,11 +258,17 @@ if (isset($installed_tools) && in_array('monitoring', $installed_tools) && isset
                             </ul>
                             
                             <div class="mt-auto">
-                                <?php if ($has_monitoring): ?>
-                                    <a href="http://localhost:30<?=$current['id']?>" target="_blank" class="btn btn-success w-100 mb-2">
+                                <?php if ($has_monitoring): 
+                                    $g_url = $monitoring_creds['url'] ?? ('http://localhost:' . (3000 + intval($current['id'])));
+                                    // Hack: If DB has old 30{$id} format, we force fix it visually or rely on operator/DB fix.
+                                    // Actually, we trust the DB or the calculation.
+                                    // Prometheus: 3100 + ID
+                                    $p_url = 'http://localhost:' . (3100 + intval($current['id']));
+                                ?>
+                                    <a href="<?=$g_url?>" target="_blank" class="btn btn-success w-100 mb-2">
                                         <i class="bi bi-box-arrow-up-right me-2"></i>Abrir Grafana
                                     </a>
-                                    <a href="http://localhost:31<?=$current['id']?>" target="_blank" class="btn btn-danger w-100 mb-2 bg-gradient text-white" style="background-color: #e6522c; border-color: #e6522c;">
+                                    <a href="<?=$p_url?>" target="_blank" class="btn btn-danger w-100 mb-2 bg-gradient text-white" style="background-color: #e6522c; border-color: #e6522c;">
                                         <i class="bi bi-fire me-2"></i>Abrir Prometheus
                                     </a>
                                     <button class="btn btn-outline-danger w-100 btn-sm" onclick="uninstallMonitoring()">
@@ -399,6 +406,11 @@ if (isset($installed_tools) && in_array('monitoring', $installed_tools) && isset
 <div class="modal fade" id="profileModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0"><div class="modal-header border-0 pb-0"><h5 class="modal-title fw-bold"><i class="bi bi-person-lines-fill me-2"></i><span data-i18n="profile.title">Perfil</span></h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><form method="POST" action="php/data.php"><input type="hidden" name="action" value="update_profile"><div class="modal-body px-4 pt-4"><div class="mb-3"><label class="small text-light-muted" data-i18n="profile.name">Nombre</label><input type="text" name="full_name" class="form-control" value="<?=htmlspecialchars($user_info['full_name']??'')?>"></div><div class="mb-3"><label class="small text-light-muted" data-i18n="profile.email">Email</label><input type="email" name="email" class="form-control" value="<?=htmlspecialchars($user_info['email']??'')?>" required></div><button type="submit" class="btn btn-primary w-100 rounded-pill" data-i18n="common.save">Guardar</button></div></form></div></div></div>
 <div class="modal fade" id="billingModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0"><div class="modal-header border-0"><h5 class="modal-title" data-i18n="billing.title">Facturación</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body"><?php foreach($clusters as $c): ?><div class="d-flex justify-content-between mb-2"><span>#<?=$c['id']?> <span data-i18n="plan.<?=strtolower(str_replace(' ','_',$c['plan_name']))?>"><?=$c['plan_name']?></span></span><span class="text-success"><?=number_format(calculateWeeklyPrice($c),2)?>€</span></div><?php endforeach; ?><hr><div class="d-flex justify-content-between fs-5 text-white"><strong data-i18n="common.total">Total</strong><strong class="text-primary"><?=number_format($total_weekly,2)?>€</strong></div></div></div></div></div>
 
+<!-- SYSTEM MESSAGE MODALS -->
+<div class="modal fade" id="messageModal" tabindex="-1" style="z-index: 1060;"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow-lg"><div class="modal-header border-0"><h5 class="fw-bold text-primary" id="msgTitle">Mensaje</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body text-center p-4"><div class="mb-3"><i id="msgIcon" class="fas fa-info-circle fa-3x text-primary"></i></div><p id="msgText" class="lead mb-0 text-white"></p></div><div class="modal-footer border-0 justify-content-center"><button type="button" class="btn btn-primary rounded-pill px-4" data-bs-dismiss="modal">Entendido</button></div></div></div></div>
+<div class="modal fade" id="confirmationModal" tabindex="-1" style="z-index: 1060;"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow-lg"><div class="modal-header border-0"><h5 class="fw-bold text-warning" id="confTitle">Confirmar</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body text-center p-4"><div class="mb-3"><i class="bi bi-question-circle fa-3x text-warning"></i></div><p id="confText" class="lead mb-0 text-white"></p></div><div class="modal-footer border-0 justify-content-center"><button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Cancelar</button><button type="button" id="btnConfirmAction" class="btn btn-warning rounded-pill px-4">Confirmar</button></div></div></div></div>
+<div class="modal fade" id="promptModal" tabindex="-1" style="z-index: 1060;"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow-lg"><div class="modal-header border-0"><h5 class="fw-bold text-danger" id="promptTitle">Acción Requerida</h5><button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button></div><div class="modal-body text-center p-4"><div class="mb-3"><i class="bi bi-exclamation-triangle fa-3x text-danger"></i></div><p id="promptText" class="lead mb-3 text-white"></p><input type="text" id="promptInput" class="form-control text-center bg-dark text-white border-secondary" placeholder=""></div><div class="modal-footer border-0 justify-content-center"><button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Cancelar</button><button type="button" id="btnPromptAction" class="btn btn-danger rounded-pill px-4">Confirmar</button></div></div></div></div>
+
 <!-- CHANGE PLAN MODAL (ENHANCED UI) -->
 <div class="modal fade" id="changePlanModal" tabindex="-1">
     <div class="modal-dialog modal-xl modal-dialog-centered">
@@ -423,12 +435,12 @@ if (isset($installed_tools) && in_array('monitoring', $installed_tools) && isset
                                         <div class="plan-icon bg-bronze"><i class="bi bi-hdd-network"></i></div>
                                         <?php if($current['plan_name'] == 'Bronce'): ?><span class="badge bg-secondary">Actual</span><?php endif; ?>
                                     </div>
-                                    <h4 class="fw-bold mb-1">Plan Bronce</h4>
-                                    <p class="text-light-muted small mb-3">Para proyectos pequeños.</p>
+                                    <h4 class="fw-bold mb-1" data-i18n="plan.bronce">Plan Bronce</h4>
+                                    <p class="text-light-muted small mb-3" data-i18n="plan.desc_bronze">Para proyectos pequeños.</p>
                                     <ul class="list-unstyled text-small text-white opacity-75">
-                                        <li><i class="bi bi-check2 text-success me-2"></i>1 vCPU Core</li>
-                                        <li><i class="bi bi-check2 text-success me-2"></i>1 GB RAM</li>
-                                        <li><i class="bi bi-x-lg text-secondary me-2"></i>Sin Base de Datos</li>
+                                        <li><i class="bi bi-check2 text-success me-2"></i><span data-i18n="plan.feat_1vcpu">1 vCPU Core</span></li>
+                                        <li><i class="bi bi-check2 text-success me-2"></i><span data-i18n="plan.feat_1gb">1 GB RAM</span></li>
+                                        <li><i class="bi bi-x-lg text-secondary me-2"></i><span data-i18n="plan.no_db">Sin Base de Datos</span></li>
                                     </ul>
                                 </div>
                                 <div class="mt-3 text-center w-100 p-2 rounded border border-secondary border-opacity-25 hover-bg">
@@ -445,12 +457,12 @@ if (isset($installed_tools) && in_array('monitoring', $installed_tools) && isset
                                         <div class="plan-icon bg-silver"><i class="bi bi-cpu-fill"></i></div>
                                         <?php if($current['plan_name'] == 'Plata'): ?><span class="badge bg-secondary">Actual</span><?php endif; ?>
                                     </div>
-                                    <h4 class="fw-bold mb-1">Plan Plata</h4>
-                                    <p class="text-light-muted small mb-3">Equilibrio perfecto.</p>
+                                    <h4 class="fw-bold mb-1" data-i18n="plan.plata">Plan Plata</h4>
+                                    <p class="text-light-muted small mb-3" data-i18n="plan.desc_silver">Equilibrio perfecto.</p>
                                     <ul class="list-unstyled text-small text-white opacity-75">
-                                        <li><i class="bi bi-check2 text-success me-2"></i>2 vCPU Cores</li>
-                                        <li><i class="bi bi-check2 text-success me-2"></i>2 GB RAM</li>
-                                        <li><i class="bi bi-x-lg text-secondary me-2"></i>Sin Base de Datos</li>
+                                        <li><i class="bi bi-check2 text-success me-2"></i><span data-i18n="plan.feat_2vcpu">2 vCPU Cores</span></li>
+                                        <li><i class="bi bi-check2 text-success me-2"></i><span data-i18n="plan.feat_2gb">2 GB RAM</span></li>
+                                        <li><i class="bi bi-x-lg text-secondary me-2"></i><span data-i18n="plan.no_db">Sin Base de Datos</span></li>
                                     </ul>
                                 </div>
                                 <div class="mt-3 text-center w-100 p-2 rounded border border-secondary border-opacity-25 hover-bg">
@@ -467,12 +479,12 @@ if (isset($installed_tools) && in_array('monitoring', $installed_tools) && isset
                                         <div class="plan-icon bg-gold"><i class="bi bi-lightning-charge-fill"></i></div>
                                         <?php if($current['plan_name'] == 'Oro'): ?><span class="badge bg-secondary">Actual</span><?php endif; ?>
                                     </div>
-                                    <h4 class="fw-bold mb-1 text-warning">Plan Oro</h4>
-                                    <p class="text-light-muted small mb-3">Máximo rendimiento.</p>
+                                    <h4 class="fw-bold mb-1 text-warning" data-i18n="plan.oro">Plan Oro</h4>
+                                    <p class="text-light-muted small mb-3" data-i18n="plan.desc_gold">Máximo rendimiento.</p>
                                     <ul class="list-unstyled text-small text-white opacity-75">
-                                        <li><i class="bi bi-check2 text-warning me-2"></i>4 vCPU Cores</li>
-                                        <li><i class="bi bi-check2 text-warning me-2"></i>4 GB RAM</li>
-                                        <li><i class="bi bi-check2 text-warning me-2"></i>Base de Datos Incluida</li>
+                                        <li><i class="bi bi-check2 text-warning me-2"></i><span data-i18n="plan.feat_4vcpu">4 vCPU Cores</span></li>
+                                        <li><i class="bi bi-check2 text-warning me-2"></i><span data-i18n="plan.feat_4gb">4 GB RAM</span></li>
+                                        <li><i class="bi bi-check2 text-warning me-2"></i><span data-i18n="plan.feat_db_included">Base de Datos Incluida</span></li>
                                     </ul>
                                 </div>
                                 <div class="mt-3 text-center w-100 p-2 rounded border border-warning border-opacity-50 text-warning hover-bg">
@@ -487,15 +499,15 @@ if (isset($installed_tools) && in_array('monitoring', $installed_tools) && isset
                        <div class="d-flex align-items-center gap-3">
                            <div class="plan-icon bg-custom text-white"><i class="bi bi-sliders"></i></div>
                            <div>
-                               <h6 class="fw-bold mb-0">Configuración Personalizada</h6>
-                               <small class="text-muted">Define tus propios recursos (CPU, RAM, Servicios)</small>
+                               <h6 class="fw-bold mb-0" data-i18n="plan.custom_title">Configuración Personalizada</h6>
+                               <small class="text-muted" data-i18n="plan.custom_desc">Define tus propios recursos (CPU, RAM, Servicios)</small>
                            </div>
                        </div>
                        <i class="bi bi-chevron-right text-muted"></i>
                     </div>
 
                     <div id="custom-plan-options" class="p-4 border border-secondary rounded-4 bg-black bg-opacity-50 mb-3" style="display:none; animation: fadeIn 0.3s ease;">
-                        <h6 class="text-white mb-4 border-bottom border-secondary pb-2"><i class="bi bi-tools me-2"></i>Ajustes Avanzados</h6>
+                        <h6 class="text-white mb-4 border-bottom border-secondary pb-2"><i class="bi bi-tools me-2"></i><span data-i18n="plan.advanced_settings">Ajustes Avanzados</span></h6>
                         <div class="row g-4">
                             <div class="col-md-6">
                                 <label class="small text-muted mb-2">CPU Cores</label>
@@ -517,15 +529,15 @@ if (isset($installed_tools) && in_array('monitoring', $installed_tools) && isset
                                 <div class="form-check form-switch p-3 rounded bg-dark border border-secondary flex-grow-1">
                                     <input class="form-check-input" type="checkbox" name="custom_db" value="1" id="chkDb" <?= (!empty($current['db_enabled'])) ? 'checked' : '' ?>>
                                     <label class="form-check-label text-white ms-2 cursor-pointer" for="chkDb">
-                                        <i class="bi bi-database-fill me-2 text-warning"></i>Base de Datos
-                                        <div class="small text-muted mt-1">Habilita MySQL/PostgreSQL persistente.</div>
+                                        <i class="bi bi-database-fill me-2 text-warning"></i><span data-i18n="plan.enable_db">Base de Datos</span>
+                                        <div class="small text-muted mt-1" data-i18n="plan.enable_db_desc">Habilita MySQL/PostgreSQL persistente.</div>
                                     </label>
                                 </div>
                                 <div class="form-check form-switch p-3 rounded bg-dark border border-secondary flex-grow-1">
                                     <input class="form-check-input" type="checkbox" name="custom_web" value="1" id="chkWeb" <?= (!empty($current['web_enabled'])) ? 'checked' : '' ?>>
                                     <label class="form-check-label text-white ms-2 cursor-pointer" for="chkWeb">
-                                        <i class="bi bi-globe me-2 text-info"></i>Servidor Web
-                                        <div class="small text-muted mt-1">Habilita Nginx/Apache.</div>
+                                        <i class="bi bi-globe me-2 text-info"></i><span data-i18n="plan.enable_web">Servidor Web</span>
+                                        <div class="small text-muted mt-1" data-i18n="plan.enable_web_desc">Habilita Nginx/Apache.</div>
                                     </label>
                                 </div>
                             </div>
@@ -534,7 +546,7 @@ if (isset($installed_tools) && in_array('monitoring', $installed_tools) && isset
                 </div>
                 <div class="modal-footer border-0 px-4 pb-4">
                     <button type="button" class="btn btn-secondary rounded-pill px-4" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="button" onclick="submitPlanChange()" class="btn btn-warning rounded-pill px-5 fw-bold shadow-glow">Aplicar Cambios</button>
+                    <button type="button" onclick="submitPlanChange()" class="btn btn-warning rounded-pill px-5 fw-bold shadow-glow" data-i18n="plan.apply_changes">Aplicar Cambios</button>
                 </div>
             </form>
         </div>
@@ -611,6 +623,84 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             </div>
         </div>
+    
+    <script>
+    // --- MODAL HELPERS (Promise-based) ---
+    function openM(id){const el=document.getElementById(id);if(el)new bootstrap.Modal(el).show();}
+    function hideM(id){const el=document.getElementById(id);const m=bootstrap.Modal.getInstance(el);if(m)m.hide();}
+
+    window.syloAlert = function(title, msg, type='info') {
+        return new Promise(resolve => {
+            document.getElementById('msgTitle').innerText = title;
+            document.getElementById('msgText').innerText = msg;
+            const icon = document.getElementById('msgIcon');
+            icon.className = type === 'error' ? 'bi bi-x-circle-fill fa-3x text-danger' : 'bi bi-info-circle-fill fa-3x text-primary';
+            const el = document.getElementById('messageModal');
+            el.addEventListener('hidden.bs.modal', () => resolve(), {once:true});
+            openM('messageModal');
+        });
+    };
+
+    window.syloConfirm = function(title, msg, btnText='Confirmar', type='warning') {
+        return new Promise(resolve => {
+            document.getElementById('confTitle').innerText = title;
+            document.getElementById('confText').innerText = msg;
+            const btn = document.getElementById('btnConfirmAction');
+            btn.innerText = btnText;
+            btn.className = `btn btn-${type} rounded-pill px-4`;
+            
+            const el = document.getElementById('confirmationModal');
+            const m = new bootstrap.Modal(el);
+            
+            let confirmed = false;
+            const clickHandler = () => { confirmed = true; m.hide(); };
+            
+            btn.onclick = clickHandler;
+            el.addEventListener('hidden.bs.modal', () => {
+                resolve(confirmed);
+            }, {once:true});
+            
+            m.show();
+        });
+    };
+
+    window.syloPrompt = function(title, msg, placeholder, matchKeyword=null) {
+        return new Promise((resolve) => {
+            document.getElementById('promptTitle').innerText = title;
+            document.getElementById('promptText').innerText = msg;
+            const inp = document.getElementById('promptInput');
+            inp.value = '';
+            inp.placeholder = placeholder;
+            
+            const btn = document.getElementById('btnPromptAction');
+            const el = document.getElementById('promptModal');
+            const m = new bootstrap.Modal(el);
+            
+            let result = null;
+            const clickHandler = () => {
+                const val = inp.value.trim();
+                if(matchKeyword && val.toUpperCase() !== matchKeyword.toUpperCase()) {
+                    inp.classList.add('is-invalid'); // Visual feedback
+                    return; 
+                }
+                result = val;
+                m.hide();
+            };
+            
+            btn.onclick = clickHandler;
+            // Allow Enter key
+            inp.onkeyup = (e) => { if(e.key === 'Enter') clickHandler(); };
+            
+            el.addEventListener('hidden.bs.modal', () => {
+                resolve(result);
+            }, {once:true});
+            
+            m.show();
+            setTimeout(() => inp.focus(), 500);
+        });
+    };
+    </script>
+    </div>
     </div>
 
 <script>
@@ -681,54 +771,59 @@ function initTerminal() {
 
 // ============= MONITORING MARKETPLACE FUNCTIONS =============
 function installMonitoring() {
-    if (!confirm('¿Instalar Prometheus + Grafana en este clúster?\n\nEsto consumirá ~300MB de RAM adicionales.')) {
-        return;
-    }
-    
-    console.log('Iniciando instalación de Monitoring Pro...');
-    
-    fetch('php/data.php', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: new URLSearchParams({
-            action: 'install_monitoring',
-            deployment_id: orderId
+    syloConfirm(
+        window.SyloLang?.get('modal.install_mon_title') || 'Instalar Monitorización',
+        window.SyloLang?.get('modal.install_mon_msg') || '¿Instalar Prometheus + Grafana?\nEsto consumirá recursos adicionales.',
+        'Instalar', 'success'
+    ).then(yes => {
+        if(!yes) return;
+        
+        console.log('Iniciando instalación de Monitoring Pro...');
+        fetch('php/data.php', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: new URLSearchParams({
+                action: 'install_monitoring',
+                deployment_id: orderId
+            })
         })
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.success) {
-            // Visual feedback handled by polling
-            // Just show a quick toast or let the modal take over
-            alert('Instalación iniciada. Espere un momento...');
-        } else {
-            alert('Error: ' + (data.error || 'Desconocido'));
-        }
-    })
-    .catch(e => alert('Error de red: ' + e.message));
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                syloAlert('Instalación Iniciada', window.SyloLang?.get('modal.install_mon_start') || 'Instalación en curso...', 'info');
+            } else {
+                syloAlert('Error', (window.SyloLang?.get('modal.error_prefix') || 'Error: ') + (data.error || 'Desconocido'), 'error');
+            }
+        })
+        .catch(e => syloAlert('Error Crítico', (window.SyloLang?.get('modal.error_prefix') || 'Error: ') + e.message, 'error'));
+    });
 }
 
 function uninstallMonitoring() {
-    if (!confirm('¿Desinstalar Monitoring Pro?\n\nSe perderán todas las métricas almacenadas.')) {
-        return;
-    }
-    
-    fetch('php/data.php', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-        body: new URLSearchParams({
-            action: 'uninstall_monitoring',
-            deployment_id: orderId
+    syloConfirm(
+        'Desinstalar Monitorización',
+        window.SyloLang?.get('modal.uninstall_mon_confirm') || '¿Seguro que desea desinstalar Monitoring Pro? Se perderán los datos.',
+        'Desinstalar', 'danger'
+    ).then(yes => {
+        if(!yes) return;
+        
+        fetch('php/data.php', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+            body: new URLSearchParams({
+                action: 'uninstall_monitoring',
+                deployment_id: orderId
+            })
         })
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.success) {
-            alert('Desinstalación completada');
-            setTimeout(() => location.reload(), 2000);
-        } else {
-            alert('Error: ' + (data.error || 'Desconocido'));
-        }
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                syloAlert('Desinstalado', window.SyloLang?.get('modal.uninstall_mon_done') || 'Desinstalación completada.', 'success')
+                .then(() => location.reload());
+            } else {
+                syloAlert('Error', (window.SyloLang?.get('modal.error_prefix') || 'Error: ') + (data.error || 'Desconocido'), 'error');
+            }
+        });
     });
 }
 

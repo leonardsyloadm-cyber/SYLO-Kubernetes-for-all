@@ -83,7 +83,14 @@
         "toolbelt": "Sylo Toolbelt",
         "tier_msg": "Outils injectés dans votre conteneur (Coût inclus).",
         "estimated_budget": "Budget Estimé",
-        "deploy_btn": "DÉPLOYER INFRASTRUCTURE"
+        "deploy_btn": "DÉPLOYER INFRASTRUCTURE",
+        "install_mon_title": "Installer la Surveillance",
+        "install_mon_msg": "Installer Prometheus + Grafana ?\nCela consommera des ressources supplémentaires.",
+        "install_mon_confirm": "Installer Prometheus + Grafana sur ce cluster ?\n\nCela consommera ~300 Mo de RAM supplémentaire.",
+        "install_mon_start": "Installation commencée. Veuillez patienter...",
+        "uninstall_mon_confirm": "Désinstaller Monitoring Pro ?\n\nToutes les métriques stockées seront perdues.",
+        "uninstall_mon_done": "Désinstallation terminée",
+        "error_prefix": "Erreur : "
     },
     "legal": {
         "title": "Contrat de Service",

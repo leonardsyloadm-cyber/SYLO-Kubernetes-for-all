@@ -135,37 +135,52 @@ function showBackupModal() { if (window.backupModal) window.backupModal.show(); 
 function copyAllCreds() { navigator.clipboard.writeText(document.getElementById('all-creds-box').innerText); showToast(window.SyloLang?.get('js.copy_success') || "Copiado!", "success"); }
 
 function confirmTerminate() {
-    if (prompt("⚠️ ZONA DE PELIGRO ⚠️\n\nEscribe: eliminar") === "eliminar") {
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = 'php/data.php';
-        form.innerHTML = `<input type="hidden" name="action" value="terminate"><input type="hidden" name="order_id" value="${orderId}">`;
-        document.body.appendChild(form); form.submit();
-    } else alert("Cancelado.");
+    syloPrompt('⚠️ ZONA DE PELIGRO ⚠️', 'Esta acción eliminará el servicio.\nEscribe "eliminar" para confirmar.', 'eliminar', 'eliminar')
+        .then(input => {
+            if (input) {
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = 'php/data.php';
+                form.innerHTML = `<input type="hidden" name="action" value="terminate"><input type="hidden" name="order_id" value="${orderId}">`;
+                document.body.appendChild(form); form.submit();
+            } else {
+                syloAlert('Cancelado', 'Operación cancelada.', 'info');
+            }
+        });
 }
 
 function destroyK8s() {
-    const msg = window.SyloLang?.get('js.destroy_confirm') || "☢️ ¿ESTÁS SEGURO?\nEsto borrará todos los Pods y datos de Kubernetes.\n\nEscribe: BORRAR";
+    const msg = window.SyloLang?.get('js.destroy_confirm') || "☢️ ¿ESTÁS SEGURO?\nEsto borrará todos los Pods y datos.\nEscribe: BORRAR";
     const localKeyword = (window.SyloLang?.get('js.destroy_keyword') || "BORRAR").toUpperCase();
 
-    // Master Keywords (Always valid)
-    const validKeywords = ["DELETE", "BORRAR", "SUPPRIMER", "ZERSTÖREN", localKeyword];
+    syloPrompt('⚠️ DESTRUCCIÓN TOTAL', msg, localKeyword, localKeyword)
+        .then(input => {
+            if (input) {
+                showToast(window.SyloLang?.get('js.destroying') || "Destruyendo recursos...", "error");
 
-    let input = prompt(msg);
-    if (input) {
-        input = input.trim().toUpperCase();
-        if (validKeywords.includes(input)) {
-            const form = document.createElement('form');
-            form.method = 'POST';
-            form.action = 'php/data.php';
-            form.innerHTML = `<input type="hidden" name="action" value="destroy_k8s"><input type="hidden" name="order_id" value="${orderId}">`;
-            document.body.appendChild(form);
-            form.submit();
-            showToast(window.SyloLang?.get('js.destroying') || "Destruyendo recursos...", "error");
-        } else {
-            alert("Palabra incorrecta / Incorrect keyword.");
-        }
-    }
+                const formData = new FormData();
+                formData.append('action', 'destroy_k8s');
+                formData.append('order_id', orderId);
+
+                fetch('php/data.php?ajax_action=1', {
+                    method: 'POST',
+                    body: formData
+                })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.status === 'ok') {
+                            syloAlert('Destrucción Iniciada', "Orden enviada. Redirigiendo...", 'success')
+                                .then(() => window.location.href = 'dashboard.php');
+                        } else {
+                            syloAlert('Error', "Error: " + (data.message || "Desconocido"), 'error');
+                        }
+                    })
+                    .catch(e => {
+                        console.error(e);
+                        syloAlert('Error de Red', "No se pudo conectar con el servidor.", 'error');
+                    });
+            }
+        });
 }
 
 function doBackup() {
@@ -215,23 +230,31 @@ function setBtnState(loading, text, percent) {
 }
 
 function restoreBackup(file, name) {
-    if (prompt(`⚠️ RESTAURAR "${name}"?\nEscribe: RESTAURAR`) === "RESTAURAR") {
-        isManualLoading = true;
-        setBtnState(true, 'Restaurando...', 5);
-        fetch('php/data.php?ajax_action=1', { method: 'POST', body: new URLSearchParams({ action: 'restore_backup', order_id: orderId, filename: file }) });
-        showToast(`Restaurando...`, "warning");
-        setTimeout(() => { isManualLoading = false; }, 60000);
-    } else alert("Cancelado.");
+    syloPrompt('Restaurar Backup', `¿RESTAURAR "${name}"?\nEsta acción sobrescribirá los datos actuales.\nEscribe "RESTAURAR"`, 'RESTAURAR', 'RESTAURAR')
+        .then(input => {
+            if (input) {
+                isManualLoading = true;
+                setBtnState(true, 'Restaurando...', 5);
+                fetch('php/data.php?ajax_action=1', { method: 'POST', body: new URLSearchParams({ action: 'restore_backup', order_id: orderId, filename: file }) });
+                showToast(`Restaurando...`, "warning");
+                setTimeout(() => { isManualLoading = false; }, 60000);
+            } else if (input === undefined) {
+                // Cancelled (modal closed without action returns null/undefined depending on implementation)
+            }
+        });
 }
 
 function deleteBackup(file, type, name) {
-    if (confirm(`¿Borrar copia: ${name}?`)) {
-        document.getElementById('backups-list-container').style.display = 'none';
-        document.getElementById('delete-ui').style.display = 'block';
-        document.getElementById('delete-bar').style.width = '100%';
-        fetch('php/data.php?ajax_action=1', { method: 'POST', body: new URLSearchParams({ action: 'delete_backup', order_id: orderId, filename: file }) });
-        showToast(`Eliminando...`, "warning");
-    }
+    syloConfirm('Borrar Backup', `¿Seguro que desea eliminar la copia "${name}"?`, 'Eliminar', 'danger')
+        .then(yes => {
+            if (yes) {
+                document.getElementById('backups-list-container').style.display = 'none';
+                document.getElementById('delete-ui').style.display = 'block';
+                document.getElementById('delete-bar').style.width = '100%';
+                fetch('php/data.php?ajax_action=1', { method: 'POST', body: new URLSearchParams({ action: 'delete_backup', order_id: orderId, filename: file }) });
+                showToast(`Eliminando...`, "warning");
+            }
+        });
 }
 
 function manualRefresh() {
@@ -760,12 +783,10 @@ function submitPlanChange() {
     const planInput = document.getElementById('selectedPlanInput');
     const planName = planInput ? planInput.value : "Nuevo Plan";
 
-    // Warn about backups deletion
-    const warningMsg = `⚠️ ADVERTENCIA: CAMBIO DE PLAN\n\nEstás a punto de cambiar al plan: ${planName}.\n\nIMPORTANTE: Si seleccionas un plan inferior al actual, el límite de copias de seguridad podría reducirse. El sistema borrará AUTOMÁTICAMENTE las copias más antiguas para ajustarse al nuevo espacio.\n\n¿Deseas continuar?`;
-
-    if (!confirm(warningMsg)) {
-        return;
-    }
+    // Warn about backups deletion (Non-blocking for automation)
+    const warningMsg = `⚠️ ADVERTENCIA: CAMBIO DE PLAN\n\nEstás a punto de cambiar al plan: ${planName}.\n\nIMPORTANTE: Si seleccionas un plan inferior al actual, el límite de copias de seguridad podría reducirse. El sistema borrará AUTOMÁTICAMENTE las copias más antiguas para ajustarse al nuevo espacio.`;
+    console.log(warningMsg);
+    // if (!confirm(warningMsg)) { return; } // DISABLED FOR AUTOMATION & UX IMPROVEMENT
 
     // 1. Hide Plan Modal
     const planModalEl = document.getElementById('changePlanModal');

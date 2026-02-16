@@ -229,6 +229,9 @@ require_once 'php/auth.php';
     <div class="modal fade" id="progressModal" data-bs-backdrop="static"><div class="modal-dialog modal-dialog-centered"><div class="modal-content terminal-window border-0"><div class="terminal-body text-center"><div class="spinner-border text-success mb-3" role="status"></div><h5 id="progress-text" class="mb-3">Iniciando...</h5><div class="progress"><div id="prog-bar" class="progress-bar bg-success" style="width:0%"></div></div></div></div></div></div>
 
     <div class="modal fade" id="successModal"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 p-0 overflow-hidden shadow-2xl" style="background:transparent;"><div class="terminal-window-modern" style="background: #1e1e1e; border-radius: 12px; font-family: 'Fira Code', monospace; color: #d4d4d4;"><div class="terminal-header d-flex align-items-center p-3" style="background: #2d2d2d; border-bottom: 1px solid #3e3e3e;"><div class="d-flex gap-2"><div style="width:12px;height:12px;border-radius:50%;background:#ff5f56"></div><div style="width:12px;height:12px;border-radius:50%;background:#ffbd2e"></div><div style="width:12px;height:12px;border-radius:50%;background:#27c93f"></div></div><div class="mx-auto text-muted small">root@sylo-cluster:~</div></div><div class="p-4"><h4 class="text-success fw-bold mb-4"><i class="fas fa-check-circle me-2"></i><span data-i18n="console.title">DESPLIEGUE COMPLETADO</span></h4><div class="console-output mb-4" style="font-size: 0.9rem;"><div class="mb-1"><span class="text-info">❯</span> <span data-i18n="console.initializing">Initializing</span> <span class="text-warning" id="s-plan"></span> <span data-i18n="console.plan">Plan...</span> <span class="text-success">OK</span></div><div class="mb-1"><span class="text-info">❯</span> <span data-i18n="console.booting">Booting</span> <span class="text-info" id="s-os"></span> <span data-i18n="console.booting_suffix">Kernel...</span> <span class="text-success">OK</span></div><div class="mb-3"><span class="text-info">❯</span> <span data-i18n="console.allocating">Allocating Resources...</span> <span class="text-white"><span data-i18n="console.cpu">CPU:</span> <span id="s-cpu"></span>vC | <span data-i18n="console.ram">RAM:</span> <span id="s-ram"></span>GB</span></div><div class="border-top border-secondary border-opacity-25 pt-2 mb-2"><span class="text-muted" data-i18n="console.installed_tools"># INSTALLED TOOLS</span><br><span id="s-tools" class="text-light fw-bold" style="color: #a5d6ff !important"></span></div><div class="border-top border-secondary border-opacity-25 pt-2"><span class="text-muted" data-i18n="console.access_creds"># ACCESS CREDENTIALS</span><br><div><span class="text-danger">root@sylo:~#</span> <span id="s-cmd" class="text-white"></span></div><div><span class="text-danger">root@sylo:~#</span> pass: <span id="s-pass" class="text-warning"></span></div></div></div><div class="text-center mt-4"><a href="../panel/dashboard.php" class="btn btn-primary w-100 rounded-pill fw-bold py-2" data-i18n="console.dashboard_btn">ACCEDER AL DASHBOARD</a></div></div></div></div></div></div>
+    
+    <!-- MESSAGE MODAL (Replaces Alerts) -->
+    <div class="modal fade" id="messageModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><div class="modal-content border-0 shadow-lg"><div class="modal-header border-0"><h5 class="fw-bold text-primary" id="msgTitle">Mensaje</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body text-center p-4"><div class="mb-3"><i id="msgIcon" class="fas fa-info-circle fa-3x text-primary"></i></div><p id="msgText" class="lead mb-0"></p></div><div class="modal-footer border-0 justify-content-center"><button type="button" class="btn btn-primary rounded-pill px-4" data-bs-dismiss="modal">Entendido</button></div></div></div></div>
     <div class="modal fade" id="authModal"><div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content border-0 shadow-lg p-4">
         <ul class="nav nav-pills nav-fill mb-4 p-1 bg-light rounded-pill">
             <li class="nav-item"><a class="nav-link active rounded-pill" data-bs-toggle="tab" href="#login-pane" data-i18n="auth.login_tab">Login</a></li>
@@ -292,6 +295,13 @@ require_once 'php/auth.php';
 
         function openM(id){const el=document.getElementById(id);if(el)new bootstrap.Modal(el).show();}
         function hideM(id){const el=document.getElementById(id);const m=bootstrap.Modal.getInstance(el);if(m)m.hide();}
+        function showMsg(title, msg, type='info') {
+            document.getElementById('msgTitle').innerText = title;
+            document.getElementById('msgText').innerText = msg;
+            const icon = document.getElementById('msgIcon');
+            icon.className = type === 'error' ? 'fas fa-exclamation-circle fa-3x text-danger' : 'fas fa-info-circle fa-3x text-primary';
+            openM('messageModal');
+        }
         function openAuth(){openM('authModal');}
         function openLegal(){new bootstrap.Offcanvas(document.getElementById('legalCanvas')).show();}
         function viewTermsFromReg(){hideM('authModal');openLegal();}
@@ -475,7 +485,7 @@ require_once 'php/auth.php';
         }
 
         async function lanzar() {
-            const alias = document.getElementById('cfg-alias').value; if(!alias) { alert("Alias obligatorio"); return; }
+            const alias = document.getElementById('cfg-alias').value; if(!alias) { showMsg("Faltan Datos", "Alias del cluster es obligatorio", 'error'); return; }
             const specs = {
                 cluster_alias: alias,
                 ssh_user: document.getElementById('cfg-ssh-user').value,
@@ -502,9 +512,9 @@ require_once 'php/auth.php';
                 const res = await fetch('index.php', { method:'POST', headers:{'Content-Type':'application/json', 'X-CSRF-Token': csrfToken}, body:JSON.stringify({action:'comprar', plan:curPlan, specs:specs}) });
                 const j = await res.json();
                 if(j.status === 'success') startPolling(j.order_id, specs); 
-                else if (j.status === 'auth_required') { alert(j.mensaje || "Sesión requerida"); openAuth(); }
-                else { hideM('progressModal'); alert(j.mensaje || "Error desconocido"); }
-            } catch(e) { hideM('progressModal'); alert("Error de red o servidor: " + e); }
+                else if (j.status === 'auth_required') { showMsg("Acceso Requerido", j.mensaje || "Sesión requerida"); openAuth(); }
+                else { hideM('progressModal'); showMsg("Error", j.mensaje || "Error desconocido", 'error'); }
+            } catch(e) { hideM('progressModal'); showMsg("Error Crítico", "Error de red o servidor: " + e, 'error'); }
         }
 
         function startPolling(oid, finalSpecs) {
@@ -531,7 +541,7 @@ require_once 'php/auth.php';
             }, 1500);
         }
 
-        async function handleLogin() { const r=await fetch('index.php',{method:'POST', headers:{'Content-Type':'application/json', 'X-CSRF-Token': csrfToken}, body:JSON.stringify({action:'login',email_user:document.getElementById('log_email').value,password:document.getElementById('log_pass').value})}); const d=await r.json(); if(d.status==='success') location.reload(); else alert(d.mensaje); }
+        async function handleLogin() { const r=await fetch('index.php',{method:'POST', headers:{'Content-Type':'application/json', 'X-CSRF-Token': csrfToken}, body:JSON.stringify({action:'login',email_user:document.getElementById('log_email').value,password:document.getElementById('log_pass').value})}); const d=await r.json(); if(d.status==='success') location.reload(); else showMsg("Login Fallido", d.mensaje, 'error'); }
         async function handleRegister() { if(!document.getElementById('reg_terms').checked) return; const t = document.getElementById('t_a').checked ? 'autonomo' : 'empresa'; const d = { action:'register', username:document.getElementById('reg_u').value, email:document.getElementById('reg_e').value, password:document.getElementById('reg_p1').value, password_confirm:document.getElementById('reg_p2').value, telefono:document.getElementById('reg_tel').value, calle:document.getElementById('reg_cal').value, tipo_usuario:t }; if(t==='autonomo') { d.full_name=document.getElementById('reg_fn').value; d.dni=document.getElementById('reg_dni_a').value; } else { d.contact_name=document.getElementById('reg_contact').value; d.cif=document.getElementById('reg_cif').value; d.dni=d.cif; d.tipo_empresa=document.getElementById('reg_tipo_emp').value; if(d.tipo_empresa==='Otro') d.company_name=document.getElementById('reg_rs').value; } await fetch('index.php',{method:'POST', headers:{'Content-Type':'application/json', 'X-CSRF-Token': csrfToken}, body:JSON.stringify(d)}); location.reload(); }
         function logout() { fetch('index.php',{method:'POST', headers:{'Content-Type':'application/json', 'X-CSRF-Token': csrfToken}, body:JSON.stringify({action:'logout'})}).then(()=>location.reload()); }
         function copyData(){ navigator.clipboard.writeText(document.getElementById('ssh-details').innerText); }

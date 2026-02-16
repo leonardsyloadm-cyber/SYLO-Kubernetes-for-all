@@ -1,0 +1,676 @@
+nohup: ignoring input
+[92m[14:23:30] === OPERATOR V55 (SELF-HEAL FIXED) ===[0m
+[92m[14:23:30] 📥 Cola lista.[0m
+[92m[14:23:30] 📊 Métricas activas.[0m
+[93m[14:29:22] 📨 Orden: DESTROY_K8S -> 8[0m
+[91m[14:29:22] ☢️ DESTRUYENDO: CLIENTE 8[0m
+[93m[14:29:22] CMD > minikube delete -p sylo-cliente-8[0m
+[93m[14:29:22] 📨 Orden: DESTROY_K8S -> 8[0m
+[91m[14:29:22] ☢️ DESTRUYENDO: CLIENTE 8[0m
+[90m[14:29:26]    OUT: * Eliminando "sylo-cliente-8" en docker... * Eliminando contenedor "sylo-cliente-8" ... * Eliminando...[0m
+[93m[14:29:26] CMD > docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D sylo_admin_db -e "UPDATE k8s_deployments SET status='cancelled' WHERE id=8"[0m
+[91m[14:29:26] ⚰️ ELIMINADO[0m
+[93m[14:29:26] CMD > minikube delete -p sylo-cliente-8[0m
+[90m[14:29:26]    OUT: * Removed all traces of the "sylo-cliente-8" cluster....[0m
+[93m[14:29:26] CMD > docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D sylo_admin_db -e "UPDATE k8s_deployments SET status='cancelled' WHERE id=8"[0m
+[91m[14:29:26] ⚰️ ELIMINADO[0m
+[93m[14:33:23] 📨 Orden: DESTROY_K8S -> 9[0m
+[91m[14:33:23] ☢️ DESTRUYENDO: CLIENTE 9[0m
+[93m[14:33:23] CMD > minikube delete -p sylo-cliente-9[0m
+[93m[14:33:23] 📨 Orden: DESTROY_K8S -> 9[0m
+[91m[14:33:23] ☢️ DESTRUYENDO: CLIENTE 9[0m
+[90m[14:33:25]    OUT: * Eliminando "sylo-cliente-9" en docker... * Eliminando contenedor "sylo-cliente-9" ... * Eliminando...[0m
+[93m[14:33:25] CMD > docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D sylo_admin_db -e "UPDATE k8s_deployments SET status='cancelled' WHERE id=9"[0m
+[91m[14:33:25] ⚰️ ELIMINADO[0m
+[93m[14:33:25] CMD > minikube delete -p sylo-cliente-9[0m
+[90m[14:33:25]    OUT: * Removed all traces of the "sylo-cliente-9" cluster....[0m
+[93m[14:33:25] CMD > docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D sylo_admin_db -e "UPDATE k8s_deployments SET status='cancelled' WHERE id=9"[0m
+[91m[14:33:26] ⚰️ ELIMINADO[0m
+[93m[14:48:29] 📨 Orden: DESTROY_K8S -> 10[0m
+[91m[14:48:29] ☢️ DESTRUYENDO: CLIENTE 10[0m
+[93m[14:48:29] CMD > minikube delete -p sylo-cliente-10[0m
+[93m[14:48:29] 📨 Orden: DESTROY_K8S -> 10[0m
+[91m[14:48:29] ☢️ DESTRUYENDO: CLIENTE 10[0m
+[90m[14:48:33]    OUT: * Eliminando "sylo-cliente-10" en docker... * Eliminando contenedor "sylo-cliente-10" ... * Eliminan...[0m
+[93m[14:48:33] CMD > docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D sylo_admin_db -e "UPDATE k8s_deployments SET status='cancelled' WHERE id=10"[0m
+[91m[14:48:33] ⚰️ ELIMINADO[0m
+[93m[14:48:33] CMD > minikube delete -p sylo-cliente-10[0m
+[90m[14:48:33]    OUT: * Removed all traces of the "sylo-cliente-10" cluster....[0m
+[93m[14:48:33] CMD > docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D sylo_admin_db -e "UPDATE k8s_deployments SET status='cancelled' WHERE id=10"[0m
+[91m[14:48:33] ⚰️ ELIMINADO[0m
+[91m[14:59:12] ⚠️ ERROR (1): mysql: [Warning] Using a password on the command line interface can be insecure.
+ERROR 2002 (HY000): Can't connect to local MySQL server through socket '/var/run/mysqld/mysqld.sock' (2)[0m
+[91m[14:59:14] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[14:59:16] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[14:59:18] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[14:59:20] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[14:59:22] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[14:59:24] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[14:59:26] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[14:59:28] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[14:59:30] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[14:59:32] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[14:59:35] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[14:59:37] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[14:59:39] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[14:59:41] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[14:59:43] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[14:59:45] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[14:59:47] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[14:59:49] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[14:59:51] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[14:59:53] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[14:59:55] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[14:59:57] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[14:59:59] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:01] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:03] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:06] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:08] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:10] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:12] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:14] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:16] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:18] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:20] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:22] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:24] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:26] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:28] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:30] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:32] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:34] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:36] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:39] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:41] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:43] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:45] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:47] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:49] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:51] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:53] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:55] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:57] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:00:59] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:01] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:03] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:05] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:07] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:10] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:12] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:14] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:16] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:18] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:20] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:22] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:24] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:26] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:28] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:30] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:32] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:34] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:36] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:38] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:40] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:43] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:45] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:47] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:49] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:51] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:53] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:55] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:57] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:01:59] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:01] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:03] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:05] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:07] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:09] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:11] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:14] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:16] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:18] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:20] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:22] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:24] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:26] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:28] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:30] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:32] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:34] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:36] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:38] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:40] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:42] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:44] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:47] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:49] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:51] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:53] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:55] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:57] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:02:59] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:01] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:03] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:05] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:07] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:09] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:11] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:13] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:15] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:17] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:20] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:22] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:24] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:26] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:28] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:30] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:32] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:34] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:36] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:38] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:40] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:42] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:44] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:46] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:48] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:51] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:53] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:55] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:57] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:03:59] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:01] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:03] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:05] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:07] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:09] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:11] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:13] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:15] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:17] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:19] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:21] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:24] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:26] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:28] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:30] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:32] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:34] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:36] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:38] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:40] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:42] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:44] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:46] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:48] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:50] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:52] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:54] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:57] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:04:59] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:01] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:03] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:05] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:07] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:09] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:11] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:13] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:15] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:17] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:19] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:21] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:23] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:25] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:27] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:29] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:32] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:34] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:36] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:38] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:40] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:42] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:44] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:46] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:48] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:50] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:52] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:54] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:56] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:05:58] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:00] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:02] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:05] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:07] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:09] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:11] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:13] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:15] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:17] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:19] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:21] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:23] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:25] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:27] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:29] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:31] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:33] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:35] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:37] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:40] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:42] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:44] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:46] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:48] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:50] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:52] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:54] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:56] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:06:58] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:00] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:02] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:04] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:06] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:08] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:10] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:13] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:15] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:17] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:19] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:21] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:23] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:25] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:27] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:29] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:31] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:33] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:35] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:37] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:39] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:41] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:43] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:46] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:48] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:50] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:52] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:54] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:56] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:07:58] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:00] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:02] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:04] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:06] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:08] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:10] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:12] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:14] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:16] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:18] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:20] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:23] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:25] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:27] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:29] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:31] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:33] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:35] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:37] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:39] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:41] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:43] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:45] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:47] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:49] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:51] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:54] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:56] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:08:58] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:09:00] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:09:02] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:09:04] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:09:06] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:09:08] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:09:10] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:09:12] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:09:14] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:09:16] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:09:18] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:09:20] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:09:22] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:09:24] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:09:27] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:09:29] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:09:31] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:09:33] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:09:35] ⚠️ ERROR (1): Error response from daemon: container 3793879c044b759c4f123d90930b34b95cbd7a3fc0d07ab795dd1f349e2defd2 is not running[0m
+[91m[15:09:37] ⚠️ ERROR (1): Error response from daemon: No such container: kylo-main-db[0m
+[91m[15:09:39] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:09:41] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:09:43] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:09:45] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:09:47] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:09:49] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:09:51] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:09:53] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:09:55] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:09:57] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:09:59] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:02] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:04] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:06] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:08] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:10] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:12] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:14] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:16] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:18] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:20] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:22] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:24] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:26] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:28] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:30] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:32] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:34] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:36] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:38] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:41] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:43] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:45] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:47] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:49] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:51] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:53] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:55] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:57] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:10:59] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:01] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:03] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:05] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:07] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:09] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:11] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:13] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:15] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:17] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:19] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:21] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:23] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:25] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:28] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:30] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:32] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:34] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:36] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:38] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:40] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:42] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:44] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:46] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:48] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:50] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:52] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:54] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:56] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:11:58] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:00] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:02] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:04] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:06] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:08] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:11] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:13] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:15] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:17] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:19] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:21] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:23] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:25] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:27] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:29] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:31] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:33] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:35] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:37] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:39] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:41] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:43] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:45] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:47] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:49] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:51] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:54] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:56] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:12:58] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:00] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:02] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:04] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:06] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:08] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:10] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:12] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:14] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:16] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:18] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:20] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:22] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:24] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:26] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:28] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:30] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:32] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:34] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:36] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:39] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:41] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:43] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:45] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:47] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:49] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:51] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:53] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:55] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:57] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:13:59] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:01] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:03] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:05] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:07] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:09] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:11] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:13] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:15] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:17] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:19] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:21] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:24] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:26] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:28] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:30] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:32] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:34] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:36] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:38] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:40] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:42] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:44] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:46] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:48] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:50] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:52] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:54] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:56] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:14:58] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:00] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:02] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:04] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:06] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:08] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:11] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:13] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:15] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:17] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:19] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:21] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:23] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:25] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:27] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:29] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:31] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:33] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:35] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:37] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:39] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:41] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:43] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:45] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:47] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:49] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:51] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:54] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:56] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:15:58] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:00] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:02] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:04] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:06] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:08] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:10] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:12] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:14] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:16] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:18] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:20] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:22] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:24] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:26] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:28] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:30] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:32] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:34] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:36] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:38] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:40] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:42] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:45] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:47] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:49] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:51] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:53] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:55] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:57] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:16:59] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:17:01] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:17:03] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:17:05] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:17:07] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:17:09] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:17:11] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:17:13] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:17:15] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:17:17] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:17:19] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:17:21] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:17:23] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:17:25] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:17:27] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:17:29] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:17:32] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:17:34] ⚠️ ERROR (1): Error response from daemon: container a21ee4aa49a0c6d606484c58164aecd82e6481b7d17b96207fd7116da82c9afc is not running[0m
+[91m[15:17:36] ⚠️ ERROR (1): mysql: [Warning] Using a password on the command line interface can be insecure.
+ERROR 2002 (HY000): Can't connect to local MySQL server through socket '/var/run/mysqld/mysqld.sock' (2)[0m
+[93m[15:28:53] 📨 Orden: DESTROY_K8S -> 11[0m
+[91m[15:28:53] ☢️ DESTRUYENDO: CLIENTE 11[0m
+[93m[15:28:53] CMD > minikube delete -p sylo-cliente-11[0m
+[93m[15:28:53] 📨 Orden: DESTROY_K8S -> 11[0m
+[91m[15:28:53] ☢️ DESTRUYENDO: CLIENTE 11[0m
+[90m[15:28:56]    OUT: * Eliminando "sylo-cliente-11" en docker... * Eliminando contenedor "sylo-cliente-11" ... * Eliminan...[0m
+[93m[15:28:56] CMD > docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D sylo_admin_db -e "UPDATE k8s_deployments SET status='cancelled' WHERE id=11"[0m
+[91m[15:28:56] ⚰️ ELIMINADO[0m
+[93m[15:28:56] CMD > minikube delete -p sylo-cliente-11[0m
+[90m[15:28:57]    OUT: * Removed all traces of the "sylo-cliente-11" cluster....[0m
+[93m[15:28:57] CMD > docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D sylo_admin_db -e "UPDATE k8s_deployments SET status='cancelled' WHERE id=11"[0m
+[91m[15:28:57] ⚰️ ELIMINADO[0m
+[93m[15:41:20] 📨 Orden: DESTROY_K8S -> 12[0m
+[91m[15:41:20] ☢️ DESTRUYENDO: CLIENTE 12[0m
+[93m[15:41:20] CMD > minikube delete -p sylo-cliente-12[0m
+[93m[15:41:20] 📨 Orden: DESTROY_K8S -> 12[0m
+[91m[15:41:20] ☢️ DESTRUYENDO: CLIENTE 12[0m
+[90m[15:41:24]    OUT: * Eliminando "sylo-cliente-12" en docker... * Eliminando contenedor "sylo-cliente-12" ... * Eliminan...[0m
+[93m[15:41:24] CMD > docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D sylo_admin_db -e "UPDATE k8s_deployments SET status='cancelled' WHERE id=12"[0m
+[91m[15:41:24] ⚰️ ELIMINADO[0m
+[93m[15:41:24] CMD > minikube delete -p sylo-cliente-12[0m
+[90m[15:41:25]    OUT: * Removed all traces of the "sylo-cliente-12" cluster....[0m
+[93m[15:41:25] CMD > docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D sylo_admin_db -e "UPDATE k8s_deployments SET status='cancelled' WHERE id=12"[0m
+[91m[15:41:25] ⚰️ ELIMINADO[0m
+[91m[15:53:42] ⚠️ ERROR (-15): [0m
+[91m[15:53:43] ⚠️ ERROR (-15): [0m
+[93m[15:54:27] 📨 Orden: CHANGE_PLAN -> 13[0m
+[93m[15:54:27] 📨 Orden: UPDATE_PLAN -> 13[0m
+[93m[15:54:27] ⚡ UPDATE PLAN: Cliente 13[0m
+[90m[15:54:27] 📡 API > Cliente 13 [plan_update]: Analizando nueva configuración... (10%)[0m
+[90m[15:54:29] 📡 API > Cliente 13 [plan_update]: Obteniendo especificaciones... (15%)[0m
+[90m[15:54:30] 📡 API > Cliente 13 [plan_update]: Escalando Recursos (CPU: 4 / RAM: 4GB)... (30%)[0m
+[91m[15:54:30] ⚠️ ERROR (1): Error from server (NotFound): deployments.apps "custom-web" not found[0m
+[91m[15:54:30] ⚠️ ERROR (1): Error from server (NotFound): deployments.apps "custom-db" not found[0m
+[90m[15:54:32] 📡 API > Cliente 13 [plan_update]: Gestionando capa de Datos... (50%)[0m
+[92m[15:54:32]    ➕ Gestionando Base de Datos (Apply)[0m
+[90m[15:54:32] 📡 API > Cliente 13 [plan_update]: Configurando Base de Datos... (55%)[0m
+[90m[15:54:33] 📡 API > Cliente 13 [plan_update]: Gestionando capa Web... (70%)[0m
+[92m[15:54:33]    ➕ Gestionando Servidor Web (Apply)[0m
+[90m[15:54:33] 📡 API > Cliente 13 [plan_update]: Configurando Servidor Web... (75%)[0m
+[96m[15:54:34]    🛠️ Reconciliando Herramientas para Plan: Oro...[0m
+[96m[15:54:34]    📦 Instalando en Nodo Bastion (sylo-cliente-13): zsh nodejs ncdu curl nano wget rsync redis unzip htop zip ansible npm lazygit imagemagick ffmpeg tmux git mysql-client python3 jq[0m
+[91m[15:54:40] ⚠️ ERROR (100): [0m
+[92m[15:54:40]    ✅ Herramientas Nodo Sincronizadas.[0m
+[90m[15:54:40] 📡 API > Cliente 13 [plan_update]: Verificando salud de servicios... (90%)[0m
+[90m[15:54:43] 📡 API > Cliente 13 [plan_update]: Sincronizando acceso web... (95%)[0m
+[90m[15:54:43] 🔌 Iniciando Port-Forward Cliente 13 -> 8013[0m
+[92m[15:54:44]    🔗 Web Access Verified: http://localhost:8013[0m
+[90m[15:54:44] 📡 API > Cliente 13 [plan_update]: Plan Actualizado Correctamente (100%)[0m
+[92m[15:54:44] ✅ PLAN V13 ACTUALIZADO[0m
+[90m[15:54:45] 🔌 Iniciando Port-Forward Cliente 13 -> 8013[0m
+[91m[15:54:46] ⚠️ ERROR (-15): [0m
+[91m[15:54:46] ⚠️ ERROR (-15): [0m
+[93m[15:55:05] 📨 Orden: UPDATE_WEB -> 13[0m
+[92m[15:55:05] 🔧 PROCESANDO WEB Cliente 13...[0m
+[90m[15:55:05] 📡 API > Cliente 13 [web]: Orden procesada... (10%)[0m
+[90m[15:55:07] 📡 API > Cliente 13 [web]: Limpiando configuración... (CMD 1) (30%)[0m
+[93m[15:55:09] CMD > minikube -p sylo-cliente-13 kubectl -- delete cm custom-web-content --ignore-not-found[0m
+[90m[15:55:09]    OUT: configmap "custom-web-content" deleted from default namespace...[0m
+[90m[15:55:09] 📡 API > Cliente 13 [web]: Subiendo nuevo contenido... (CMD 2) (60%)[0m
+[93m[15:55:11] CMD > minikube -p sylo-cliente-13 kubectl -- create cm custom-web-content --from-file=index.html=/home/leonard/proyecto/worker/temp_web_13.html[0m
+[90m[15:55:11]    OUT: configmap/custom-web-content created...[0m
+[90m[15:55:11] 📡 API > Cliente 13 [web]: Aplicando cambios... (CMD 3) (75%)[0m
+[93m[15:55:13] CMD > minikube -p sylo-cliente-13 kubectl -- delete pod custom-web-7b959fc595-qj87d --wait=false[0m
+[90m[15:55:13]    OUT: pod "custom-web-7b959fc595-qj87d" deleted from default namespace...[0m
+[90m[15:55:18] 📡 API > Cliente 13 [web]: Verificando... (0s) (95%)[0m
+[90m[15:55:21] 📡 API > Cliente 13 [web]: Verificando... (2s) (95%)[0m
+[90m[15:55:23] 📡 API > Cliente 13 [web]: Verificando... (4s) (95%)[0m
+[90m[15:55:27] 📡 API > Cliente 13 [web]: Verificando... (6s) (95%)[0m
+[90m[15:55:31] 📡 API > Cliente 13 [web]: Verificando... (8s) (95%)[0m
+[90m[15:55:34] 📡 API > Cliente 13 [web]: Verificando... (10s) (95%)[0m
+[90m[15:55:38] 📡 API > Cliente 13 [web]: Verificando... (12s) (95%)[0m
+[90m[15:55:42] 📡 API > Cliente 13 [web]: Verificando... (14s) (95%)[0m
+[90m[15:55:46] 📡 API > Cliente 13 [web]: Verificando... (16s) (95%)[0m
+[90m[15:55:47] 🔌 Iniciando Port-Forward Cliente 13 -> 8013[0m
+[91m[15:55:48] ⚠️ ERROR (-15): [0m
+[91m[15:55:48] ⚠️ ERROR (-15): [0m
+[90m[15:55:49] 📡 API > Cliente 13 [web]: Verificando... (18s) (95%)[0m
+[90m[15:55:52] 📡 API > Cliente 13 [web]: Verificando... (20s) (95%)[0m
+[90m[15:55:54] 📡 API > Cliente 13 [web]: Verificando... (22s) (95%)[0m
+[90m[15:55:58] 📡 API > Cliente 13 [web]: Verificando... (24s) (95%)[0m
+[90m[15:56:02] 📡 API > Cliente 13 [web]: Verificando... (26s) (95%)[0m
+[90m[15:56:06] 📡 API > Cliente 13 [web]: Verificando... (28s) (95%)[0m
+[90m[15:56:10] 📡 API > Cliente 13 [web]: Verificando... (30s) (95%)[0m
+[90m[15:56:13] 📡 API > Cliente 13 [web]: Verificando... (32s) (95%)[0m
+[90m[15:56:17] 📡 API > Cliente 13 [web]: Verificando... (34s) (95%)[0m
+[90m[15:56:21] 📡 API > Cliente 13 [web]: Verificando... (36s) (95%)[0m
+[90m[15:56:25] 📡 API > Cliente 13 [web]: Verificando... (38s) (95%)[0m
+[90m[15:56:28] 📡 API > Cliente 13 [web]: Web Actualizada (100%)[0m
+[92m[15:56:28] ✅ WEB ACTUALIZADA[0m
+[90m[15:56:49] 🔌 Iniciando Port-Forward Cliente 13 -> 8013[0m
+[91m[15:56:50] ⚠️ ERROR (-15): [0m
+[91m[15:56:50] ⚠️ ERROR (-15): [0m
+[90m[15:57:51] 🔌 Iniciando Port-Forward Cliente 13 -> 8013[0m
+[91m[15:57:52] ⚠️ ERROR (-15): [0m
+[91m[15:57:52] ⚠️ ERROR (-15): [0m

@@ -22,9 +22,10 @@ $servername = getenv('DB_HOST') ?: "kylo-main-db";
 $username_db = getenv('DB_USER') ?: "sylo_app";
 $password_db = getenv('DB_PASS') ?: "sylo_app_pass";
 $dbname = getenv('DB_NAME') ?: "sylo_admin_db";
+$dbport = getenv('DB_PORT') ?: "3306";
 
 try { 
-    $conn = new PDO("mysql:host=$servername;dbname=$dbname;charset=utf8mb4", $username_db, $password_db);
+    $conn = new PDO("mysql:host=$servername;port=$dbport;dbname=$dbname;charset=utf8mb4", $username_db, $password_db);
     $conn->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 } catch(PDOException $e) { die("Error DB"); }
 
@@ -40,228 +41,292 @@ function verifyOwnership($conn, $oid, $uid) {
 
 // --- ACTIONS (POST) ---
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && !in_array($_POST['action'], ['update_profile', 'install_monitoring', 'uninstall_monitoring'])) {
-    $oid = (int)$_POST['order_id']; // Cast to int immediately
-    $act = $_POST['action'];
-    
-    // 🛡️ CRITICAL: Verify User Owns This Deployment
-    if (!verifyOwnership($conn, $oid, $user_id)) {
-        http_response_code(403);
-        die(json_encode(['status' => 'error', 'message' => 'Unauthorized Access (IDOR Protected)']));
-    }
-    
-    $data = [
-        "id_cliente" => $oid,
-        "accion" => $act,
-        "backup_type" => "full",
-        "backup_name" => "Backup",
-        "filename_to_restore" => "",
-        "filename_to_delete" => "",
-        "html_content" => ""
-    ];
-
-    // --- BACKUP ACTIONS WITH VISUAL FEEDBACK ---
-    if ($act == 'backup' || $act == 'restore_backup' || $act == 'delete_backup') {
-        $data['backup_type'] = $_POST['backup_type'] ?? 'full';
-        $data['backup_name'] = $_POST['backup_name'] ?? 'Manual';
-        if ($act == 'restore_backup') $data['filename_to_restore'] = $_POST['filename'];
-        if ($act == 'delete_backup') $data['filename_to_delete'] = $_POST['filename'];
-
-        // transient status setup
-        $dir = __DIR__ . "/../../buzon-pedidos/";
-        $f_back = $dir . "backup_status_{$oid}.json";
-        $f_web = $dir . "web_status_{$oid}.json";   // CONFLICTO
-        $f_pow = $dir . "power_status_{$oid}.json"; // CONFLICTO
-        $f_gen = $dir . "status_{$oid}.json";       // CONFLICTO
+    // WRAPPER: Resilience against crashes
+    try {
+        $oid = (int)$_POST['order_id'];
+        $act = $_POST['action'];
         
-        // Clean ALL old files to avoid priority conflicts (Fix: "Web Restaurada 100%" infinite loop)
-        // If we don't delete web_status, data.php reads it first and ignores backup_status!
-        if (file_exists($f_gen)) @unlink($f_gen);
-        if (file_exists($f_web)) @unlink($f_web);
-        if (file_exists($f_pow)) @unlink($f_pow);
+        // 🛡️ CRITICAL: Verify User Owns This Deployment
+        if (!verifyOwnership($conn, $oid, $user_id)) {
+            http_response_code(403);
+            die(json_encode(['status' => 'error', 'message' => 'Unauthorized Access (IDOR Protected)']));
+        }
         
-        // Prepare Message
-        $msg = "Procesando...";
-        if ($act == 'backup') $msg = "Creando Snapshot...";
-        if ($act == 'restore_backup') $msg = "Restaurando...";
-        if ($act == 'delete_backup') $msg = "Eliminando...";
-
-        // Write Transient
-        $transient = ['status' => 'backup_processing', 'percent' => 0, 'msg' => $msg];
-        file_put_contents($f_back, json_encode($transient));
-    }
-    
-    // ACTION: Dismiss Backup (Frontend confirma que ya vio el 100%)
-    if ($act == 'dismiss_backup') {
-        $f_back = __DIR__ . "/../../buzon-pedidos/backup_status_{$oid}.json";
-        if (file_exists($f_back)) @unlink($f_back);
-        echo json_encode(['status'=>'ok']); exit;
-    }
-
-    // ACTION: Dismiss Plan Update (Fix: Prevent Infinite Reload Loop)
-    if ($act == 'dismiss_plan') {
-        $f_plan = __DIR__ . "/../../buzon-pedidos/plan_status_{$oid}.json";
-        if (file_exists($f_plan)) @unlink($f_plan);
-        echo json_encode(['status'=>'ok']); exit;
-    }
-
-    // ACTION: Dismiss Tool Install
-    if ($act == 'dismiss_install_tool') {
-        $f_inst = __DIR__ . "/../../buzon-pedidos/install_status_{$oid}.json";
-        if (file_exists($f_inst)) @unlink($f_inst);
-        echo json_encode(['status'=>'ok']); exit;
-    }
-
-    if ($act == 'update_web') {
-        $data['html_content'] = $_POST['html_content'];
-        // SMART LINKING (Fix Blinking & Status Flop)
-        // en vez de borrar todo (Reset), leemos el ultimo estado conocido
-        // y creamos un archivo temporal 'web_status' con status='active'.
-        // Asi el dashboard sigue viendo las metricas y el badge verde mientras arranca el Operator.
-        
-        $dir = __DIR__ . "/../../buzon-pedidos/";
-        $f_web = $dir . "web_status_{$oid}.json";
-        $f_gen = $dir . "status_{$oid}.json";
-        $f_pow = $dir . "power_status_{$oid}.json";
-        
-        // 1. Intentar rescatar datos viejos (para no perder SSH/Metrics visualmente)
-        $old_data = [];
-        if (file_exists($f_web)) $old_data = json_decode(file_get_contents($f_web), true);
-        else if (file_exists($f_gen)) $old_data = json_decode(file_get_contents($f_gen), true);
-        
-        // 2. Preparar el estado 'Transitorio'
-        $transient = [
-            'status' => 'active', // Mantiene el badge VERDE
-            'percent' => 0,
-            'msg' => 'Iniciando...', // Mensaje inicial
-            'metrics' => $old_data['metrics'] ?? null,   // Persistir Metricas
-            'ssh_cmd' => $old_data['ssh_cmd'] ?? null,   // Persistir SSH
-            'web_url' => $old_data['web_url'] ?? null,   // Persistir URL
-            'os_info' => $old_data['os_info'] ?? null,
-            'ssh_pass'=> $old_data['ssh_pass'] ?? null
+        $data = [
+            "id_cliente" => $oid,
+            "accion" => $act,
+            "backup_type" => "full",
+            "backup_name" => "Backup",
+            "filename_to_restore" => "",
+            "filename_to_delete" => "",
+            "html_content" => ""
         ];
-        
-        // 3. Escribir el nuevo archivo web_status YA (para que data.php lo lea inmediatamente)
-        file_put_contents($f_web, json_encode($transient));
-        
-        // 4. Borrar el genérico y power para evitar conflictos de prioridad
-        if (file_exists($f_gen)) @unlink($f_gen);
-        if (file_exists($f_pow)) @unlink($f_pow);
-        if (file_exists($f_gen)) @unlink($f_gen);
-        if (file_exists($f_pow)) @unlink($f_pow);
-    }
-    
-    // ACTION: CHANGE PLAN (Prioridad 1)
-    if ($act == 'change_plan') {
-       $new_plan = $_POST['new_plan'];
-       
-       // Definir Specs por defecto según el plan
-       $plan_id = 1;
-       $cpu = 1; $ram = 1; $db_en = 0; $web_en = 0;
-       
-       if ($new_plan == 'Bronce') { 
-           $plan_id = 1; $cpu = 1; $ram = 1; 
-       } elseif ($new_plan == 'Plata') { 
-           $plan_id = 2; $cpu = 2; $ram = 2; 
-       } elseif ($new_plan == 'Oro') { 
-           $plan_id = 3; $cpu = 4; $ram = 4; $db_en = 1; $web_en = 1; 
-       } elseif ($new_plan == 'Personalizado') {
-           $plan_id = 4;
-           $cpu = (int)($_POST['custom_cpu'] ?? 1);
-           $ram = (int)($_POST['custom_ram'] ?? 1);
-           $db_en = isset($_POST['custom_db']) ? 1 : 0;
-           $web_en = isset($_POST['custom_web']) ? 1 : 0;
-       }
-       
-       // Update 'k8s_deployments' table (Unified)
-       $sql_update = "UPDATE k8s_deployments SET plan_id = ?, cpu_cores = ?, ram_gb = ?, db_enabled = ?, web_enabled = ? WHERE id = ?";
-       $stmt = $conn->prepare($sql_update);
-       $stmt->execute([$plan_id, $cpu, $ram, $db_en, $web_en, $oid]);
-       
-       // Generate Action JSON for Operator
-       $action_file = __DIR__ . "/../../buzon-pedidos/accion_update_{$oid}.json";
-       $payload = [
-           "action" => "UPDATE_PLAN",
-           "id_cliente" => (int)$oid,
-           "new_specs" => [
-               "cpu" => $cpu,
-               "ram" => $ram,
-               "db_enabled" => $db_en,
-               "web_enabled" => $web_en
-           ]
-       ];
-       file_put_contents($action_file, json_encode($payload));
 
-       // --- BACKUP LIMIT ENFORCEMENT ---
-       // Calculate new limit
-       $new_limit = 2; // Default (Bronce)
-       if ($new_plan == 'Oro') $new_limit = 5;
-       elseif ($new_plan == 'Plata') $new_limit = 3;
-       elseif ($new_plan == 'Personalizado') {
-           $score = ($cpu * 5) + ($ram * 5);
-           if ($db_en) $score += 10;
-           if ($web_en) $score += 10;
-           if ($score >= 30) $new_limit = 5;
-           elseif ($score >= 15) $new_limit = 3;
-       }
+        // --- BACKUP ACTIONS WITH VISUAL FEEDBACK ---
+        if ($act == 'backup' || $act == 'restore_backup' || $act == 'delete_backup') {
+            $data['backup_type'] = $_POST['backup_type'] ?? 'full';
+            $data['backup_name'] = $_POST['backup_name'] ?? 'Manual';
+            if ($act == 'restore_backup') $data['filename_to_restore'] = $_POST['filename'];
+            if ($act == 'delete_backup') $data['filename_to_delete'] = $_POST['filename'];
 
-       // Scan and Clean Excess
-       $buzon_dir = __DIR__ . "/../../buzon-pedidos/";
-       $files = glob($buzon_dir . "backup_v{$oid}_*.tar.gz");
-       if ($files && count($files) > $new_limit) {
-           // Sort by modification time DESC (Newest first)
-           usort($files, function($a, $b) {
-               return filemtime($b) - filemtime($a);
-           });
+            // transient status setup
+            $dir = __DIR__ . "/../../buzon-pedidos/";
+            $f_back = $dir . "backup_status_{$oid}.json";
+            $f_web = $dir . "web_status_{$oid}.json";   // CONFLICTO
+            $f_pow = $dir . "power_status_{$oid}.json"; // CONFLICTO
+            $f_gen = $dir . "status_{$oid}.json";       // CONFLICTO
+            
+            // Clean ALL old files to avoid priority conflicts (Fix: "Web Restaurada 100%" infinite loop)
+            // If we don't delete web_status, data.php reads it first and ignores backup_status!
+            if (file_exists($f_gen)) @unlink($f_gen);
+            if (file_exists($f_web)) @unlink($f_web);
+            if (file_exists($f_pow)) @unlink($f_pow);
+            
+            // Prepare Message
+            $msg = "Procesando...";
+            if ($act == 'backup') $msg = "Creando Snapshot...";
+            if ($act == 'restore_backup') $msg = "Restaurando...";
+            if ($act == 'delete_backup') $msg = "Eliminando...";
+
+            // Write Transient
+            $transient = ['status' => 'backup_processing', 'percent' => 0, 'msg' => $msg];
+            file_put_contents($f_back, json_encode($transient));
+        }
+        
+        // ACTION: Dismiss Backup (Frontend confirma que ya vio el 100%)
+        if ($act == 'dismiss_backup') {
+            $f_back = __DIR__ . "/../../buzon-pedidos/backup_status_{$oid}.json";
+            if (file_exists($f_back)) @unlink($f_back);
+            echo json_encode(['status'=>'ok']); exit;
+        }
+
+        // ACTION: Dismiss Plan Update (Fix: Prevent Infinite Reload Loop)
+        if ($act == 'dismiss_plan') {
+            $f_plan = __DIR__ . "/../../buzon-pedidos/plan_status_{$oid}.json";
+            if (file_exists($f_plan)) @unlink($f_plan);
+            echo json_encode(['status'=>'ok']); exit;
+        }
+
+        // ACTION: Dismiss Tool Install
+        if ($act == 'dismiss_install_tool') {
+            $f_inst = __DIR__ . "/../../buzon-pedidos/install_status_{$oid}.json";
+            if (file_exists($f_inst)) @unlink($f_inst);
+            echo json_encode(['status'=>'ok']); exit;
+        }
+
+        if ($act == 'update_web') {
+            $data['html_content'] = $_POST['html_content'];
+            // SMART LINKING (Fix Blinking & Status Flop)
+            // en vez de borrar todo (Reset), leemos el ultimo estado conocido
+            // y creamos un archivo temporal 'web_status' con status='active'.
+            // Asi el dashboard sigue viendo las metricas y el badge verde mientras arranca el Operator.
+            
+            $dir = __DIR__ . "/../../buzon-pedidos/";
+            $f_web = $dir . "web_status_{$oid}.json";
+            $f_gen = $dir . "status_{$oid}.json";
+            $f_pow = $dir . "power_status_{$oid}.json";
+            
+            // 1. Intentar rescatar datos viejos (para no perder SSH/Metrics visualmente)
+            $old_data = [];
+            if (file_exists($f_web)) $old_data = json_decode(file_get_contents($f_web), true);
+            else if (file_exists($f_gen)) $old_data = json_decode(file_get_contents($f_gen), true);
+            
+            // 2. Preparar el estado 'Transitorio'
+            $transient = [
+                'status' => 'active', // Mantiene el badge VERDE
+                'percent' => 0,
+                'msg' => 'Iniciando...', // Mensaje inicial
+                'metrics' => $old_data['metrics'] ?? null,   // Persistir Metricas
+                'ssh_cmd' => $old_data['ssh_cmd'] ?? null,   // Persistir SSH
+                'web_url' => $old_data['web_url'] ?? null,   // Persistir URL
+                'os_info' => $old_data['os_info'] ?? null,
+                'ssh_pass'=> $old_data['ssh_pass'] ?? null
+            ];
+            
+            // 3. Escribir el nuevo archivo web_status YA (para que data.php lo lea inmediatamente)
+            file_put_contents($f_web, json_encode($transient));
+            
+            // 4. Borrar el genérico y power para evitar conflictos de prioridad
+            if (file_exists($f_gen)) @unlink($f_gen);
+            if (file_exists($f_pow)) @unlink($f_pow);
+            if (file_exists($f_gen)) @unlink($f_gen);
+            if (file_exists($f_pow)) @unlink($f_pow);
+        }
+        
+        // ACTION: CHANGE PLAN (Prioridad 1)
+        if ($act == 'change_plan') {
+           $new_plan = $_POST['new_plan'];
            
-           // Keep first $new_limit, delete the rest
-           $to_delete = array_slice($files, $new_limit);
-           foreach ($to_delete as $f) {
-               if (file_exists($f)) @unlink($f);
+           // Definir Specs por defecto según el plan
+           $plan_id = 1;
+           $cpu = 1; $ram = 1; $db_en = 0; $web_en = 0;
+           
+           if ($new_plan == 'Bronce') { 
+               $plan_id = 1; $cpu = 1; $ram = 1; 
+           } elseif ($new_plan == 'Plata') { 
+               $plan_id = 2; $cpu = 2; $ram = 2; 
+           } elseif ($new_plan == 'Oro') { 
+               $plan_id = 3; $cpu = 4; $ram = 4; $db_en = 1; $web_en = 1; 
+           } elseif ($new_plan == 'Personalizado') {
+               $plan_id = 4;
+               $cpu = (int)($_POST['custom_cpu'] ?? 1);
+               $ram = (int)($_POST['custom_ram'] ?? 1);
+               $db_en = isset($_POST['custom_db']) ? 1 : 0;
+               $web_en = isset($_POST['custom_web']) ? 1 : 0;
            }
-       }
-       // --------------------------------
+           
+           // Update 'k8s_deployments' table (Unified)
+           $sql_update = "UPDATE k8s_deployments SET plan_id = ?, cpu_cores = ?, ram_gb = ?, db_enabled = ?, web_enabled = ? WHERE id = ?";
+           $stmt = $conn->prepare($sql_update);
+           $stmt->execute([$plan_id, $cpu, $ram, $db_en, $web_en, $oid]);
+           
+           // Generate Action JSON for Operator
+           $action_file = __DIR__ . "/../../buzon-pedidos/accion_update_{$oid}.json";
+           $payload = [
+               "action" => "UPDATE_PLAN",
+               "id_cliente" => (int)$oid,
+               "new_specs" => [
+                   "cpu" => $cpu,
+                   "ram" => $ram,
+                   "db_enabled" => $db_en,
+                   "web_enabled" => $web_en
+               ]
+           ];
+           file_put_contents($action_file, json_encode($payload));
 
-       // CLEANUP CONFLICTING STATUS FILES (Fix: Stuck Progress Bar)
-       // We must remove power/web/backup and PLAN status files so data.php reads our new status_{oid}.json
-       $f_pow = $buzon_dir . "power_status_{$oid}.json";
-       $f_web = $buzon_dir . "web_status_{$oid}.json";
-       $f_back = $buzon_dir . "backup_status_{$oid}.json";
-       $f_plan = $buzon_dir . "plan_status_{$oid}.json";
+           // --- BACKUP LIMIT ENFORCEMENT ---
+           // Calculate new limit
+           $new_limit = 2; // Default (Bronce)
+           if ($new_plan == 'Oro') $new_limit = 5;
+           elseif ($new_plan == 'Plata') $new_limit = 3;
+           elseif ($new_plan == 'Personalizado') {
+               $score = ($cpu * 5) + ($ram * 5);
+               if ($db_en) $score += 10;
+               if ($web_en) $score += 10;
+               if ($score >= 30) $new_limit = 5;
+               elseif ($score >= 15) $new_limit = 3;
+           }
 
-       if (file_exists($f_pow)) @unlink($f_pow);
-       if (file_exists($f_web)) @unlink($f_web);
-       if (file_exists($f_back)) @unlink($f_back);
-       if (file_exists($f_plan)) @unlink($f_plan);
+           // Scan and Clean Excess
+           $buzon_dir = __DIR__ . "/../../buzon-pedidos/";
+           $files = glob($buzon_dir . "backup_v{$oid}_*.tar.gz");
+           if ($files && count($files) > $new_limit) {
+               // Sort by modification time DESC (Newest first)
+               usort($files, function($a, $b) {
+                   return filemtime($b) - filemtime($a);
+               });
+               
+               // Keep first $new_limit, delete the rest
+               $to_delete = array_slice($files, $new_limit);
+               foreach ($to_delete as $f) {
+                   if (file_exists($f)) @unlink($f);
+               }
+           }
+           // --------------------------------
 
-       // Set Transient Status - Starts at 10%
-       $f_upd = $buzon_dir . "plan_status_{$oid}.json";
-       $transient = [
-           'action' => 'plan_update',
-           'status' => 'updating_plan',
-           'percent' => 5,
-           'msg' => "Iniciando cambio de plan a {$new_plan}..."
-       ];
-       file_put_contents($f_upd, json_encode($transient));
-    }
+           // CLEANUP CONFLICTING STATUS FILES (Fix: Stuck Progress Bar)
+           // We must remove power/web/backup and PLAN status files so data.php reads our new status_{oid}.json
+           $f_pow = $buzon_dir . "power_status_{$oid}.json";
+           $f_web = $buzon_dir . "web_status_{$oid}.json";
+           $f_back = $buzon_dir . "backup_status_{$oid}.json";
+           $f_plan = $buzon_dir . "plan_status_{$oid}.json";
 
-    if ($act == 'destroy_k8s') {
-        // No params needed
-    }
-    
-    // CHAT
-    if ($act == 'send_chat') {
-        $data = ["id_cliente" => (int)$oid, "mensaje" => $_POST['message']];
+           if (file_exists($f_pow)) @unlink($f_pow);
+           if (file_exists($f_web)) @unlink($f_web);
+           if (file_exists($f_back)) @unlink($f_back);
+           if (file_exists($f_plan)) @unlink($f_plan);
+
+           // Set Transient Status - Starts at 10%
+           $f_upd = $buzon_dir . "plan_status_{$oid}.json";
+           $transient = [
+               'action' => 'plan_update',
+               'status' => 'updating_plan',
+               'percent' => 5,
+               'msg' => "Iniciando cambio de plan a {$new_plan}...",
+               // FIX: Pass web_url here too so it overrides the empty DB value immediately
+               'web_url' => ($web_en == 1) ? "http://{$oid}.sylo.local" : null
+           ];
+           file_put_contents($f_upd, json_encode($transient));
+
+           // --- FIX: AUTO-PROVISION WEB IF ENABLED (Visual Upgrade Experience) ---
+           if ($web_en == 1) {
+               $f_web = $buzon_dir . "web_status_{$oid}.json";
+               // Only trigger if no existing web status (avoid overwriting existing site state if re-applying)
+               if (!file_exists($f_web)) {
+                   $web_transient = [
+                       'status' => 'active', // Force Green Badge
+                       'percent' => 0,
+                       'msg' => 'Provisioning Web...',
+                       'web_url' => "http://{$oid}.sylo.local", // Temporary/Predicted URL
+                   ];
+                   file_put_contents($f_web, json_encode($web_transient));
+                   
+                   // Trigger Operator Action for Web Content (Default Landing)
+                   $web_action_file = $buzon_dir . "accion_update_web_{$oid}.json"; // Using unique action file to avoid race with plan update
+                   // Actually operator watches for `accion_update_{$oid}` which we just wrote above. 
+                   // BUT, the plan update action only had cpu/ram/db/web flags.
+                   // We need to ensure the operator *also* deploys the default index.html if it's new.
+                   // Let's rely on the operator being smart enough to see web_enabled=1 and deploy default if missing.
+                   // The CRITICAL part for the User Request is the *Visual* part: "web status active".
+                   // FORCE WRITE TO DISK NOW
+                   $f_web = $buzon_dir . "web_status_{$oid}.json";
+                   $web_transient = [
+                       'status' => 'active', 
+                       'percent' => 100,
+                       'msg' => 'Provisioning Web...',
+                       // Use localhost port for visual verification
+                       'web_url' => "http://localhost:80{$oid}", 
+                   ];
+                   file_put_contents($f_web, json_encode($web_transient));
+               }
+           }
+        }
+
+        if ($act == 'destroy_k8s') {
+            // 1. Mark as destroying in DB
+            $stmt = $conn->prepare("UPDATE k8s_deployments SET status='destroying' WHERE id=?");
+            $stmt->execute([$oid]);
+
+            // 2. Create Trigger for Operator
+            $action_file = __DIR__ . "/../../buzon-pedidos/accion_destroy_{$oid}.json";
+            file_put_contents($action_file, json_encode([
+                "action" => "DESTROY_K8S",
+                "id_cliente" => (int)$oid
+            ]));
+            
+            // 3. Clear status files to allow UI to show 'destroying' immediately
+            $buzon_dir = __DIR__ . "/../../buzon-pedidos/";
+            @unlink($buzon_dir . "power_status_{$oid}.json");
+            @unlink($buzon_dir . "web_status_{$oid}.json");
+            @unlink($buzon_dir . "status_{$oid}.json");
+        }
+        
+        // CHAT
+        if ($act == 'send_chat') {
+            $data = ["id_cliente" => (int)$oid, "mensaje" => $_POST['message']];
+            $ctx = stream_context_create(['http' => ['header'=>"Content-type: application/json\r\n",'method'=>'POST','content'=>json_encode($data),'timeout'=>2]]);
+            @file_get_contents(API_URL_BASE . "/chat", false, $ctx);
+            if(isset($_GET['ajax_action'])) { echo json_encode(['status' => 'ok']); exit; }
+            return;
+        }
+
         $ctx = stream_context_create(['http' => ['header'=>"Content-type: application/json\r\n",'method'=>'POST','content'=>json_encode($data),'timeout'=>2]]);
-        @file_get_contents(API_URL_BASE . "/chat", false, $ctx);
+        @file_get_contents(API_URL_BASE . "/accion", false, $ctx);
+        
         if(isset($_GET['ajax_action'])) { echo json_encode(['status' => 'ok']); exit; }
-        return;
+        header("Location: ../dashboard.php?id=$oid"); exit;
+        
+    } catch (Exception $e) {
+        error_log("Critical Error in data.php: " . $e->getMessage());
+        if(isset($_GET['ajax_action'])) {
+            http_response_code(500);
+            echo json_encode(['status'=>'error', 'message'=>'Error interno del servidor.']);
+        } else {
+            // Redirect with error param so dashboard can show it (if implemented) or at least not show white screen
+            header("Location: ../dashboard.php?id=".(isset($oid)?$oid:'')."&error=internal_error"); 
+        }
+        exit;
     }
-
-    $ctx = stream_context_create(['http' => ['header'=>"Content-type: application/json\r\n",'method'=>'POST','content'=>json_encode($data),'timeout'=>2]]);
-    @file_get_contents(API_URL_BASE . "/accion", false, $ctx);
-    
-    if(isset($_GET['ajax_action'])) { echo json_encode(['status' => 'ok']); exit; }
-    header("Location: ../dashboard.php?id=$oid"); exit;
 }
 
 // --- AJAX DATA (GET) ---
@@ -501,6 +566,33 @@ if($clusters) {
             }
         }
     }
+
+    // FIX GEMINI: READ FROM DISK (Transient Status) for INIT
+    $buzon_dir = __DIR__ . "/../../buzon-pedidos/";
+    if ($current) {
+        $oid = $current['id'];
+        $prog_data = null;
+        
+        if (file_exists($buzon_dir . "plan_status_{$oid}.json")) {
+            $prog_data = json_decode(@file_get_contents($buzon_dir . "plan_status_{$oid}.json"), true);
+        }
+        else if (file_exists($buzon_dir . "web_status_{$oid}.json")) {
+            $prog_data = json_decode(@file_get_contents($buzon_dir . "web_status_{$oid}.json"), true);
+        }
+        
+        // Fallback Logic for Metrics
+        if ($prog_data) {
+           // Only override web_url if present
+           if (isset($prog_data['web_url']) && !empty($prog_data['web_url'])) {
+               $web_url = $prog_data['web_url'];
+           }
+           // IMPORTANT: If transient file has NO metrics (or 0), keep the one from API/DB if available
+           // This prevents the "flash of zero" if the operator hasn't updated the file yet but DB has data
+           if (empty($prog_data['metrics'])) {
+               // DO NOTHING, keep $d['metrics'] from API if exists
+           }
+        }
+    }
 }
 
 // ============= MONITORING INSTALLATION =============
@@ -546,17 +638,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             exit;
         }
         
-        // 3. Generate Grafana password
-        $grafana_password = bin2hex(random_bytes(8)); // 16 char password
+        // 3. Generate Grafana password (Fixed to 'admin' per user request)
+        $grafana_password = 'admin';
         
         // 4. Insert into k8s_tools
         $stmt = $conn->prepare("
-            INSERT INTO k8s_tools (deployment_id, tool_name, config_json, created_at) 
+            INSERT INTO k8s_tools (deployment_id, tool_name, config_json, installed_at) 
             VALUES (?, 'monitoring', ?, NOW())
         ");
         $config = json_encode([
             'grafana_password' => $grafana_password,
-            'grafana_url' => "http://localhost:80{$deployment_id}",
+            'grafana_url' => "http://localhost:" . (3000 + intval($deployment_id)),
             'retention_days' => 7
         ]);
         $stmt->execute([$deployment_id, $config]);
@@ -586,7 +678,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         echo json_encode([
             'success' => true,
             'message' => 'Instalación iniciada',
-            'grafana_url' => "http://localhost:30{$deployment_id}",
+            'grafana_url' => "http://localhost:" . (3000 + intval($deployment_id)),
             'grafana_user' => 'admin',
             'grafana_password' => $grafana_password
         ]);

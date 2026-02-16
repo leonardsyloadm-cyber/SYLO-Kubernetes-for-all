@@ -1,0 +1,1 @@
+{"percent": 100, "message": "Despliegue finalizado.", "status": "completed", "metrics": {"cpu": 46.69, "ram": 93.11}, "ssh_cmd": "root@sylo", "web_url": "...", "os_info": "alpine", "installed_tools": ["alpine"], "last_update": 1771199318.4868367}

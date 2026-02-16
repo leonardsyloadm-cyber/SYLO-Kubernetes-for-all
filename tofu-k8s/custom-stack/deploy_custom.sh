@@ -116,7 +116,7 @@ update_status 15 "Arrancando Cluster Personalizado ($STATIC_IP_ARG)..."
 minikube start -p "$CLUSTER_NAME" \
     --driver=docker \
     --cni=calico \
-    --static-ip "$STATIC_IP_ARG" \
+    ${STATIC_IP_ARG:+--static-ip=$STATIC_IP_ARG} \
     --cpus=$VM_CPU --memory=${VM_RAM_MB}m \
     --addons=default-storageclass,ingress,metrics-server \
     --force >> "$LOG_FILE" 2>&1

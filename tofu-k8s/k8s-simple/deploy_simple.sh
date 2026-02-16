@@ -76,7 +76,7 @@ minikube start -p "$CLUSTER_NAME" \
     --driver=docker \
     --cni=calico \
     --static-ip "$STATIC_IP_ARG" \
-    --cpus=1 --memory=1100m \
+    --cpus=2 --memory=3000m \
     --addons=default-storageclass,metrics-server \
     --force >> "$LOG_FILE" 2>&1
 

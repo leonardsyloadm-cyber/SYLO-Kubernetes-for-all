@@ -116,41 +116,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && !in_arra
 
         if ($act == 'update_web') {
             $data['html_content'] = $_POST['html_content'];
-            // SMART LINKING (Fix Blinking & Status Flop)
-            // en vez de borrar todo (Reset), leemos el ultimo estado conocido
-            // y creamos un archivo temporal 'web_status' con status='active'.
-            // Asi el dashboard sigue viendo las metricas y el badge verde mientras arranca el Operator.
             
+            // DIRECT ACTION (Bypass API)
+            $action_file = __DIR__ . "/../../buzon-pedidos/accion_update_web_{$oid}.json";
+            $payload = [
+                "action" => "UPDATE_WEB",
+                "id_cliente" => (int)$oid,
+                "html_content" => $_POST['html_content']
+            ];
+            file_put_contents($action_file, json_encode($payload));
+
+            // SMART LINKING (Visual Feedback)
             $dir = __DIR__ . "/../../buzon-pedidos/";
             $f_web = $dir . "web_status_{$oid}.json";
-            $f_gen = $dir . "status_{$oid}.json";
-            $f_pow = $dir . "power_status_{$oid}.json";
             
-            // 1. Intentar rescatar datos viejos (para no perder SSH/Metrics visualmente)
-            $old_data = [];
-            if (file_exists($f_web)) $old_data = json_decode(file_get_contents($f_web), true);
-            else if (file_exists($f_gen)) $old_data = json_decode(file_get_contents($f_gen), true);
-            
-            // 2. Preparar el estado 'Transitorio'
+            // Transient Status
             $transient = [
-                'status' => 'active', // Mantiene el badge VERDE
-                'percent' => 0,
-                'msg' => 'Iniciando...', // Mensaje inicial
-                'metrics' => $old_data['metrics'] ?? null,   // Persistir Metricas
-                'ssh_cmd' => $old_data['ssh_cmd'] ?? null,   // Persistir SSH
-                'web_url' => $old_data['web_url'] ?? null,   // Persistir URL
-                'os_info' => $old_data['os_info'] ?? null,
-                'ssh_pass'=> $old_data['ssh_pass'] ?? null
+                'status' => 'active', 
+                'percent' => 100,
+                'msg' => 'Web Actualizada',
+                'web_url' => "http://localhost:" . (8000 + intval($oid))
             ];
-            
-            // 3. Escribir el nuevo archivo web_status YA (para que data.php lo lea inmediatamente)
             file_put_contents($f_web, json_encode($transient));
             
-            // 4. Borrar el genérico y power para evitar conflictos de prioridad
-            if (file_exists($f_gen)) @unlink($f_gen);
-            if (file_exists($f_pow)) @unlink($f_pow);
-            if (file_exists($f_gen)) @unlink($f_gen);
-            if (file_exists($f_pow)) @unlink($f_pow);
+            header("Location: ../dashboard.php?id=$oid"); exit;
         }
         
         // ACTION: CHANGE PLAN (Prioridad 1)
@@ -275,7 +264,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && !in_arra
                        'percent' => 100,
                        'msg' => 'Provisioning Web...',
                        // Use localhost port for visual verification
-                       'web_url' => "http://localhost:80{$oid}", 
+                       'web_url' => "http://localhost:" . (8000 + intval($oid)), 
                    ];
                    file_put_contents($f_web, json_encode($web_transient));
                }
@@ -695,7 +684,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         
     } catch (Exception $e) {
         error_log("Error installing monitoring: " . $e->getMessage());
-        echo json_encode(['success' => false, 'error' => 'Error del servidor']);
+        echo json_encode(['success' => false, 'error' => 'Error del servidor: ' . $e->getMessage()]);
     }
     exit;
 }

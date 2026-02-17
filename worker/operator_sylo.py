@@ -876,17 +876,17 @@ def process_metrics():
 
                         # 4. THROTTLED PORT FORWARD CHECK (Once every 60s per OID)
                         now = time.time()
+                        pf_url = None
                         if oid not in last_pf_check or (now - last_pf_check[oid] > 60):
                             pf_url = ensure_port_forward(oid, profile, web_en)
                             ensure_monitoring_port_forward(oid, profile) # Self-heal monitoring too
                             last_pf_check[oid] = now
-                            url = pf_url if pf_url else (f"http://{sub}.sylobi.org" if sub else "...")
+                        
+                        # 🔥 FIX: Calculate URL always to prevent variable leakage from previous iteration
+                        if sub:
+                            url = f"http://{sub}.sylobi.org"
                         else:
-                            # Use cached/constructed URL logic if needed, or just assume it's fine
-                            # For reporting, we can't easily get the ephemeral port without checking, 
-                            # but we can try to guess or just allow '...' if it's stable.
-                            # Better: Assume standard port if verified recently.
-                            url = f"http://localhost:80{oid}" if web_en == "1" else "..."
+                            url = pf_url if pf_url else f"http://localhost:{8000+int(oid)}"
 
                         tools = []
                         if os_img: tools.append(os_img)

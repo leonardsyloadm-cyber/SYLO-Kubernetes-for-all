@@ -7,3 +7,10 @@ terraform.tfstate
 terraform.tfstate.backup
 .terraform/
 .minikube/
+
+# Secretos y credenciales — NO subir a GitHub
+config_secrets.py
+labsuser.pem
+secretos.txt
+*.log
+/tmp/sylo_nginx_map.json

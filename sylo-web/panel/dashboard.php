@@ -31,11 +31,44 @@ if (isset($installed_tools) && in_array('monitoring', $installed_tools) && isset
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css" />
     <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
-    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="css/style.css?v=<?=time()?>">
+    <style>
+        /* CRITICAL INLINE CSS FOR OVERLAY */
+        .loading-overlay {
+            position: fixed !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100vw !important;
+            height: 100vh !important;
+            background: rgba(15, 23, 42, 0.95) !important;
+            z-index: 100000 !important;
+            display: none !important;
+            align-items: center;
+            justify-content: center;
+            flex-direction: column;
+            backdrop-filter: blur(5px);
+        }
+        .loading-overlay.active {
+            display: flex !important;
+        }
+    </style>
 </head>
 <body>
 <div class="toast-container" id="toastContainer"></div>
 <!-- ... existing code ... -->
+
+
+<!-- LOADING OVERLAY -->
+<div class="loading-overlay" id="loadingOverlay">
+    <div class="loader-spinner"></div>
+    <div class="loader-content">
+        <h3 class="fw-bold mb-2">Procesando...</h3>
+        <p class="text-light-muted mb-0" id="overlayText">Por favor, espere.</p>
+        <div class="progress progress-thin mt-3" style="width: 300px; height: 6px; background: rgba(255,255,255,0.1);">
+            <div id="overlayProgressBar" class="progress-bar bg-info shadow-glow" role="progressbar" style="width: 0%"></div>
+        </div>
+    </div>
+</div>
 
 <div class="sidebar">
     <div class="brand"><i class="bi bi-cpu-fill text-primary me-2"></i><strong>SYLO</strong>_OS</div>
@@ -358,6 +391,32 @@ if (isset($installed_tools) && in_array('monitoring', $installed_tools) && isset
                     <div id="delete-ui" style="display:none" class="mt-3"><div class="progress" style="height:4px"><div id="delete-bar" class="progress-bar bg-danger" style="width:0%"></div></div><small class="text-danger d-block mt-1" data-i18n="backend.deleting">Deleting...</small></div>
 
                     <div id="backups-list-container" class="mt-3"></div>
+                    
+                    <!-- CLOUD BACKUPS (AWS S3) -->
+                    <div class="mt-4 pt-3 border-top border-secondary border-opacity-25">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                             <h6 class="fw-bold text-white m-0"><i class="fab fa-aws text-warning me-2"></i>Cloud Backups (S3)</h6>
+                             <button class="btn btn-sm btn-dark border-secondary hover-white" onclick="manualRefresh()"><i class="fas fa-sync-alt"></i></button>
+                        </div>
+                        <div class="table-responsive rounded border border-secondary border-opacity-25 bg-black bg-opacity-25" style="max-height: 200px; overflow-y: auto;">
+                            <table class="table table-dark table-hover mb-0 small align-middle">
+                                <thead>
+                                    <tr>
+                                        <th class="text-secondary ps-3">Archivo</th>
+                                        <th class="text-secondary">Fecha</th>
+                                        <th class="text-secondary">Tamaño</th>
+                                        <th class="text-secondary text-end pe-3">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="s3-list-container">
+                                    <tr><td colspan="4" class="text-center py-3 text-muted"><i class="fas fa-spinner fa-spin me-2"></i>Cargando nube...</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="mt-2 text-end">
+                            <small class="text-muted fst-italic me-2">Los backups en nube son independientes de los locales.</small>
+                        </div>
+                    </div>
                 </div>
                 
                 <div class="mt-4 pt-3 border-top border-secondary border-opacity-25 text-center">
@@ -365,6 +424,17 @@ if (isset($installed_tools) && in_array('monitoring', $installed_tools) && isset
                         <button class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#changePlanModal">
                             <i class="bi bi-sliders me-2"></i><span data-i18n="dashboard.change_plan">Cambiar Plan</span>
                         </button>
+                        
+                        <!-- PANIC BUTTON (AWS AMI) -->
+                        <div class="position-relative">
+                            <button id="btn-panic-ami" class="btn btn-danger w-100 fw-bold border border-danger shadow-glow-red" onclick="createAMI()">
+                                <i class="bi bi-radioactive me-2"></i>PANIC BUTTON: CREAR AMI
+                            </button>
+                            <div id="ami-countdown" class="text-center small text-danger mt-1 fw-bold" style="display:none; text-shadow: 0 0 5px rgba(220,53,69,0.5);">
+                                <i class="bi bi-hourglass-split me-1"></i>Cooldown: <span id="ami-hours">24</span>h restantes
+                            </div>
+                        </div>
+
                         <button class="btn btn-outline-danger btn-sm" onclick="destroyK8s()">
                             <i class="bi bi-radioactive me-2"></i><span data-i18n="dashboard.destroy_k8s">Destruir Kubernetes</span>
                         </button>

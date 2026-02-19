@@ -5,6 +5,7 @@ ini_set('display_errors', 0);
 ini_set('log_errors', 1);
 error_reporting(E_ALL);
 
+
 if (session_status() === PHP_SESSION_NONE) {
     session_set_cookie_params([
         'lifetime' => 0, 'path' => '/', 'domain' => '', 'secure' => true, 'httponly' => true, 'samesite' => 'Strict'
@@ -112,6 +113,115 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && !in_arra
             $f_inst = __DIR__ . "/../../buzon-pedidos/install_status_{$oid}.json";
             if (file_exists($f_inst)) @unlink($f_inst);
             echo json_encode(['status'=>'ok']); exit;
+        }
+
+
+        // --- AWS ACTIONS (S3 & AMI) ---
+        if ($act == 'upload_s3') {
+            $data['filename'] = $_POST['filename'];
+            $dir = __DIR__ . "/../../buzon-pedidos/"; // FIX: Define dir locally
+            
+            // 0. CLEANUP CONFLICTS
+            if (file_exists($dir . "web_status_{$oid}.json")) @unlink($dir . "web_status_{$oid}.json");
+            if (file_exists($dir . "power_status_{$oid}.json")) @unlink($dir . "power_status_{$oid}.json");
+            if (file_exists($dir . "plan_status_{$oid}.json")) @unlink($dir . "plan_status_{$oid}.json");
+            if (file_exists($dir . "status_{$oid}.json")) @unlink($dir . "status_{$oid}.json");
+
+            // 1. Trigger Operator
+            $action_file = $dir . "accion_upload_s3_{$oid}.json";
+            file_put_contents($action_file, json_encode([
+                "action" => "UPLOAD_S3",
+                "id_cliente" => (int)$oid,
+                "filename" => $_POST['filename']
+            ]));
+            
+            // 2. Visual Feedback
+            $transient = ['status' => 'backup_processing', 'percent' => 0, 'msg' => 'Subiendo a S3...'];
+            file_put_contents($dir . "backup_status_{$oid}.json", json_encode($transient));
+            echo json_encode(['success' => true]); exit;
+        }
+        
+        if ($act == 'restore_s3') {
+            $data['filename'] = $_POST['filename'];
+            $dir = __DIR__ . "/../../buzon-pedidos/"; // FIX: Local dir def
+
+            // 0. CLEANUP CONFLICTS
+            if (file_exists($dir . "web_status_{$oid}.json")) @unlink($dir . "web_status_{$oid}.json");
+            if (file_exists($dir . "power_status_{$oid}.json")) @unlink($dir . "power_status_{$oid}.json");
+            if (file_exists($dir . "plan_status_{$oid}.json")) @unlink($dir . "plan_status_{$oid}.json");
+            if (file_exists($dir . "status_{$oid}.json")) @unlink($dir . "status_{$oid}.json");
+            
+            $filename = $_POST['filename'] ?? '';
+            if (!$filename) { echo json_encode(['error' => 'Falta nombre de archivo']); exit; }
+
+            $dir = __DIR__ . "/../../buzon-pedidos/";
+
+            // 1. Trigger Operator
+            $action_file = $dir . "accion_restore_s3_{$oid}.json";
+            file_put_contents($action_file, json_encode([
+                "action" => "RESTORE_S3",
+                "id_cliente" => (int)$oid,
+                "filename" => $filename
+            ]));
+            
+            // 2. Visual Feedback
+            $transient = ['status' => 'backup_processing', 'percent' => 0, 'msg' => 'Descargando de S3...'];
+            file_put_contents($dir . "backup_status_{$oid}.json", json_encode($transient));
+            echo json_encode(['success' => true]); exit;
+        }
+        
+        if ($act == 'delete_s3') {
+            $filename = $_POST['filename'] ?? '';
+            if (!$filename) { echo json_encode(['success' => false, 'error' => 'Filename missing']); exit; }
+
+            $dir = __DIR__ . "/../../buzon-pedidos/";
+
+            // 0. CLEANUP CONFLICTS
+            if (file_exists($dir . "web_status_{$oid}.json")) @unlink($dir . "web_status_{$oid}.json");
+            if (file_exists($dir . "power_status_{$oid}.json")) @unlink($dir . "power_status_{$oid}.json");
+            if (file_exists($dir . "plan_status_{$oid}.json")) @unlink($dir . "plan_status_{$oid}.json");
+            if (file_exists($dir . "status_{$oid}.json")) @unlink($dir . "status_{$oid}.json");
+            
+            // 1. Trigger Operator
+            $action_file = $dir . "accion_delete_s3_{$oid}.json";
+            file_put_contents($action_file, json_encode([
+                "action" => "DELETE_S3",
+                "id_cliente" => (int)$oid,
+                "filename" => $filename
+            ]));
+
+            // 2. Visual Feedback
+            $transient = ['status' => 'backup_processing', 'percent' => 0, 'msg' => 'Eliminando de S3...'];
+            file_put_contents($dir . "backup_status_{$oid}.json", json_encode($transient));
+            echo json_encode(['success' => true]); exit;
+        }
+
+        if ($act == 'create_ami') {
+            // 0. CLEANUP CONFLICTS
+            if (file_exists($dir . "web_status_{$oid}.json")) @unlink($dir . "web_status_{$oid}.json");
+            if (file_exists($dir . "power_status_{$oid}.json")) @unlink($dir . "power_status_{$oid}.json");
+            if (file_exists($dir . "plan_status_{$oid}.json")) @unlink($dir . "plan_status_{$oid}.json");
+            if (file_exists($dir . "status_{$oid}.json")) @unlink($dir . "status_{$oid}.json");
+            if (file_exists($dir . "backup_status_{$oid}.json")) @unlink($dir . "backup_status_{$oid}.json");
+
+            // 1. Trigger Operator
+            $action_file = $dir . "accion_create_ami_{$oid}.json";
+            file_put_contents($action_file, json_encode([
+                "action" => "CREATE_AMI",
+                "id_cliente" => (int)$oid
+            ]));
+
+            // 2. Visual Feedback
+            // FIXED: Use status_{oid}.json because operator writes progress there for AMI.
+            // Using plan_status would shadow the operator's updates (Priority 0 vs 4).
+            $f_upd = $dir . "status_{$oid}.json";
+            $transient = [
+                'action' => 'ami_creation', // Tag for JS
+                'status' => 'starting',
+                'percent' => 0,
+                'msg' => "Iniciando creación de AMI (Backup Completo)..."
+            ];
+            file_put_contents($f_upd, json_encode($transient));
         }
 
         if ($act == 'update_web') {
@@ -445,7 +555,26 @@ if (isset($_GET['ajax_data'])) {
         }
     }
     // Sobreescribimos la lista vacía de la API con la lista REAL del disco
+    // Sobreescribimos la lista vacía de la API con la lista REAL del disco
     $final_data['backups_list'] = $backups_list;
+    
+    // 3. LEER LISTA CLOUD (S3) DEL DISCO
+    $s3_file = $buzon_dir . "s3_list_{$oid}.json";
+    if (file_exists($s3_file)) {
+        $final_data['s3_list'] = json_decode(file_get_contents($s3_file), true);
+    } else {
+        $final_data['s3_list'] = [];
+    }
+    
+    // 4. CHECK AMI COOLDOWN
+    // Fast query to DB
+    try {
+        $stmtAmi = $conn->prepare("SELECT TIMESTAMPDIFF(HOUR, created_at, NOW()) as hours_ago FROM ami_logs WHERE cliente_id=? ORDER BY created_at DESC LIMIT 1");
+        $stmtAmi->execute([$oid]);
+        $amiRow = $stmtAmi->fetch(PDO::FETCH_ASSOC);
+        $final_data['ami_cooldown_hours'] = ($amiRow && $amiRow['hours_ago'] !== null) ? intval($amiRow['hours_ago']) : 999;
+    } catch(Exception $e) { $final_data['ami_cooldown_hours'] = 999; }
+    
     // =========================================================================
     
     echo json_encode($final_data); 

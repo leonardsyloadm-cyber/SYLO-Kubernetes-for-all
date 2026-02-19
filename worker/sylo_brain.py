@@ -55,7 +55,7 @@ def find_ollama():
             r = requests.post(url, json=test_payload, timeout=5)
             if r.status_code == 200:
                 print(" ✅ OK!")
-                OLLAMA_URL = "http://172.17.0.1:11434/api/generate"
+                OLLAMA_URL = url
                 return True
             print(f" ❌ ({r.status_code})")
         except:
@@ -81,11 +81,23 @@ SYLO_DOCS = """
    - SE HACEN: En el panel derecho, sección 'Snapshots', botón 'Crear Snapshot'.
    - LÍMITES: Bronce (0), Plata (3), Oro (5).
 
-3. BASE DE DATOS:
+3. BACKUPS EN LA NUBE (AWS S3):
+   - Además de snapshots locales, puedes subir copias a la nube de AWS.
+   - En la sección 'Cloud Backups', verás los archivos subidos.
+   - Son independientes de las copias locales. Si borras una local, la de la nube sigue ahí.
+   - Para subir: Pulsa el icono de nube en la lista de backups locales. (Requiere Plan Oro o Addon Cloud).
+
+4. BASE DE DATOS:
    - Planes Plata y Oro incluyen MySQL.
    - Para ver la contraseña: Mira la tarjeta 'Accesos de Sistema' en el Dashboard.
 
-4. ESTADO DEL SERVIDOR:
+5. RECUPERACIÓN DE DESASTRES (AMI PANIC BUTTON):
+   - En caso de emergencia extrema (hackeo total, destrucción de datos), usa el 'PANIC BUTTON' en la zona de peligro.
+   - Esto crea una IMAGEN COMPLETA (AMI) del servidor en AWS.
+   - Tiene un COOLDOWN DE 24 HORAS. No se puede usar más de una vez al día.
+   - Cuesta dinero en AWS, úsalo con responsabilidad.
+
+6. ESTADO DEL SERVIDOR:
    - Si la CPU está al 100%, recomienda reiniciar usando el botón 'Reiniciar' en 'Control de Energía'.
 """
 

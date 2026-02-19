@@ -7,4 +7,5 @@ customtkinter==5.2.2
    Pillow
 fastapi
 uvicorn
-docker
+dockerboto3
+boto3

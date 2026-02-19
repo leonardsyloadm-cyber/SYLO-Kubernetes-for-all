@@ -10,7 +10,9 @@ let completionLock = 0; // Previene leer '100%' de ejecuciones anteriores
 let stateLockTimestamp = 0; // FIX RACE CONDITION: Ignore 100% for X seconds
 let isBackupLoading = false;
 let activePowerOp = null;
+
 let powerModal = null;
+
 
 function sendPowerAction(action) {
     activePowerOp = action;
@@ -392,29 +394,28 @@ function loadData() {
                         let isComplete = false;
                         let customMsg = "";
 
+
                         // 1. Prioritize REAL PROGRESS from Operator (if API updated)
-                        if (gp) {
-                            // Check if general_progress matches our power op intent or is plan update
-                            // Check if general_progress matches our power op intent or is plan/install update
-                            if (
-                                gp.action === 'plan_update' || gp.action === 'install_tool' ||
-                                (gp.status && (
-                                    gp.status.includes('stopping') || gp.status.includes('starting') || gp.status.includes('restarting') ||
-                                    gp.status === 'stopped' || gp.status === 'active' || gp.status === 'online' || gp.status === 'terminated' ||
-                                    gp.status === 'started' || gp.status === 'restarted' || gp.status === 'completed'
-                                ))) {
-                                targetProgress = parseInt(gp.percent) || parseInt(gp.progress) || 10;
-                                if (targetProgress >= 100) isComplete = true;
-                                if (gp.status === 'error') {
-                                    isComplete = true;
-                                    targetProgress = 100; // Fill bar to show error clearly
-                                    if (pBar) { pBar.classList.remove('bg-primary'); pBar.classList.add('bg-danger'); }
-                                } else {
-                                    if (pBar) { pBar.classList.remove('bg-danger'); pBar.classList.add('bg-primary'); }
-                                }
-                                if (gp.msg) customMsg = gp.msg;
+
+                        if (gp && (
+                            gp.action === 'ami_creation' || gp.action === 'ami' || gp.action === 'plan_update' || gp.action === 'install_tool' ||
+                            (gp.status && (
+                                gp.status.includes('stopping') || gp.status.includes('starting') || gp.status.includes('restarting') ||
+                                gp.status === 'stopped' || gp.status === 'active' || gp.status === 'online' || gp.status === 'terminated' ||
+                                gp.status === 'started' || gp.status === 'restarted' || gp.status === 'completed'
+                            )))) {
+                            targetProgress = parseInt(gp.percent) || parseInt(gp.progress) || 10;
+                            if (targetProgress >= 100) isComplete = true;
+                            if (gp.status === 'error') {
+                                isComplete = true;
+                                targetProgress = 100; // Fill bar to show error clearly
+                                if (pBar) { pBar.classList.remove('bg-primary'); pBar.classList.add('bg-danger'); }
+                            } else {
+                                if (pBar) { pBar.classList.remove('bg-danger'); pBar.classList.add('bg-primary'); }
                             }
+                            if (gp.msg) customMsg = gp.msg;
                         }
+
 
                         // Fallbacks...
                         if (!customMsg) {
@@ -472,6 +473,27 @@ function loadData() {
                     }
                     // --- END POWER POLLING ---
 
+                    // --- AWS UI UPDATES ---
+                    if (d.s3_list) renderS3List(d.s3_list);
+
+                    if (d.ami_cooldown_hours !== undefined) {
+                        const btnPanic = document.getElementById('btn-panic-ami');
+                        const divCount = document.getElementById('ami-countdown');
+                        const spanHours = document.getElementById('ami-hours');
+
+                        if (btnPanic && divCount && spanHours) {
+                            if (d.ami_cooldown_hours < 24) {
+                                btnPanic.classList.add('disabled');
+                                divCount.style.display = 'block';
+                                spanHours.innerText = (24 - d.ami_cooldown_hours);
+                            } else {
+                                btnPanic.classList.remove('disabled');
+                                divCount.style.display = 'none';
+                            }
+                        }
+                    }
+                    // ----------------------
+
                     // =========================================================
                     // 🛠️ FIX GEMINI: VISUALIZAR CREACIÓN Y WEB
                     // =========================================================
@@ -492,6 +514,7 @@ function loadData() {
                                 // Dynamic Title
                                 const titleEl = modalEl.querySelector('.modal-title');
                                 if (titleEl) {
+                                    const gp = d.general_progress;
                                     if (gp.action === 'install_tool') titleEl.innerText = "Instalación de Software";
                                     else if (gp.action === 'plan_update') titleEl.innerText = "Actualización de Plan";
                                     else titleEl.innerText = "Control de Energía";
@@ -582,20 +605,86 @@ function loadData() {
                             badge.className = `badge px-3 py-2 rounded-pill shadow-sm border ${isOnline ? 'bg-success bg-opacity-10 text-success border-success' : 'bg-danger bg-opacity-10 text-danger border-danger'}`;
                         }
 
-                        // Buttons Vis
-                        const activeCtrls = document.getElementById('controls-active');
-                        const inactiveCtrls = document.getElementById('controls-inactive');
-                        if (activeCtrls && inactiveCtrls) {
-                            if (isOnline) {
-                                activeCtrls.style.display = 'block';
-                                inactiveCtrls.style.display = 'none';
+                    }
+
+                    // LOADING OVERLAY SYNC (S3 / Power / ETC)
+                    const prog = d.general_progress;
+                    if (prog && (prog.status === 'uploading' || prog.source_type === 'backup')) {
+                        // Ensure Overlay is Visible if it matches our active operation
+                        const overlay = document.getElementById('loadingOverlay');
+                        if (overlay && !overlay.classList.contains('active')) overlay.classList.add('active'); // Auto-show if missed
+
+                        if (overlay && overlay.classList.contains('active')) {
+                            const pBar = document.getElementById('overlayProgressBar');
+                            const pText = document.getElementById('overlayText');
+
+                            if (pBar) {
+                                const currentP = parseInt(prog.percent || prog.progress || 0);
+                                pBar.style.width = currentP + '%';
+                                // Success State
+                                if (currentP >= 100) {
+                                    pBar.className = 'progress-bar bg-success';
+                                    if (pText) {
+                                        // Dynamic Success Message
+                                        if (prog.msg && prog.msg.includes('Elimin')) pText.innerText = "Eliminación Completada";
+                                        else if (prog.msg && prog.msg.includes('Subi')) pText.innerText = "Subida Completada y Verificada";
+                                        else pText.innerText = prog.msg || "Operación Completada";
+                                    }
+
+                                    // Hide after 2s
+                                    setTimeout(() => {
+                                        overlay.classList.remove('active');
+                                        // FIX: Dismiss backend file to prevent re-opening
+                                        fetch('php/data.php?ajax_action=1', {
+                                            method: 'POST',
+                                            body: new URLSearchParams({ action: 'dismiss_backup', order_id: orderId })
+                                        });
+                                        loadData(); // Refresh list to show new cloud icon
+                                    }, 2000);
+                                }
+                            }
+
+                            if (pText && parseInt(prog.percent || prog.progress || 0) < 100) pText.innerText = prog.msg || "Subiendo...";
+                        }
+                    }
+
+
+                    // AMI / PANIC BUTTON STATUS
+                    const panicBtn = document.getElementById('btn-panic-ami');
+                    if (panicBtn) {
+                        // Check if current progress is AMI related
+                        const prog = d.general_progress;
+                        // Check specifically for AMI action or status
+                        if (prog && (prog.action === 'ami' || prog.action === 'create_ami' || prog.action === 'ami_creation')) {
+                            if (prog.status === 'error') {
+                                panicBtn.className = 'btn btn-danger w-100 fw-bold border border-danger shadow-glow-red';
+                                panicBtn.innerHTML = '<i class="bi bi-exclamation-triangle me-2"></i>Error: ' + (prog.msg || 'Fallo');
+                                // Auto-reset button after error (optional, logic similar to backups)
+                                setTimeout(() => { panicBtn.innerHTML = '<i class="bi bi-radioactive me-2"></i>PANIC BUTTON: CREAR AMI'; }, 5000);
+                            } else if (parseInt(prog.percent) >= 100) {
+                                panicBtn.className = 'btn btn-success w-100 fw-bold border border-success';
+                                panicBtn.innerHTML = '<i class="bi bi-check-circle me-2"></i>AMI Creada Exitosamente';
+                                setTimeout(() => { panicBtn.className = 'btn btn-danger w-100 fw-bold border border-danger shadow-glow-red'; panicBtn.innerHTML = '<i class="bi bi-radioactive me-2"></i>PANIC BUTTON: CREAR AMI'; }, 5000);
                             } else {
-                                activeCtrls.style.display = 'none';
-                                inactiveCtrls.style.display = 'block';
+                                // Processing
+                                panicBtn.className = 'btn btn-warning w-100 fw-bold border border-warning text-dark';
+                                panicBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>${prog.msg || 'Creando AMI...'} (${prog.percent}%)`;
                             }
                         }
                     }
 
+                    // Buttons Vis
+                    const activeCtrls = document.getElementById('controls-active');
+                    const inactiveCtrls = document.getElementById('controls-inactive');
+                    if (activeCtrls && inactiveCtrls) {
+                        if (isOnline) {
+                            activeCtrls.style.display = 'block';
+                            inactiveCtrls.style.display = 'none';
+                        } else {
+                            activeCtrls.style.display = 'none';
+                            inactiveCtrls.style.display = 'block';
+                        }
+                    }
                 }
             } catch (e) { }
 
@@ -638,7 +727,8 @@ function loadData() {
                 let showD = false;
 
                 // Detectamos si hay una operación de backup activa
-                if (pb && (pb.status === 'backup_processing' || pb.status === 'creating' || pb.status === 'restoring' || (pb.msg && (pb.msg.includes('Backup') || pb.msg.includes('Snapshot') || pb.msg.includes('Restaurando') || pb.msg.includes('Eliminando'))))) {
+                // Detectamos si hay una operación de backup activa
+                if (pb && (pb.status === 'backup_processing' || pb.status === 'uploading' || pb.status === 'creating' || pb.status === 'restoring' || (pb.msg && (pb.msg.includes('Backup') || pb.msg.includes('Snapshot') || pb.msg.includes('Restaurando') || pb.msg.includes('Eliminando'))))) {
 
                     const m = pb.msg || "Procesando...";
                     const isDelete = m.includes('Eliminando');
@@ -647,7 +737,7 @@ function loadData() {
                     if (isDelete) showD = true;
                     else showB = true;
 
-                    const p = parseInt(pb.progress) || 0;
+                    const p = parseInt(pb.percent || pb.progress) || 0;
                     const uiToShow = isDelete ? dUi : bUi;
                     const bar = isDelete ? dBar : bBar;
                     const txt = document.getElementById('backup-status-text');
@@ -664,8 +754,21 @@ function loadData() {
                     const translatedMsg = translateBackendMsg(m);
                     if (txt && !isDelete) txt.innerText = translatedMsg;
 
-                    // Completion Logic
-                    if (p >= 100) {
+                    // Completion & Error Logic
+                    if (pb.status === 'error') {
+                        if (bar) {
+                            bar.className = 'progress-bar bg-danger';
+                            bar.style.width = '100%';
+                        }
+                        // Auto-dismiss error after 5s
+                        if (isBackupLoading) {
+                            isBackupLoading = false;
+                            setTimeout(() => {
+                                fetch('php/data.php?ajax_action=1', { method: 'POST', body: new URLSearchParams({ action: 'dismiss_backup', order_id: orderId }) });
+                                loadData();
+                            }, 5000);
+                        }
+                    } else if (p >= 100) {
                         if (bar) { bar.className = 'progress-bar bg-success'; bar.style.width = '100%'; }
                         if (txt && !isDelete) txt.innerText = window.SyloLang?.get('backend.completed') || "Completado";
 
@@ -712,9 +815,26 @@ function loadData() {
                     let html = '';
                     [...d.backups_list].reverse().forEach(b => {
                         let typeClass = b.type == 'FULL' ? 'bg-primary' : (b.type == 'DIFF' ? 'bg-warning text-dark' : 'bg-info text-dark');
-                        html += `<div class="backup-item d-flex justify-content-between align-items-center mb-2 p-2 rounded" style="background:rgba(255,255,255,0.05)"><div class="text-white"><span class="fw-bold">${b.name.replace(/'/g, "")}</span> <span class="badge ${typeClass} ms-2">${b.type.toUpperCase()}</span><div class="small text-light-muted">${b.date}</div></div><div class="d-flex gap-2"><button onclick="restoreBackup('${b.file}', '${b.name.replace(/'/g, "")}')" class="btn btn-sm btn-outline-success"><i class="bi bi-arrow-counterclockwise"></i></button><button onclick="deleteBackup('${b.file}', '${b.type}', '${b.name.replace(/'/g, "")}')" class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button></div></div>`;
+                        html += `<div class="backup-item d-flex justify-content-between align-items-center mb-2 p-2 rounded" style="background:rgba(255,255,255,0.05)">
+                                    <div class="text-white">
+                                        <span class="fw-bold">${b.name.replace(/'/g, "")}</span> 
+                                        <span class="badge ${typeClass} ms-2">${b.type.toUpperCase()}</span>
+                                        <div class="small text-light-muted">${b.date}</div>
+                                    </div>
+                                    <div class="d-flex gap-2">
+                                        <button onclick="uploadBackup('${b.file}')" class="btn btn-sm btn-outline-warning" title="Subir a AWS S3"><i class="bi bi-cloud-upload"></i></button>
+                                        <button onclick="restoreBackup('${b.file}', '${b.name.replace(/'/g, "")}')" class="btn btn-sm btn-outline-success" title="Restaurar"><i class="bi bi-arrow-counterclockwise"></i></button>
+                                        <button onclick="deleteBackup('${b.file}', '${b.type}', '${b.name.replace(/'/g, "")}')" class="btn btn-sm btn-outline-danger" title="Eliminar"><i class="bi bi-trash"></i></button>
+                                    </div>
+                                </div>`;
                     });
-                    list.innerHTML = html || `<div class="p-4 text-center border-dashed rounded text-light-muted small"><i class="bi bi-inbox me-2"></i><span data-i18n="dashboard.no_snapshots">${window.SyloLang?.get('dashboard.no_snapshots') || 'Sin copias disponibles.'}</span></div>`;
+
+                    const finalHtml = html || `<div class="p-4 text-center border-dashed rounded text-light-muted small"><i class="bi bi-inbox me-2"></i><span data-i18n="dashboard.no_snapshots">${window.SyloLang?.get('dashboard.no_snapshots') || 'Sin copias disponibles.'}</span></div>`;
+
+                    // FIX: Simple & Robust Flicker Prevention
+                    if (list.innerHTML !== finalHtml) {
+                        list.innerHTML = finalHtml;
+                    }
                 }
 
             } catch (e) { }
@@ -767,7 +887,6 @@ function loadData() {
                     }
                 }
             } catch (e) { }
-
         })
         .catch(err => { console.log("Esperando datos...", err); });
 }
@@ -838,4 +957,192 @@ function submitPlanChange() {
             alert("Error al comunicarse con el servidor. Por favor recarga la página.");
             if (powerModal) powerModal.hide();
         });
+}
+// =============================================================================
+// ☁️ AWS INTEGRATION (S3 & AMI)
+// =============================================================================
+
+function uploadBackup(filename) {
+    syloConfirm('Subir a AWS', `¿Subir "${filename}" a la nube de AWS?`, 'Subir', 'info')
+        .then(yes => {
+            if (!yes) return;
+
+            // SHOW LOADING OVERLAY
+            const overlay = document.getElementById('loadingOverlay');
+            const overlayText = document.getElementById('overlayText');
+            const overlayBar = document.getElementById('overlayProgressBar');
+
+            if (overlay) {
+                overlay.classList.add('active');
+                if (overlayText) overlayText.innerText = "Iniciando subida a S3...";
+                if (overlayBar) {
+                    overlayBar.style.width = '5%';
+                    overlayBar.className = 'progress-bar bg-info shadow-glow';
+                }
+            }
+
+            const formData = new FormData();
+            formData.append('action', 'upload_s3');
+            formData.append('order_id', orderId);
+            formData.append('filename', filename);
+
+            fetch('php/data.php?ajax_action=1', { method: 'POST', body: formData })
+                .then(r => r.json())
+                .then(data => {
+                    console.log("Upload started:", data);
+                })
+                .catch(e => {
+                    console.error(e);
+                    if (overlay) overlay.classList.remove('active');
+                    showToast("Error al iniciar subida.", "error");
+                });
+        });
+}
+
+
+window.restoreFromS3 = function (filename) {
+    syloConfirm('Descargar de Nube', `¿Descargar "${filename}" desde AWS S3 a Local?\n\nEsto lo añadirá a tu lista de backups locales.`, 'Descargar', 'info')
+        .then(yes => {
+            if (!yes) return;
+
+            // SHOW LOADING OVERLAY
+            const overlay = document.getElementById('loadingOverlay');
+            const overlayText = document.getElementById('overlayText');
+            const overlayBar = document.getElementById('overlayProgressBar');
+            const overlayPercentage = document.getElementById('overlayPercentage');
+
+            if (overlay) {
+                overlay.classList.add('active');
+                if (overlayText) overlayText.innerText = "Iniciando descarga...";
+                if (overlayBar) {
+                    overlayBar.style.width = '0%';
+                    overlayBar.className = 'progress-bar bg-info shadow-glow'; // Blue for download
+                }
+                if (overlayPercentage) overlayPercentage.innerText = "0%";
+            }
+
+            const formData = new FormData();
+            formData.append('action', 'restore_s3');
+            formData.append('order_id', orderId);
+            formData.append('filename', filename);
+
+            fetch('php/data.php?ajax_action=1', { method: 'POST', body: formData })
+                .then(r => r.json())
+                .then(data => {
+                    console.log("Restore started:", data);
+                    // Polling is handled globally by loadData()
+                })
+                .catch(e => {
+                    console.error("RESTORE ERROR", e);
+                    if (overlay) overlay.classList.remove('active');
+                    showToast("Error al iniciar descarga.", "error");
+                });
+        });
+}
+
+
+
+window.deleteFromS3 = function (filename) {
+    syloConfirm('Borrar de Nube', `¿Eliminar "${filename}" de AWS S3 permanentemente?`, 'Eliminar', 'danger')
+        .then(yes => {
+            if (!yes) return;
+
+            // SHOW LOADING OVERLAY (Same as Upload)
+            const overlay = document.getElementById('loadingOverlay');
+            const overlayText = document.getElementById('overlayText');
+            const overlayBar = document.getElementById('overlayProgressBar');
+            const overlayPercentage = document.getElementById('overlayPercentage');
+
+            if (overlay) {
+                overlay.classList.add('active');
+                if (overlayText) overlayText.innerText = "Iniciando eliminación...";
+                if (overlayBar) {
+                    overlayBar.style.width = '0%';
+                    overlayBar.className = 'progress-bar bg-danger shadow-glow'; // Red for delete
+                }
+                if (overlayPercentage) overlayPercentage.innerText = "0%";
+            }
+
+            const formData = new FormData();
+            formData.append('action', 'delete_s3');
+            formData.append('order_id', orderId);
+            formData.append('filename', filename);
+
+            fetch('php/data.php?ajax_action=1', { method: 'POST', body: formData })
+                .then(r => r.json())
+                .then(data => {
+                    console.log("Delete started:", data);
+                    // Polling is handled globally by loadData()
+                })
+                .catch(e => {
+                    console.error("DELETE ERROR", e);
+                    if (overlay) overlay.classList.remove('active');
+                    showToast("Error al iniciar eliminación.", "error");
+                });
+        });
+}
+
+function createAMI() {
+    // Cooldown check
+    const btn = document.getElementById('btn-panic-ami');
+    if (btn && btn.classList.contains('disabled')) return;
+
+    syloConfirm('🔥 BOTÓN DE PÁNICO 🔥', "¿Crear una imagen completa (AMI) del servidor en AWS?\n\nEsto es para Recuperación de Desastres.\nTiene un coste en AWS y un Cooldown de 24h.", 'Crear AMI', 'danger')
+        .then(yes => {
+            if (!yes) return;
+
+            // SHOW LOADING MODAL FOR AMI
+            const powerModalEl = document.getElementById('powerModal');
+            if (powerModalEl) {
+                if (!powerModal) powerModal = new bootstrap.Modal(powerModalEl);
+                powerModal.show();
+
+                const pBar = document.getElementById('power-progress-bar');
+                const pText = document.getElementById('power-status-text');
+                const pTitle = document.getElementById('powerModalLabel');
+
+                if (pBar) { pBar.className = 'progress-bar progress-bar-striped progress-bar-animated bg-danger'; pBar.style.width = '10%'; }
+                if (pText) pText.innerText = "Iniciando Creación de AMI...";
+                // Fix for missing element ID
+                const titleEl = powerModalEl.querySelector('.modal-title');
+                if (titleEl) titleEl.innerHTML = '<i class="bi bi-radioactive me-2"></i>Creando AMI...';
+            }
+
+            const formData = new FormData();
+            formData.append('action', 'create_ami');
+            formData.append('order_id', orderId);
+
+            fetch('php/data.php?ajax_action=1', { method: 'POST', body: formData })
+                .then(r => r.json())
+                .catch(e => {
+                    console.error(e);
+                    if (powerModal) powerModal.hide();
+                    showToast("Error al solicitar AMI.", "error");
+                });
+        });
+}
+
+function renderS3List(list) {
+    const container = document.getElementById('s3-list-container');
+    if (!container) return;
+
+    if (!list || list.length === 0) {
+        container.innerHTML = '<tr><td colspan="4" class="text-center text-muted">No hay backups en la nube.</td></tr>';
+        return;
+    }
+
+    let html = '';
+    list.forEach(f => {
+        // Safe ID for DOM
+        const safeName = f.file.replace(/[^a-z0-9]/gi, '_');
+        html += '<tr id="row-s3-' + safeName + '">';
+        html += '<td><i class="fab fa-aws text-warning me-2"></i> ' + f.file + '</td>';
+        html += '<td>' + f.date + '</td>';
+        html += '<td>' + f.size + ' ' + (f.size_unit || 'MB') + '</td>';
+        html += '<td class="text-end">';
+        html += '<button class="btn btn-sm btn-outline-info me-1" onclick="restoreFromS3(\'' + f.file + '\')" title="Restaurar al Servidor"><i class="fas fa-cloud-download-alt"></i></button>';
+        html += '<button class="btn btn-sm btn-outline-danger" onclick="deleteFromS3(\'' + f.file + '\')" title="Eliminar de Nube"><i class="fas fa-trash"></i></button>';
+        html += '</td></tr>';
+    });
+    container.innerHTML = html;
 }

@@ -191,6 +191,33 @@ fi
 # SSH siempre activo
 kubectl wait --for=condition=available deployment/ssh-server --timeout=300s >> "$LOG_FILE" 2>&1
 
+# --- INGRESS: EXPONER WEB POR SUBDOMINIO ---
+if [ "$WEB_ENABLED" = "true" ] && [ -n "$SUBDOMAIN" ]; then
+    update_status 88 "Configurando acceso web por dominio..."
+    kubectl apply -f - >> "$LOG_FILE" 2>&1 << INGRESSEOF
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: ${SUBDOMAIN}.sylobi.org
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web-service
+            port:
+              number: 80
+INGRESSEOF
+    echo "Ingress creado para ${SUBDOMAIN}.sylobi.org" >> "$LOG_FILE"
+fi
+
 # --- FINAL ---
 update_status 90 "Finalizando..."
 HOST_IP=$(minikube ip -p "$CLUSTER_NAME")
@@ -233,6 +260,15 @@ INFO_TEXT="$INFO_TEXT
 User: $SSH_USER
 Pass: $SSH_PASS"
 
+# Construir URL web correcta (subdominio si está disponible, sino IP:Puerto)
+if [ -n "$SUBDOMAIN" ] && [ "$WEB_ENABLED" = "true" ]; then
+    FINAL_WEB_URL="http://${SUBDOMAIN}.sylobi.org"
+elif [ "$WEB_ENABLED" = "true" ] && [ "$WEB_PORT" != "N/A" ]; then
+    FINAL_WEB_URL="http://${HOST_IP}:${WEB_PORT}"
+else
+    FINAL_WEB_URL=""
+fi
+
 # --- JSON SEGURO ---
 python3 -c "
 import json
@@ -245,11 +281,11 @@ data = {
     'ssh_cmd': sys.argv[1], 
     'ssh_pass': sys.argv[2],
     'os_info': sys.argv[3],
-    'web_url': sys.argv[4] if sys.argv[4] != 'N/A' else ''
+    'web_url': sys.argv[4]
 }
 
 with open('$BUZON_STATUS', 'w') as f:
     json.dump(data, f)
-" "$CMD_SSH" "$INFO_TEXT" "$OS_PRETTY" "$WEB_PORT"
+" "$CMD_SSH" "$INFO_TEXT" "$OS_PRETTY" "$FINAL_WEB_URL"
 
 echo "✅ Despliegue Custom completado."

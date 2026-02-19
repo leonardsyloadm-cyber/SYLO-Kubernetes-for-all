@@ -249,6 +249,18 @@ def push_final_credentials(oid, profile, subdomain, ip_cluster, os_real_name="Li
         requests.post(f"{API_URL}/reportar/metricas", json=payload, timeout=2)
         log(f"✅ Reporte enviado a API: {web_url} [{os_display}]", Colors.GREEN)
         
+        # 🌐 AUTO-REGISTRAR SUBDOMINIO EN NGINX
+        if subdomain and subdomain != "No Web Service":
+            try:
+                nginx_mgr = os.path.join(WORKER_DIR, "sylo_nginx_manager.py")
+                subprocess.run(
+                    [sys.executable, nginx_mgr, "add", str(oid), subdomain],
+                    timeout=10, capture_output=True
+                )
+                log(f"🌐 Nginx actualizado: {subdomain}.sylobi.org → :{8000+int(oid)}", Colors.GREEN)
+            except Exception as ne:
+                log(f"⚠️ No se pudo actualizar nginx: {ne}", Colors.YELLOW)
+        
     except Exception as e: 
         log(f"⚠️ Error enviando reporte: {e}", Colors.RED)
 

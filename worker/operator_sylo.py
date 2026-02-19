@@ -5,6 +5,23 @@ import sys, os, subprocess, time, json, datetime, threading, signal, shutil, tar
 os.environ['PATH'] = os.environ.get('PATH', '') + ':' + os.path.expanduser('~/bin')
 
 # ==============================================================================
+# ☁️ AWS CONFIGURATION
+# ==============================================================================
+try:
+    import boto3
+    from botocore.exceptions import ClientError
+    from botocore.config import Config
+except ImportError:
+    print("⚠️ Falta 'boto3'. AWS features deshabilitadas.")
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+try:
+    import config_secrets
+except ImportError:
+    print("⚠️ Falta 'config_secrets.py'. Credenciales AWS no disponibles.")
+
+
+# ==============================================================================
 # ⚙️ CONFIGURACIÓN
 # ==============================================================================
 sys.stdout.reconfigure(line_buffering=True)
@@ -82,25 +99,23 @@ def report_progress(oid, tipo, status, pct, msg):
     try:
         # Definir nombre de archivo segun tipo
         f_name = f"status_{oid}.json"
+        
         if tipo == "power": f_name = f"power_status_{oid}.json"
         elif tipo == "backup": f_name = f"backup_status_{oid}.json"
         elif tipo == "web" or tipo == "web_updating": f_name = f"web_status_{oid}.json"
+        elif tipo == "plan_update": f_name = f"plan_status_{oid}.json"
+        elif tipo == "ami": f_name = f"status_{oid}.json" # AMI uses generic but needs action tag
         
         file_path = os.path.join(BUZON, f_name)
         
         # Mapeo de action para que el frontend lo reconozca
         payload = {
             "id_cliente": int(oid), 
+            "action": tipo, 
             "status": status, 
-            "percent": int(pct), 
-            "msg": str(msg),
-            "message": str(msg) # Redundancia
+            "percent": pct,
+            "msg": msg
         }
-        if tipo == "plan_update": 
-            payload["action"] = "plan_update"
-            # Force filename to specialist status for plan updates to avoid race condition with metrics
-            f_name = f"plan_status_{oid}.json"
-            file_path = os.path.join(BUZON, f_name)
 
         tmp_path = file_path + ".tmp"
         with open(tmp_path, 'w') as f: json.dump(payload, f)
@@ -201,7 +216,7 @@ def handle_plan_update(oid, profile, new_specs_arg):
             "cpu": parts[0], "ram": parts[1],
             "db_en": parts[2], "db_type": parts[3], "db_name": parts[4],
             "web_en": parts[5], "web_type": parts[6], "web_name": parts[7],
-            "sub": parts[8], "os": parts[9], "user": parts[10], "owner": parts[10] # user_id mapped to owner
+            "sub": parts[8], "os": parts[9], "user": parts[10], "owner": str(oid) # user_id mapped to owner
         }
         
         # B. DETECT CURRENT STATE (For user feedback)
@@ -644,6 +659,307 @@ def _power_up_logic(oid, profile, is_restart=False):
     log(f"🟢 CLIENTE {oid} ONLINE", C_GREEN)
     if int(oid) in blocked_cids: blocked_cids.remove(int(oid))
 
+
+# ==============================================================================
+# ☁️ AWS INTEGRATION (S3 & AMI)
+# ==============================================================================
+def get_aws_client(service):
+    my_config = Config(
+        region_name=config_secrets.AWS_REGION,
+        retries={'mode': 'standard'}
+    )
+    return boto3.client(
+        service,
+        aws_access_key_id=config_secrets.AWS_ACCESS_KEY,
+        aws_secret_access_key=config_secrets.AWS_SECRET_KEY,
+        aws_session_token=config_secrets.AWS_SESSION_TOKEN,
+        region_name=config_secrets.AWS_REGION,
+        config=my_config,
+        verify=False
+    )
+
+def get_client_username(oid):
+    try:
+        # Query DB via Docker Exec to get username linked to this deployment (oid)
+        cmd = f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D sylo_admin_db -e "SELECT u.username FROM users u JOIN k8s_deployments k ON k.user_id = u.id WHERE k.id={oid}"'
+        username = run_command(cmd, silent=True).strip()
+        if username: return username
+    except: pass
+    return f"cliente_{oid}" # Fallback
+
+def get_cluster_alias(oid):
+    """Devuelve el alias del cluster limpio para usar como carpeta S3."""
+    try:
+        import re
+        cmd = f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D sylo_admin_db -e "SELECT cluster_alias FROM k8s_deployments WHERE id={oid}"'
+        alias = run_command(cmd, silent=True).strip()
+        if alias and alias.upper() != 'NULL' and len(alias) > 0:
+            # Sanitize: keep only alphanumeric, dashes, underscores and spaces->underscore
+            safe = re.sub(r'[^\w\-]', '_', alias).strip('_')
+            safe = re.sub(r'_+', '_', safe)  # Collapse multiple underscores
+            return safe if safe else f"cluster_{oid}"
+    except:
+        pass
+    return f"cluster_{oid}"  # Fallback
+
+
+def get_pretty_folder_name(filename):
+    # Expected: backup_v{oid}_{TYPE}_{NAME}_{DATE}.tar.gz
+    # Example: backup_v999_full_Webmala_2026.tar.gz -> Full_Webmala
+    try:
+        parts = filename.replace('.tar.gz', '').replace('.zip', '').split('_')
+        # Search for Type indicator
+        for i, part in enumerate(parts):
+            p_lower = part.lower()
+            if p_lower in ['full', 'inc', 'diff', 'incr', 'incremental', 'differential']:
+                if i + 1 < len(parts):
+                    type_str = part.capitalize()
+                    name_str = parts[i+1]
+                    return f"{type_str}_{name_str}"
+    except: pass
+    return filename.replace('.tar.gz', '').replace('.zip', '') # Fallback
+
+def verify_s3_upload(bucket, key):
+    try:
+        s3 = get_aws_client('s3')
+        s3.head_object(Bucket=bucket, Key=key)
+        return True
+    except:
+        return False
+
+def upload_s3(oid, filename):
+    log(f"☁️ UPLOAD S3 START: {filename}", C_CYAN)
+    report_progress(oid, "backup", "uploading", 10, "Iniciando subida a S3...")
+    
+    try:
+        if not filename: raise Exception("Nombre de archivo vacío")
+        local_path = os.path.join(BUZON, filename)
+        if not os.path.exists(local_path): raise Exception(f"Archivo local no encontrado: {local_path}")
+        
+        log(f"   📂 Archivo Local: {local_path} ({os.path.getsize(local_path)} bytes)", C_GREY)
+
+        log("   🔑 Obteniendo cliente AWS S3...", C_GREY)
+        s3 = get_aws_client('s3')
+        bucket = config_secrets.AWS_BUCKET_BACKUP
+        log(f"   bucket: {bucket}", C_GREY)
+        
+        # 1. Determine Key — Structure: username / cluster_alias / Type_BackupName / file
+        real_user = get_client_username(oid)
+        cluster_alias = get_cluster_alias(oid)
+        folder_name = get_pretty_folder_name(filename)
+        key = f"{real_user}/{cluster_alias}/{folder_name}/{filename}"
+        
+        log(f"   🎯 Key Destino: {key}", C_CYAN)
+        
+        # 2. Upload with Progress
+        file_size = os.path.getsize(local_path)
+        bytes_uploaded = 0
+        
+        def progress_cb(bytes_transferred):
+            nonlocal bytes_uploaded
+            bytes_uploaded += bytes_transferred
+            pct = int((bytes_uploaded / file_size) * 100)
+            if pct % 20 == 0: 
+                 log(f"   🚀 Subiendo... {pct}% ({bytes_uploaded}/{file_size})", C_GREY)
+                 report_progress(oid, "backup", "uploading", pct, f"Subiendo a S3... ({pct}%)")
+
+        log("   ⬆️ Iniciando s3.upload_file...", C_YELLOW)
+        s3.upload_file(local_path, bucket, key, Callback=progress_cb)
+        log("   ✅ s3.upload_file completado.", C_GREEN)
+        
+        # 3. VERIFICATION STEP (Strict)
+        log("   🔍 Verificando existencia en S3...", C_YELLOW)
+        report_progress(oid, "backup", "uploading", 99, "Verificando en AWS...")
+        time.sleep(1) 
+        
+        if verify_s3_upload(bucket, key):
+             list_s3(oid)
+             report_progress(oid, "backup", "completed", 100, "Subida Completada y Verificada")
+             log(f"✅ SUBIDO Y VERIFICADO: {key}", C_GREEN)
+        else:
+             log(f"❌ FALLO VERIFICACION: {key}", C_RED)
+             raise Exception("La verificación del archivo en S3 falló tras la subida.")
+
+    except Exception as e:
+        log(f"❌ UPLOAD ERROR EXCEPTION: {e}", C_RED)
+        import traceback
+        log(f"📋 Traceback: {traceback.format_exc()}", C_RED)
+        report_progress(oid, "backup", "error", 0, str(e))
+
+        time.sleep(3)
+        try: os.remove(os.path.join(BUZON, f"backup_status_{oid}.json"))
+        except: pass
+
+def list_s3(oid):
+    try:
+        s3 = get_aws_client('s3')
+        bucket = config_secrets.AWS_BUCKET_BACKUP
+        real_user = get_client_username(oid)
+        prefix = f"{real_user}/"
+        
+        resp = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
+        files = []
+        if 'Contents' in resp:
+            for obj in resp['Contents']:
+                fname = os.path.basename(obj['Key'])
+                # 🔥 FIX: solo incluir backups que pertenezcan a este OID
+                if not fname.startswith(f"backup_v{oid}_"):
+                    continue
+                size_bytes = obj['Size']
+                if size_bytes >= 1024 * 1024:
+                    size_display = round(size_bytes / 1024 / 1024, 2)
+                    size_unit = "MB"
+                else:
+                    size_display = round(size_bytes / 1024, 1)
+                    size_unit = "KB"
+                last_mod = obj['LastModified'].strftime('%Y-%m-%d %H:%M:%S')
+                files.append({"file": fname, "size": size_display, "size_unit": size_unit, "date": last_mod, "key": obj['Key']})
+        
+        with open(os.path.join(BUZON, f"s3_list_{oid}.json"), "w") as f:
+            json.dump(files, f)
+            
+    except Exception as e:
+        log(f"⚠️ Error List S3: {e}", C_RED)
+
+def restore_s3(oid, profile, filename):
+    log(f"☁️ RESTORE S3: {filename}", C_CYAN)
+    report_progress(oid, "backup", "downloading", 10, "Iniciando descarga de S3...")
+    
+    try:
+        s3 = get_aws_client('s3')
+        bucket = config_secrets.AWS_BUCKET_BACKUP
+        real_user = get_client_username(oid)
+        
+        # 🔥 FIX: Buscar la key exacta por nombre de archivo (igual que delete_s3)
+        # Funciona con cualquier estructura de carpetas
+        prefix = f"{real_user}/"
+        response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
+        
+        key = None
+        if 'Contents' in response:
+            for obj in response['Contents']:
+                if os.path.basename(obj['Key']) == filename:
+                    key = obj['Key']
+                    log(f"   🎯 Key encontrada: {key}", C_CYAN)
+                    break
+        
+        if not key:
+            raise Exception(f"Archivo '{filename}' no encontrado en S3 bajo prefijo '{prefix}'")
+        
+        local_path = os.path.join(BUZON, filename)
+        log(f"   📥 Descargando {key} -> {local_path}", C_CYAN)
+        report_progress(oid, "backup", "downloading", 30, "Descargando de S3...")
+        
+        s3.download_file(bucket, key, local_path)
+        
+        # Verificar descarga
+        if not os.path.exists(local_path) or os.path.getsize(local_path) == 0:
+            raise Exception("Archivo descargado vacío o no encontrado.")
+        
+        log(f"   ✅ Descargado: {os.path.getsize(local_path)} bytes", C_GREEN)
+        report_progress(oid, "backup", "downloading", 80, "Descarga completada. Restaurando...")
+        
+        # 🔥 FIX 2: Aplicar el backup al pod (antes solo descargaba, nunca restauraba)
+        restore_backup(oid, profile, filename)
+        
+    except Exception as e:
+        log(f"❌ Error Restore S3: {e}", C_RED)
+        report_progress(oid, "backup", "error", 0, f"Error S3: {str(e)}")
+
+
+def delete_s3(oid, filename):
+    log(f"☁️ DELETE S3: {filename}", C_CYAN)
+    
+    if not filename:
+        log("❌ Error Delete S3: Filename is empty", C_RED)
+        report_progress(oid, "backup", "error", 0, "Error S3: Filename is empty")
+        return
+
+    report_progress(oid, "backup", "deleting", 10, "Eliminando de S3...")
+    
+    try:
+        s3 = get_aws_client('s3')
+        bucket = config_secrets.AWS_BUCKET_BACKUP
+        real_user = get_client_username(oid)
+        
+        # 🔥 FIX: Buscar el archivo por nombre exacto en todo el prefijo del usuario
+        # (funciona con cualquier estructura de carpetas: user/folder/file o user/alias/folder/file)
+        prefix = f"{real_user}/"
+        response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
+        
+        objects_to_delete = []
+        if 'Contents' in response:
+            for obj in response['Contents']:
+                if os.path.basename(obj['Key']) == filename:
+                    objects_to_delete.append({'Key': obj['Key']})
+                    log(f"   🎯 Encontrado: {obj['Key']}", C_CYAN)
+        
+        if objects_to_delete:
+            log(f"   🔥 Eliminando {len(objects_to_delete)} objeto(s)...", C_YELLOW)
+            report_progress(oid, "backup", "deleting", 50, f"Eliminando {len(objects_to_delete)} objeto(s)...")
+            s3.delete_objects(Bucket=bucket, Delete={'Objects': objects_to_delete})
+            log("   ✅ Eliminado de S3.", C_GREEN)
+        else:
+            log(f"   ℹ️ Archivo '{filename}' no encontrado en S3 con prefijo '{prefix}'.", C_GREY)
+        
+        # Refresh list
+        list_s3(oid)
+        report_progress(oid, "backup", "completed", 100, "Eliminado correctamente")
+        time.sleep(2)
+        try: os.remove(os.path.join(BUZON, f"backup_status_{oid}.json"))
+        except: pass
+        
+    except Exception as e:
+        log(f"❌ Error Delete S3: {e}", C_RED)
+        report_progress(oid, "backup", "error", 0, f"Error S3: {str(e)}")
+
+
+def create_ami(oid):
+    log(f"🔥 CREATE AMI (PANIC BUTTON): Cliente {oid}", C_RED)
+    report_progress(oid, "ami", "starting", 5, "Verificando Cooldown...")
+    
+    try:
+        # Check Cooldown
+        cmd_chk = f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D sylo_admin_db -e "SELECT TIMESTAMPDIFF(HOUR, created_at, NOW()) FROM ami_logs WHERE cliente_id={oid} ORDER BY created_at DESC LIMIT 1"'
+        last_hours = run_command(cmd_chk, silent=True).strip()
+        
+        if last_hours and last_hours != "NULL" and int(last_hours) < 24:
+            raise Exception(f"Cooldown activo. Espera {24 - int(last_hours)} horas.")
+            
+        report_progress(oid, "ami", "starting", 10, "Obteniendo Instance ID...")
+        try:
+            token = requests.put("http://169.254.169.254/latest/api/token", headers={"X-aws-ec2-metadata-token-ttl-seconds": "21600"}, timeout=2).text
+            instance_id = requests.get("http://169.254.169.254/latest/meta-data/instance-id", headers={"X-aws-ec2-metadata-token": token}, timeout=2).text
+        except:
+            instance_id = "i-MANUAL-TEST"
+            
+        report_progress(oid, "ami", "snapshotting", 30, f"Creando Imagen de {instance_id}...")
+        
+        ec2 = get_aws_client('ec2')
+        name = f"Sylo-Backup-Client{oid}-{datetime.datetime.now().strftime('%Y%m%d-%H%M')}"
+        
+        if instance_id.startswith("i-"):
+            resp = ec2.create_image(InstanceId=instance_id, Name=name, NoReboot=True)
+            ami_id = resp['ImageId']
+            ec2.create_tags(Resources=[ami_id], Tags=[{'Key': 'CreatedBy', 'Value': 'SyloPanicButton'}, {'Key': 'ClientId', 'Value': str(oid)}])
+        else:
+            ami_id = "ami-SIMULATED"
+            time.sleep(2)
+            
+        report_progress(oid, "ami", "snapshotting", 80, "Registrando en Base de Datos...")
+        run_command(f'docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D sylo_admin_db -e "INSERT INTO ami_logs (cliente_id, ami_id) VALUES ({oid}, \'{ami_id}\')"', silent=True)
+        
+        report_progress(oid, "ami", "completed", 100, f"AMI Creada: {ami_id}")
+        log(f"✅ AMI CREADA: {ami_id}", C_GREEN)
+        
+        time.sleep(5)
+        try: os.remove(os.path.join(BUZON, f"plan_status_{oid}.json")) 
+        except: pass
+        
+    except Exception as e:
+        log(f"❌ Error AMI: {e}", C_RED)
+        report_progress(oid, "ami", "error", 0, str(e))
+
 # ==============================================================================
 # 🔄 WORKERS
 # ==============================================================================
@@ -669,6 +985,14 @@ def process_task_queue():
                 elif act == "DESTROY_K8S": threading.Thread(target=destroy_k8s_resources, args=(oid, prof)).start()
                 elif act in ["STOP", "START", "RESTART"]: threading.Thread(target=handle_power, args=(oid, prof, act)).start()
                 elif act == "UPDATE_PLAN": threading.Thread(target=handle_plan_update, args=(oid, prof, d.get('new_specs'))).start()
+                # AWS ACTIONS
+                elif act == "UPLOAD_S3": threading.Thread(target=upload_s3, args=(oid, d.get('filename'))).start()
+                elif act == "LIST_S3": threading.Thread(target=list_s3, args=(oid,)).start()
+                elif act == "RESTORE_S3": threading.Thread(target=restore_s3, args=(oid, prof, d.get('filename'))).start()
+                elif act == "DELETE_S3": 
+                    log(f"🔍 DEBUG JSON: {d}", C_YELLOW)
+                    threading.Thread(target=delete_s3, args=(oid, d.get('filename'))).start()
+                elif act == "CREATE_AMI": threading.Thread(target=create_ami, args=(oid,)).start()
                 
             except Exception as e: log(f"⚠️ Error: {e}", C_RED)
         
@@ -839,7 +1163,8 @@ def process_metrics():
                     # 1. OPTIMIZATION: Check Status in DB first
                     try:
                         check_stat = run_command(f'docker exec -i kylo-main-db mysql -N -usylo_app -psylo_app_pass -D sylo_admin_db -e "SELECT status FROM k8s_deployments WHERE id={oid}"', silent=True, timeout=3).strip().lower()
-                        if check_stat != 'active': continue
+                        # FIX: Allow metrics for 'error', 'warning', 'ami', etc. as long as container is running.
+                        if check_stat in ['stopped', 'terminated', 'cancelled', 'offline']: continue
                     except: pass
 
                     # 2. ROBUST METRICS COLLECTION
@@ -906,9 +1231,9 @@ def process_metrics():
                             }, timeout=1)
                         except: pass
                         
-                        # Check backups sparingly? No, this function was simple.
-                        # But report_backups_list might be heavy. Let's keep it for now.
+                        # Refrescar lista de backups locales y S3
                         report_backups_list(oid)
+                        list_s3(oid)
 
                     except Exception as e:
                        # log(f"Metrics loop inner error {oid}: {e}", C_RED)
@@ -1163,6 +1488,25 @@ spec:
   selector: {{app: custom-web}}
   type: NodePort
   ports: [{{port: 80, targetPort: {port_int}}}]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-cliente-{s['owner']}
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: {s['sub']}.sylobi.org
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web-service
+            port:
+              number: 80
 """
     _apply_yaml(profile, yaml)
 
@@ -1420,7 +1764,7 @@ def random_str(length):
 if __name__ == "__main__":
     signal.signal(signal.SIGTERM, signal_handler); signal.signal(signal.SIGINT, signal_handler)
     if not os.path.exists(BUZON): os.makedirs(BUZON)
-    log("=== OPERATOR V55 (SELF-HEAL FIXED) ===", C_GREEN)
+    log("=== OPERATOR V56 (TIME SKEW FIX) ===", C_GREEN)
     t1=threading.Thread(target=process_task_queue, daemon=True); t2=threading.Thread(target=process_metrics, daemon=True)
     t1.start(); t2.start()
     while True: time.sleep(1)

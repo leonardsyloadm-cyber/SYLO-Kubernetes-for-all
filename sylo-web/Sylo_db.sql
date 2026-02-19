@@ -86,6 +86,14 @@ CREATE TABLE sylo_drive_buckets (
     CONSTRAINT fk_drive_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS ami_logs (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    cliente_id INT NOT NULL,
+    ami_id VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX (cliente_id)
+);
+
 -- 2. Planes Estándar (OBLIGATORIO: Necesario para que la web funcione)
 INSERT INTO plans (name, base_price, base_cpu, base_ram, base_storage, description) VALUES
 ('Bronce', 5.00, 1, 1, 10, 'K8s Simple (Alpine)'),

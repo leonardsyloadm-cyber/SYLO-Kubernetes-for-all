@@ -1,0 +1,8 @@
+{
+    "action": "INSTALL_TOOL",
+    "deployment_id": 6,
+    "tool": "monitoring",
+    "subdomain": "webarlanzon",
+    "grafana_password": "admin",
+    "timestamp": 1771578335
+}

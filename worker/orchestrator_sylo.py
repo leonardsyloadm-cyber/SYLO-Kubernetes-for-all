@@ -249,17 +249,48 @@ def push_final_credentials(oid, profile, subdomain, ip_cluster, os_real_name="Li
         requests.post(f"{API_URL}/reportar/metricas", json=payload, timeout=2)
         log(f"✅ Reporte enviado a API: {web_url} [{os_display}]", Colors.GREEN)
         
-        # 🌐 AUTO-REGISTRAR SUBDOMINIO EN NGINX
+        # 🌐 AUTO-REGISTRAR SUBDOMINIO VÍA INGRESS (reemplaza sylo_nginx_manager eliminado)
         if subdomain and subdomain != "No Web Service":
             try:
-                nginx_mgr = os.path.join(WORKER_DIR, "sylo_nginx_manager.py")
+                profile = f"sylo-cliente-{oid}"
+                kubeconfig_tmp = f"/tmp/kubeconfig-{oid}.yaml"
+                # Actualizar kubeconfig aislado para este cluster
                 subprocess.run(
-                    [sys.executable, nginx_mgr, "add", str(oid), subdomain],
+                    ["minikube", "update-context", "-p", profile],
+                    env={**os.environ, "KUBECONFIG": kubeconfig_tmp},
                     timeout=10, capture_output=True
                 )
-                log(f"🌐 Nginx actualizado: {subdomain}.sylobi.org → :{8000+int(oid)}", Colors.GREEN)
+                ingress_yaml = f"""apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web-ingress
+  namespace: default
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: {subdomain}.sylobi.org
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: web-service
+            port:
+              number: 80
+"""
+                subprocess.run(
+                    ["kubectl", "apply", "-f", "-"],
+                    input=ingress_yaml.encode(),
+                    env={**os.environ, "KUBECONFIG": kubeconfig_tmp},
+                    timeout=15, capture_output=True
+                )
+                log(f"🌐 Ingress registrado: {subdomain}.sylobi.org → web-service:80", Colors.GREEN)
             except Exception as ne:
-                log(f"⚠️ No se pudo actualizar nginx: {ne}", Colors.YELLOW)
+                log(f"⚠️ No se pudo registrar ingress: {ne}", Colors.YELLOW)
+
         
     except Exception as e: 
         log(f"⚠️ Error enviando reporte: {e}", Colors.RED)

@@ -1628,10 +1628,30 @@ def install_monitoring_stack(oid, profile, config):
             --timeout 10m \
             --wait"""
         
-        # VISUAL PROGRESS: 30%
-        update_install_status(oid, 30, "Desplegando charts de Prometheus y Grafana (esto puede tardar unos minutos)...", status="installing")
+        # VISUAL PROGRESS: 30% + heartbeat thread while Helm runs (puede tardar 5-10 min)
+        update_install_status(oid, 30, "Desplegando charts de Prometheus y Grafana (puede tardar unos minutos)...", status="installing")
+        
+        helm_messages = [
+            (35, "Descargando imágenes de Prometheus..."),
+            (40, "Descargando imagen de Grafana..."),
+            (45, "Creando ServiceAccounts y RBAC..."),
+            (50, "Configurando ConfigMaps..."),
+            (55, "Iniciando pods de Prometheus..."),
+        ]
+        
+        helm_done = threading.Event()
+        def helm_heartbeat():
+            for pct, msg in helm_messages:
+                if helm_done.is_set(): break
+                time.sleep(20)
+                if not helm_done.is_set():
+                    update_install_status(oid, pct, msg, status="installing")
+        
+        hb_thread = threading.Thread(target=helm_heartbeat, daemon=True)
+        hb_thread.start()
         
         result = run_command(helm_cmd, timeout=900, silent=False)
+        helm_done.set()
         
         if "deployed" in result.lower() or "upgraded" in result.lower():
             log("   ✅ Helm installation successful", C_GREEN)

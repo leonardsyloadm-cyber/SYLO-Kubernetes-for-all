@@ -1,1 +1,1 @@
-{"metrics": {"cpu": 68.13, "ram": 79.03}, "ssh_cmd": "root@sylo", "web_url": "http://paginawebmala.sylobi.org", "os_info": "ubuntu", "installed_tools": ["ubuntu", "nginx"], "last_update": 1771541384.3219197}
+{"metrics": {"cpu": 42.7, "ram": 79.79}, "ssh_cmd": "root@sylo", "web_url": "http://paginawebmala.sylobi.org", "os_info": "ubuntu", "installed_tools": ["ubuntu", "nginx"], "last_update": 1771543588.730427}

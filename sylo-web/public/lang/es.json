@@ -307,5 +307,29 @@
         "verifying": "Verificando...",
         "web_updated": "Web Actualizada",
         "software_empty": "No se han detectado herramientas instaladas."
+    },
+    "corp": {
+        "badge": "NEO-TECH INNOVATION",
+        "h1": "Evolucionamos tu ",
+        "h1_span": "Infraestructura",
+        "lead": "Consultoría Tecnológica Integral. Diseñamos, bastionamos y orquestamos arquitecturas digitales de alto rendimiento con precisión suiza para el mercado global.",
+        "btn_services": "Nuestros Servicios",
+        "btn_panel": "Panel de Clústeres",
+        "btn_login": "Acceso Clientes",
+        "sec_title": "Ingeniería Real",
+        "sec_desc": "Desplegamos soluciones tecnológicas avanzadas, sin fricciones y altamente escalables para empresas exigentes.",
+        "cyber_title": "Ciberseguridad",
+        "cyber_desc": "Realizamos auditorías de penetración profundas, mitigación de vulnerabilidades Zero-Day y bastionado de servidores en producción bajo normativas ISO.",
+        "dev_title": "Desarrollo a Medida",
+        "dev_desc": "Ingeniería de software pura. Diseñamos soluciones nativas y SPA en React, Vue y ecosistemas Python/PHP pensadas para escalar con alto tráfico.",
+        "cloud_title": "Plataforma Cloud",
+        "cloud_badge": "SERVICIO ESTRELLA",
+        "cloud_desc": "Accede a nuestra infraestructura propietaria con AMD Ryzen™ Threadripper™ y almacenamiento NVMe Gen5. Orquesta tu clúster de Kubernetes en segundos.",
+        "cloud_btn": "Desplegar ahora",
+        "team_mission": "NUESTRA MISIÓN",
+        "team_title": "Detrás de la máquina",
+        "team_desc": "Sylo nació en Alicante fruto de la frustración con los proveedores de nube tradicionales limitados y caros. Proveemos los recursos brutos y puros que tus aplicaciones demandan con estética Cyberpunk y rendimiento Hypervisor.",
+        "team_btn": "Repositorio Abierto",
+        "btn_back_home": "Volver al Inicio"
     }
 }

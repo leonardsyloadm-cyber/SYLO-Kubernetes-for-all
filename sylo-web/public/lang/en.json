@@ -307,5 +307,29 @@
         "verifying": "Verifying...",
         "web_updated": "Web Updated",
         "software_empty": "No installed tools detected."
+    },
+    "corp": {
+        "badge": "NEO-TECH INNOVATION",
+        "h1": "Evolving your ",
+        "h1_span": "Infrastructure",
+        "lead": "Comprehensive Tech Consultancy. We design, harden, and orchestrate high-performance digital architectures with Swiss precision for the global market.",
+        "btn_services": "Our Services",
+        "btn_panel": "Clusters Panel",
+        "btn_login": "Client Access",
+        "sec_title": "Real Engineering",
+        "sec_desc": "We deploy advanced, frictionless, and highly scalable technological solutions for demanding enterprises.",
+        "cyber_title": "Cybersecurity",
+        "cyber_desc": "We perform deep penetration audits, Zero-Day vulnerability mitigation, and production server hardening under ISO standards.",
+        "dev_title": "Custom Development",
+        "dev_desc": "Pure software engineering. We design native and SPA solutions in React, Vue, and Python/PHP ecosystems built to scale with high traffic.",
+        "cloud_title": "Cloud Platform",
+        "cloud_badge": "FLAGSHIP SERVICE",
+        "cloud_desc": "Access our proprietary infrastructure powered by AMD Ryzen™ Threadripper™ and NVMe Gen5 storage. Orchestrate your Kubernetes cluster in seconds.",
+        "cloud_btn": "Deploy Now",
+        "team_mission": "OUR MISSION",
+        "team_title": "Behind the Machine",
+        "team_desc": "Sylo was born in Alicante out of frustration with limited and expensive traditional cloud providers. We provide the raw, pure resources your apps demand with Cyberpunk aesthetics and Hypervisor performance.",
+        "team_btn": "Open Repository",
+        "btn_back_home": "Back to Home"
     }
 }

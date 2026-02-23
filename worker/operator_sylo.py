@@ -664,6 +664,9 @@ def _power_up_logic(oid, profile, is_restart=False):
 # ☁️ AWS INTEGRATION (S3 & AMI)
 # ==============================================================================
 def get_aws_client(service):
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    
     my_config = Config(
         region_name=config_secrets.AWS_REGION,
         retries={'mode': 'standard'}
@@ -819,7 +822,8 @@ def list_s3(oid):
             json.dump(files, f)
             
     except Exception as e:
-        log(f"⚠️ Error List S3: {e}", C_RED)
+        if "ExpiredToken" not in str(e) and "InvalidAccessKeyId" not in str(e):
+            log(f"⚠️ Error List S3: {e}", C_RED)
 
 def restore_s3(oid, profile, filename):
     log(f"☁️ RESTORE S3: {filename}", C_CYAN)

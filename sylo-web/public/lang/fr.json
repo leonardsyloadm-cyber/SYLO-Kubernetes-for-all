@@ -286,5 +286,29 @@
         "verifying": "Vérification...",
         "web_updated": "Web Mise à jour",
         "software_empty": "Aucun logiciel installé détecté."
+    },
+    "corp": {
+        "badge": "INNOVATION NEO-TECH",
+        "h1": "Nous faisons évoluer votre ",
+        "h1_span": "Infrastructure",
+        "lead": "Conseil Technologique Intégral. Nous concevons, renforçons et orchestrons des architectures numériques de haute performance avec une précision suisse pour le marché mondial.",
+        "btn_services": "Nos Services",
+        "btn_panel": "Panneau de Clusters",
+        "btn_login": "Accès Client",
+        "sec_title": "Véritable Ingénierie",
+        "sec_desc": "Nous déployons des solutions technologiques avancées, sans friction et hautement évolutives pour des entreprises exigeantes.",
+        "cyber_title": "Cybersécurité",
+        "cyber_desc": "Nous réalisons des audits de pénétration profonds, l'atténuation des vulnérabilités Zero-Day et le renforcement des serveurs de production selon les normes ISO.",
+        "dev_title": "Développement sur Mesure",
+        "dev_desc": "Ingénierie logicielle pure. Nous concevons des solutions natives et SPA dans les écosystèmes React, Vue et Python/PHP conçues pour évoluer avec un fort trafic.",
+        "cloud_title": "Plateforme Cloud",
+        "cloud_badge": "SERVICE PHARE",
+        "cloud_desc": "Accédez à notre infrastructure propriétaire avec AMD Ryzen™ Threadripper™ et stockage NVMe Gen5. Orchestrez votre cluster Kubernetes en quelques secondes.",
+        "cloud_btn": "Déployer Maintenant",
+        "team_mission": "NOTRE MISSION",
+        "team_title": "Derrière la machine",
+        "team_desc": "Sylo est née à Alicante de la frustration face aux fournisseurs cloud traditionnels limités et chers. Nous fournissons les ressources brutes et pures dont vos applications ont besoin avec une esthétique Cyberpunk et des performances d'Hyperviseur.",
+        "team_btn": "Dépôt Ouvert",
+        "btn_back_home": "Retour à l'accueil"
     }
 }

@@ -24,8 +24,9 @@
         .bg-light { background-color: #111827 !important; border-color: rgba(255,255,255,0.05); }
         .form-control, .form-select { background-color: var(--input-bg) !important; border-color: #374151 !important; color: #f8fafc !important; }
         .form-control:focus, .form-select:focus { background-color: #111827 !important; border-color: var(--sylo-accent) !important; color: #ffffff !important; box-shadow: 0 0 0 0.25rem rgba(139, 92, 246, 0.25) !important; }
-        .form-control::placeholder, .form-select::placeholder { color: #64748b !important; opacity: 1 !important; }
-        .form-control:focus::placeholder, .form-select:focus::placeholder { color: #94a3b8 !important; }
+        .form-control::placeholder, .form-select::placeholder { color: #cbd5e1 !important; opacity: 1 !important; }
+        .form-control::-webkit-input-placeholder, .form-select::-webkit-input-placeholder { color: #cbd5e1 !important; opacity: 1 !important; }
+        .form-control::-moz-placeholder, .form-select::-moz-placeholder { color: #cbd5e1 !important; opacity: 1 !important; }
         .modal-content { background-color: var(--sylo-card); color: white; border: 1px solid rgba(139, 92, 246, 0.3); box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5); }
         
         .hero { padding: 140px 0 100px; background: linear-gradient(180deg, var(--sylo-bg) 0%, var(--sylo-card) 100%); }

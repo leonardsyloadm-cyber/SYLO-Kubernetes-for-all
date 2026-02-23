@@ -24,8 +24,12 @@ require_once 'php/auth.php';
         .info-card, .bg-white { background-color: var(--sylo-card) !important; color: var(--sylo-text); }
         [data-theme="dark"] .text-muted { color: #94a3b8 !important; }
         [data-theme="dark"] .bg-light { background-color: #1e293b !important; border-color: #334155; }
-        [data-theme="dark"] .form-control, [data-theme="dark"] .form-select { background-color: var(--input-bg); border-color: #475569; color: white; }
-        [data-theme="dark"] .modal-content { background-color: var(--sylo-card); color: white; }
+        [data-theme="dark"] .form-control, [data-theme="dark"] .form-select { background-color: var(--input-bg) !important; border-color: #475569 !important; color: #f8fafc !important; }
+        [data-theme="dark"] .form-control::placeholder, [data-theme="dark"] .form-select::placeholder { color: #cbd5e1 !important; opacity: 1 !important; }
+        [data-theme="dark"] .form-control::-webkit-input-placeholder, [data-theme="dark"] .form-select::-webkit-input-placeholder { color: #cbd5e1 !important; opacity: 1 !important; }
+        [data-theme="dark"] .form-control::-moz-placeholder, [data-theme="dark"] .form-select::-moz-placeholder { color: #cbd5e1 !important; opacity: 1 !important; }
+        [data-theme="dark"] .form-control:focus, [data-theme="dark"] .form-select:focus { background-color: #111827 !important; color: #ffffff !important; border-color: var(--sylo-accent) !important; box-shadow: 0 0 0 0.25rem rgba(139, 92, 246, 0.25) !important; }
+        [data-theme="dark"] .modal-content { background-color: var(--sylo-card); color: white; border: 1px solid rgba(139, 92, 246, 0.3) !important; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5) !important; }
         
         .hero { padding: 140px 0 100px; background: linear-gradient(180deg, var(--sylo-bg) 0%, var(--sylo-card) 100%); }
         

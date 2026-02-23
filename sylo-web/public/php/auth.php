@@ -141,7 +141,7 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
             session_regenerate_id(true); // Security: Prevent Session Fixation
             $_SESSION['user_id'] = $u['id']; $_SESSION['username'] = $u['username']; $_SESSION['company'] = $u['company_name']; 
             $_SESSION['role'] = $u['role']; // CRITICAL: PRESERVED ROLE
-            echo json_encode(["status"=>"success"]);
+            echo json_encode(["status"=>"success", "redirect"=>"panel.php"]);
         } else echo json_encode(["status"=>"error", "mensaje"=>"Credenciales inválidas"]);
         exit;
     }

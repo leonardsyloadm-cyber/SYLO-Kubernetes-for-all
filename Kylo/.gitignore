@@ -33,3 +33,12 @@ kylo.cat
 # Compiled Classes (if outside target)
 *.class
 kylo_system/
+
+# Environment and Large Binaries
+java_env/
+apache-maven-3.9.9/
+*.zip
+*.php.bak
+dump_db.php
+test_db.php
+logout.php

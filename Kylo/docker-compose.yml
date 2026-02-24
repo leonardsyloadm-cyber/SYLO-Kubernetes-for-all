@@ -6,7 +6,7 @@ services:
     container_name: kylo-node-1
     ports:
       - "8080:8080" # Web Interface
-      - "3307:3307" # MySQL Protocol
+      - "3307:3308" # MySQL Protocol
     volumes:
       - kylo-data:/app/kylo_storage
     restart: unless-stopped

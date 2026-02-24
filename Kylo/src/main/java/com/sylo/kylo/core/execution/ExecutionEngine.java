@@ -458,6 +458,23 @@ public class ExecutionEngine {
         }
     }
 
+    public void dropTable(String tableName) {
+        TableStorage ts = tableStorage.remove(tableName);
+        if (ts != null) {
+            ts.close();
+        }
+        
+        // Physical deletion
+        String safeName = tableName.replaceAll(":", "_");
+        File dbFile = new File(dataDir, safeName + ".db");
+        if (dbFile.exists()) {
+            boolean deleted = dbFile.delete();
+            System.out.println("ExecutionEngine: Physically deleted " + dbFile.getAbsolutePath() + ": " + deleted);
+        }
+        
+        // Also cleanup IndexManager if needed, but it's handled by Catalog usually.
+    }
+
     public synchronized void close() {
         for (TableStorage ts : tableStorage.values()) {
             ts.close();

@@ -15,13 +15,15 @@ public class KyloServer {
         System.out.println("💎 KyloDB v34 AUTO-WIPE SERVER Online...");
 
         // AUTO-WIPE LOGIC
-        // User requested: "cada vez que iniciemos el java ... se borren todos los datos
-        // actuales y se reinicie"
-        java.io.File systemDir = new java.io.File("kylo_system");
-        if (systemDir.exists()) {
-            System.out.println("🧹 Auto-Wipe: Deleting previous data...");
-            deleteRecursively(systemDir);
-            System.out.println("✨ System Cleaned.");
+        // User requested: "cada vez que iniciemos el java ... se borren todos los datos actuales y se reinicie"
+        String[] wipePaths = {"kylo_system", "/app/kylo_storage"};
+        for (String path : wipePaths) {
+            java.io.File dir = new java.io.File(path);
+            if (dir.exists()) {
+                System.out.println("🧹 Auto-Wipe: Deleting " + path + "...");
+                deleteRecursively(dir);
+                System.out.println("✨ " + path + " Cleaned.");
+            }
         }
 
         // Init Engine
@@ -63,6 +65,9 @@ public class KyloServer {
 
         // Start Bootstrapper for Security
         new com.sylo.kylo.core.security.SystemBootstrapper(engine).bootstrap();
+
+        // Start Bootstrapper for Application (kylo_core)
+        new ApplicationBootstrapper(engine).bootstrap();
 
         // Start Operation Impostor (MySQL Layer)
         new com.sylo.kylo.net.KyloProtocolServer(3308, engine).start();

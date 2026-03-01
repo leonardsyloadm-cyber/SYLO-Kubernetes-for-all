@@ -49,6 +49,34 @@ services:
       - sylo-network # Se conecta a la misma red para hablar con la web si hace falta
     restart: unless-stopped
 
+  # --- 4. SIEM Ecosistema (Loki y Grafana) ---
+  loki:
+    image: grafana/loki:3.0.0
+    container_name: loki-siem
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./Cerebro/loki-config.yaml:/etc/loki/local-config.yaml
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - sylo-network
+
+  grafana:
+    image: grafana/grafana:10.2.2
+    container_name: grafana-siem
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./Cerebro/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+    networks:
+      - sylo-network
+    depends_on:
+      - loki
+
 volumes:
   db_data:
 

@@ -37,9 +37,9 @@ public class Catalog {
         return new java.util.HashSet<>(databases);
     }
 
-    public void dropDatabase(String dbName) {
+    public java.util.List<String> dropDatabase(String dbName) {
         if (!databases.contains(dbName))
-            return;
+            return new java.util.ArrayList<>();
         databases.remove(dbName);
 
         // Remove all tables belonging to this DB
@@ -52,13 +52,10 @@ public class Catalog {
 
         for (String t : tablesToRemove) {
             tables.remove(t);
-            // Also remove constraints/indexes?
-            // ConstraintManager stores by tableName, so we should clean up there too if
-            // possible
-            // But for now, removing from Catalog tables map is the primary step.
-            System.out.println("Catalog: Dropped table " + t + " due to DROP DATABASE " + dbName);
+            System.out.println("Catalog: Dropped metadata for " + t + " due to DROP DATABASE " + dbName);
         }
         save();
+        return tablesToRemove;
     }
 
     public void createTable(String tableName, Schema schema) {
@@ -74,9 +71,13 @@ public class Catalog {
         return new HashMap<>(tables);
     }
 
-    public void removeTable(String tableName) {
-        tables.remove(tableName);
-        save();
+    public String removeTable(String tableName) {
+        if (tables.containsKey(tableName)) {
+            tables.remove(tableName);
+            save();
+            return tableName;
+        }
+        return null;
     }
 
     public java.util.Set<String> getAllTableNames() {

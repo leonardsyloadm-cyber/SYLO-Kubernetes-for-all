@@ -142,9 +142,9 @@ class ConnectionHandler implements Runnable {
                 }
 
                 // Dispatch
-                // Response sequence usually starts at 1
+                // Response sequence usually starts at 1, so we pass 0 for ++seq to evaluate to 1.
                 try {
-                    dispatcher.dispatch(cmd, packet, out, (byte) 1);
+                    dispatcher.dispatch(cmd, packet, out, (byte) 0);
                 } catch (Exception e) {
                     MySQLPacket.writePacket(out,
                             PacketBuilder.buildError(500, "Internal Server Error: " + e.getMessage()), (byte) 1);

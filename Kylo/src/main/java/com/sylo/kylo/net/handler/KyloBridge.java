@@ -82,8 +82,7 @@ public class KyloBridge {
 
     public void executeQuery(String sql, OutputStream out, byte sequenceId) throws IOException {
         String cleanSql = sql.replaceAll("(?s)/\\*.*?\\*/", "")
-                .replaceAll("--.*", "")
-                .replaceAll("#.*", "")
+                // Aggressive single-line comment strippers removed to prevent breaking strings (like Discord #tags)
                 .trim();
 
         // Specific MySQL System Table Mappings (Singular/Legacy -> Kylo Plural)
@@ -139,6 +138,10 @@ public class KyloBridge {
                 handleInsert(cleanSql, out, sequenceId);
             } else if (upper.startsWith("UPDATE")) {
                 handleUpdate(cleanSql, out, sequenceId);
+            } else if (upper.startsWith("DELETE")) {
+                handleDelete(cleanSql, out, sequenceId);
+            } else if (upper.startsWith("DROP TABLE")) {
+                handleDropTable(cleanSql, out, sequenceId);
             } else if (upper.startsWith("CREATE USER")) {
                 handleCreateUser(cleanSql, out, sequenceId);
             } else if (upper.startsWith("CREATE PROCEDURE") || upper.startsWith("CREATE FUNCTION")) {
@@ -1149,6 +1152,115 @@ public class KyloBridge {
         }
     }
 
+    private void handleDelete(String sql, OutputStream out, byte seq) throws IOException {
+        try {
+            // Pattern: DELETE FROM [db.]table WHERE ...
+            String pattern = "(?i)DELETE\\s+FROM\\s+['`]?(?:(\\w+)\\.)?(\\w+)['`]?(\\s+WHERE\\s+.*)?$";
+            Pattern p = Pattern.compile(pattern, Pattern.DOTALL);
+            Matcher m = p.matcher(sql);
+
+            if (m.find()) {
+                String db = m.group(1);
+                String table = m.group(2);
+                String whereClauseRaw = m.group(3);
+
+                if (db == null)
+                    db = session.getCurrentDatabase();
+                if (db.equalsIgnoreCase("mysql"))
+                    db = "kylo_system";
+
+                String fullTable = db + ":" + table;
+                Schema schema = Catalog.getInstance().getTableSchema(fullTable);
+                if (schema == null)
+                    throw new Exception("Table " + fullTable + " not found");
+
+                // Parse WHERE (Naive equality check only)
+                final int filterColIdx;
+                final Object filterVal;
+
+                if (whereClauseRaw != null) {
+                    String whereClean = whereClauseRaw.trim().substring(5).trim(); // remove WHERE
+                    if (whereClean.contains("=")) {
+                        String[] cond = whereClean.split("=");
+                        String cName = cond[0].trim().replace("`", "");
+                        if (cName.contains("."))
+                            cName = cName.substring(cName.lastIndexOf(".") + 1);
+                        String vRaw = cond[1].trim();
+                        
+                        // Strip trailing junk like LIMIT
+                        String[] separators = new String[] { " LIMIT ", " GROUP BY ", " ORDER BY " };
+                        for (String sep : separators) {
+                            if (vRaw.toUpperCase().contains(sep)) {
+                                vRaw = vRaw.substring(0, vRaw.toUpperCase().indexOf(sep)).trim();
+                            }
+                        }
+
+                        int idx = -1;
+                        for (int i = 0; i < schema.getColumnCount(); i++) {
+                            if (schema.getColumn(i).getName().equalsIgnoreCase(cName)) {
+                                idx = i;
+                                break;
+                            }
+                        }
+                        filterColIdx = idx;
+                        filterVal = (idx != -1) ? parseValue(vRaw, schema.getColumn(idx).getType()) : null;
+                    } else {
+                        filterColIdx = -1;
+                        filterVal = null;
+                    }
+                } else {
+                    filterColIdx = -1;
+                    filterVal = null;
+                }
+
+                java.util.function.Predicate<com.sylo.kylo.core.structure.Tuple> predicate = t -> {
+                    if (whereClauseRaw == null)
+                        return true; // DELETE ALL (TRUNCATE style)
+                    if (filterColIdx == -1)
+                        return false;
+
+                    Object val = t.getValue(filterColIdx);
+                    if (val == null)
+                        return filterVal == null;
+                    return val.toString().equals(filterVal.toString());
+                };
+
+                int deletedCount = engine.deleteTuple(session.getSessionId(), fullTable, predicate);
+                MySQLPacket.writePacket(out, PacketBuilder.buildOk(deletedCount, 0), ++seq);
+            } else {
+                throw new Exception("DELETE syntax not supported yet");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            MySQLPacket.writePacket(out, PacketBuilder.buildError(1064, "DELETE Error: " + e.getMessage()), ++seq);
+        }
+    }
+
+    private void handleDropTable(String sql, OutputStream out, byte seq) throws IOException {
+        try {
+            // Pattern: DROP TABLE [IF EXISTS] [db.]table
+            String pattern = "(?i)DROP\\s+TABLE\\s+(?:IF\\s+EXISTS\\s+)?['`]?(?:(\\w+)\\.)?(\\w+)['`]?";
+            Matcher m = Pattern.compile(pattern).matcher(sql);
+            if (m.find()) {
+                String db = m.group(1);
+                String table = m.group(2);
+                if (db == null) db = session.getCurrentDatabase();
+                if (db != null && db.equalsIgnoreCase("mysql")) db = "kylo_system";
+                
+                String fullTable = (db != null ? db : "Default") + ":" + table;
+                Catalog.getInstance().removeTable(fullTable);
+                engine.dropTable(fullTable);
+                
+                MySQLPacket.writePacket(out, PacketBuilder.buildOk(0, 0), ++seq);
+            } else {
+                throw new Exception("Invalid DROP TABLE syntax");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            MySQLPacket.writePacket(out, PacketBuilder.buildError(1064, "DROP TABLE Error: " + e.getMessage()), ++seq);
+        }
+    }
+
     private void handleShowTables(String sql, OutputStream out, byte seq) throws Exception {
         boolean full = sql.toUpperCase().contains("FULL");
         String targetDb = session.getCurrentDatabase();
@@ -1675,6 +1787,9 @@ public class KyloBridge {
             clean = clean.substring(1, clean.length() - 1);
         else if (clean.startsWith("\"") && clean.endsWith("\""))
             clean = clean.substring(1, clean.length() - 1);
+
+        // Unescape MySQL string escapes injected by PHP PDO emulation
+        clean = clean.replace("\\\"", "\"").replace("\\'", "'").replace("\\\\", "\\");
 
         // Simple type conversion
         // Keep it string for let the Type.validate handle it or conversion
@@ -3447,7 +3562,10 @@ public class KyloBridge {
         Matcher m = p.matcher(sql);
         if (m.find()) {
             String dbName = m.group(1);
-            Catalog.getInstance().dropDatabase(dbName);
+            java.util.List<String> droppedTables = Catalog.getInstance().dropDatabase(dbName);
+            for (String t : droppedTables) {
+                engine.dropTable(t);
+            }
             MySQLPacket.writePacket(out, PacketBuilder.buildOk(0, 0), ++seq);
         } else {
             MySQLPacket.writePacket(out, PacketBuilder.buildError(1064, "Invalid DROP DATABASE syntax"), ++seq);

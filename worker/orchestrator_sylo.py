@@ -24,7 +24,7 @@ SECURITY_DIR = os.path.join(WORKER_DIR, "security")
 
 API_URL = "http://127.0.0.1:8001/api/clientes"
 
-DB_CONTAINER = "kylo-main-db"
+DB_CONTAINER = "sylo-admin-mysql"
 DB_USER = "sylo_app"
 DB_PASS = "sylo_app_pass"
 DB_NAME = "sylo_admin_db"

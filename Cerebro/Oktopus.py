@@ -99,7 +99,7 @@ try:
     import pymysql
     PYMYSQL_INSTALLED = True
 except ImportError: PYMYSQL_INSTALLED = False
-DB_CONFIG = {"host": "127.0.0.1", "user": "root", "password": "root", "database": "sylo_admin_db", "port": 3306}
+DB_CONFIG = {"host": "127.0.0.1", "user": "sylo_app", "password": "sylo_app_pass", "database": "sylo_admin_db", "port": 3306}
 
 # ================= UI HELPERS =================
 class ModernCard(ctk.CTkFrame):

@@ -17,14 +17,14 @@ services:
       - ./sylo-web/buzon-pedidos:/buzon
       - /var/run/docker.sock:/var/run/docker.sock # Para que PHP pueda usar Docker
     depends_on:
-      - kylo-main-db
+      - sylo-admin-mysql
     networks:
       - sylo-network
 
   # --- 2. BASE DE DATOS DEL GESTOR (MySQL Clásico para usuarios/pedidos) ---
-  kylo-main-db:
+  sylo-admin-mysql:
     image: mysql:5.7
-    container_name: kylo-main-db
+    container_name: sylo-admin-mysql
     environment:
       MYSQL_DATABASE: sylo_admin_db
       MYSQL_USER: sylo_app

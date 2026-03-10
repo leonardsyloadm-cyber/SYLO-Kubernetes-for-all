@@ -153,14 +153,14 @@ def update_tool_status(oid, tool_name, status):
     """
     Actualiza el estado de una herramienta en la base de datos.
     """
-    cmd = f"""docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D sylo_admin_db -e "UPDATE k8s_tools SET status='{status}', updated_at=NOW() WHERE deployment_id={oid} AND tool_name='{tool_name}'" """
+    cmd = f"""docker exec -i sylo-admin-mysql mysql -usylo_app -psylo_app_pass -D sylo_admin_db -e "UPDATE k8s_tools SET status='{status}', updated_at=NOW() WHERE deployment_id={oid} AND tool_name='{tool_name}'" """
     run_command(cmd, silent=True)
 
 def delete_tool_record(oid, tool_name):
     """
     Elimina el registro de una herramienta de la base de datos.
     """
-    cmd = f"""docker exec -i kylo-main-db mysql -usylo_app -psylo_app_pass -D sylo_admin_db -e "DELETE FROM k8s_tools WHERE deployment_id={oid} AND tool_name='{tool_name}'" """
+    cmd = f"""docker exec -i sylo-admin-mysql mysql -usylo_app -psylo_app_pass -D sylo_admin_db -e "DELETE FROM k8s_tools WHERE deployment_id={oid} AND tool_name='{tool_name}'" """
     run_command(cmd, silent=True)
 
 # ============= TASK QUEUE INTEGRATION =============

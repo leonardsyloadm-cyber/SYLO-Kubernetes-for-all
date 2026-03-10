@@ -11,7 +11,7 @@ from datetime import datetime
 # ================= CONFIGURACIÓN =================
 WORKER_DIR = os.path.dirname(os.path.abspath(__file__))
 BASE_DIR = os.path.dirname(WORKER_DIR)
-BUZON = os.path.join(BASE_DIR, "buzon-pedidos")
+BUZON = os.path.join(BASE_DIR, "sylo-web", "buzon-pedidos")
 
 MODEL_NAME = "qwen2.5:1.5b" 
 

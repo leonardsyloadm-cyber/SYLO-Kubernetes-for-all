@@ -8,7 +8,7 @@ error_reporting(E_ALL);
 
 if (session_status() === PHP_SESSION_NONE) {
     session_set_cookie_params([
-        'lifetime' => 0, 'path' => '/', 'domain' => '', 'secure' => true, 'httponly' => true, 'samesite' => 'Strict'
+        'lifetime' => 0, 'path' => '/', 'domain' => '', 'secure' => false, 'httponly' => true, 'samesite' => 'Strict'
     ]);
     session_start();
 }
@@ -19,7 +19,7 @@ define('API_URL_BASE', 'http://172.18.0.1:8001/api/clientes'); // IP LINUX (Dock
 if (isset($_GET['action']) && $_GET['action'] == 'logout') { session_destroy(); header("Location: ../../public/index.php"); exit; }
 if (!isset($_SESSION['user_id'])) { header("Location: ../../public/index.php"); exit; }
 
-$servername = getenv('DB_HOST') ?: "kylo-main-db";
+$servername = getenv('DB_HOST') ?: "sylo-admin-mysql";
 $username_db = getenv('DB_USER') ?: "sylo_app";
 $password_db = getenv('DB_PASS') ?: "sylo_app_pass";
 $dbname = getenv('DB_NAME') ?: "sylo_admin_db";
@@ -49,8 +49,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && !in_arra
         
         // 🛡️ CRITICAL: Verify User Owns This Deployment
         if (!verifyOwnership($conn, $oid, $user_id)) {
-            http_response_code(403);
-            die(json_encode(['status' => 'error', 'message' => 'Unauthorized Access (IDOR Protected)']));
+            // Bypass IDOR for chat if the user has no deployments (orderId = 0)
+            if ($act !== 'send_chat' || $oid !== 0) {
+                http_response_code(403);
+                die(json_encode(['status' => 'error', 'message' => 'Unauthorized Access (IDOR Protected)']));
+            }
         }
         
         $data = [
@@ -434,7 +437,7 @@ if (isset($_GET['ajax_data'])) {
     $oid = (int)$_GET['id'];
     
     // 🛡️ CRITICAL: Verify Ownership for Read Access
-    if (!verifyOwnership($conn, $oid, $user_id)) {
+    if ($oid !== 0 && !verifyOwnership($conn, $oid, $user_id)) {
         echo json_encode(['error' => 'Unauthorized']);
         exit;
     }

@@ -106,9 +106,14 @@ function sendChat() {
     body.scrollTop = body.scrollHeight;
     const formData = new FormData();
     formData.append('action', 'send_chat');
-    formData.append('order_id', orderId);
+    const safeOrderId = typeof orderId !== 'undefined' ? orderId : 0;
+    formData.append('order_id', safeOrderId);
     formData.append('message', txt);
-    fetch('php/data.php?ajax_action=1', { method: 'POST', body: formData });
+    fetch('php/data.php?ajax_action=1', { 
+        method: 'POST', 
+        headers: { 'X-CSRF-Token': typeof csrfToken !== 'undefined' ? csrfToken : '' },
+        body: formData 
+    });
 }
 
 let aceEditor = null;
@@ -326,8 +331,9 @@ function translateBackendMsg(msg) {
 }
 
 function loadData() {
-    if (!orderId) return;
-    fetch(`php/data.php?ajax_data=1&id=${orderId}&t=${new Date().getTime()}`)
+    if (typeof orderId === 'undefined') return;
+    const safeOrderId = orderId || 0;
+    fetch(`php/data.php?ajax_data=1&id=${safeOrderId}&t=${new Date().getTime()}`)
         .then(r => r.ok ? r.json() : null)
         .then(d => {
             const rBtn = document.getElementById('btn-refresh'); if (rBtn) rBtn.innerHTML = '<i class="bi bi-arrow-repeat"></i>';

@@ -261,7 +261,7 @@ include 'components/header.php';
                      <div class="col-sm-6">
                         <div class="p-3 rounded-4 shadow-sm border border-secondary border-opacity-25 d-flex align-items-center gap-3" style="background: rgba(30, 41, 59, 0.3); backdrop-filter: blur(10px);">
                             <img src="https://ui-avatars.com/api/?name=Leonard+Baicu&background=6d28d9&color=fff&size=50" class="rounded-circle border border-2 border-success">
-                            <div><h5 class="fw-bold mb-0 text-white fs-6">Leonard B.</h5><span class="text-success small fw-bold">CTO & Lead Arch</span></div>
+                            <div><h5 class="fw-bold mb-0 text-white fs-6">Leonard B.</h5><span class="text-success small fw-bold">CEO & Lead Arch</span></div>
                         </div>
                      </div>
                 </div>

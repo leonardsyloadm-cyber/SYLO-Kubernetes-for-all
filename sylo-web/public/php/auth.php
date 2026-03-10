@@ -14,7 +14,7 @@ if (session_status() === PHP_SESSION_NONE) {
         'lifetime' => 0,
         'path' => '/',
         'domain' => '', // Default current domain
-        'secure' => true, // 🛡️ Require HTTPS
+        'secure' => false, // 🛡️ Allow HTTP locally
         'httponly' => true, // 🛡️ Prevent JS access to session cookie (XSS protection)
         'samesite' => 'Strict' // 🛡️ CSRF mitigation
     ]);
@@ -25,7 +25,7 @@ require_once __DIR__ . '/csrf.php';
 define('API_URL', 'http://172.17.0.1:8001/api/clientes');
 
 // --- 1. DB ---
-$db_host = getenv('DB_HOST') ?: "kylo-main-db";
+$db_host = getenv('DB_HOST') ?: "sylo-admin-mysql";
 $db_user = getenv('DB_USER') ?: "sylo_app";
 $db_pass = getenv('DB_PASS') ?: "sylo_app_pass";
 $db_name = getenv('DB_NAME') ?: "sylo_admin_db";

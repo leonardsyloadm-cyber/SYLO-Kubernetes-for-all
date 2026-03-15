@@ -167,13 +167,15 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                 (user_id, plan_id, status, cluster_alias, subdomain, os_image, cpu_cores, ram_gb, storage_gb, 
                  web_enabled, web_type, web_custom_name, db_enabled, db_type, db_custom_name, ssh_user, created_at) 
                 VALUES (?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())";
-            
+            // Generate a unique subdomain and assign it back to the specs array so the Python API gets it
+            $s['subdomain'] = $s['subdomain'] . '-' . rand(1000, 9999);
+
             $stmt = $conn->prepare($sql);
             $stmt->execute([
                 $_SESSION['user_id'], 
                 $plan_id,
                 $s['cluster_alias'],
-                $s['subdomain'] . '-' . rand(1000, 9999), // Force unique subdomain
+                $s['subdomain'], // Now uses the updated $s['subdomain'] with the suffix
                 $s['os_image'],
                 $s['cpu'],
                 $s['ram'],

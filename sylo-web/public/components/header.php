@@ -11,7 +11,6 @@
     
     <style>
         :root { --sylo-bg: #030712; --sylo-text: #f8fafc; --sylo-card: #111827; --sylo-accent: #8b5cf6; --input-bg: #1f2937; }
-        [data-theme="dark"] { --sylo-bg: #020617; --sylo-text: #f1f5f9; --sylo-card: #0f172a; --sylo-accent: #6d28d9; --input-bg: #1e293b; }
         
         body { font-family: 'Montserrat', sans-serif; background-color: var(--sylo-bg); color: var(--sylo-text); transition: 0.3s; }
         .navbar { background: rgba(3, 7, 18, 0.75); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); border-bottom: 1px solid rgba(139, 92, 246, 0.2); }
@@ -96,7 +95,6 @@
                 </ul>
             </div>
             <div class="d-flex align-items-center gap-3">
-                <button class="btn btn-link nav-link p-0" onclick="toggleTheme()"><i class="fas fa-moon fa-lg"></i></button>
                 <script src="js/lang.js"></script>
                 <div class="lang-selector">
                     <button class="lang-btn lang-toggle-btn">

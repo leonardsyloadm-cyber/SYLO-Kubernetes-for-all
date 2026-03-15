@@ -7,17 +7,21 @@ os.environ['PATH'] = os.environ.get('PATH', '') + ':' + os.path.expanduser('~/bi
 # ==============================================================================
 # ☁️ AWS CONFIGURATION
 # ==============================================================================
+AWS_ENABLED = False  # Se activa solo si las credenciales son válidas al arrancar
+
 try:
     import boto3
     from botocore.exceptions import ClientError
     from botocore.config import Config
 except ImportError:
     print("⚠️ Falta 'boto3'. AWS features deshabilitadas.")
+    boto3 = None
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
     import config_secrets
 except ImportError:
+    config_secrets = None
     print("⚠️ Falta 'config_secrets.py'. Credenciales AWS no disponibles.")
 
 
@@ -38,6 +42,34 @@ active_port_forwards = {} # {oid: subprocess.Popen}
 active_monitor_forwards = {} # {oid: subprocess.Popen} for Grafana
 active_prometheus_forwards = {} # {oid: subprocess.Popen} for Prometheus
 LAST_SELF_HEAL = {} # {oid: timestamp} to prevent infinite loops
+
+def _check_aws_alive():
+    """Valida las credenciales AWS al arranque. Si fallan, AWS_ENABLED=False"""
+    global AWS_ENABLED
+    if not boto3 or not config_secrets:
+        print("☁️ [AWS] Deshabilitado: boto3 o config_secrets no disponible.")
+        return
+    key = getattr(config_secrets, 'AWS_ACCESS_KEY', '')
+    secret = getattr(config_secrets, 'AWS_SECRET_KEY', '')
+    if not key or not secret or key.startswith('YOUR_'):
+        print("☁️ [AWS] Deshabilitado: credenciales no configuradas.")
+        return
+    try:
+        sts = boto3.client(
+            'sts',
+            aws_access_key_id=key,
+            aws_secret_access_key=secret,
+            aws_session_token=getattr(config_secrets, 'AWS_SESSION_TOKEN', None),
+            region_name=getattr(config_secrets, 'AWS_REGION', 'us-east-1'),
+        )
+        sts.get_caller_identity()
+        AWS_ENABLED = True
+        print("✅ [AWS] Credenciales válidas. Funciones S3/AMI activadas.", flush=True)
+    except Exception as e:
+        AWS_ENABLED = False
+        print(f"☁️ [AWS] Deshabilitado: credenciales inválidas o caducadas. ({e})", flush=True)
+
+_check_aws_alive()
 
 # ==============================================================================
 # 🎨 LOGS
@@ -731,6 +763,10 @@ def verify_s3_upload(bucket, key):
         return False
 
 def upload_s3(oid, filename):
+    if not AWS_ENABLED:
+        log("☁️ [AWS] upload_s3 ignorado: AWS deshabilitado.", C_YELLOW)
+        report_progress(oid, "backup", "error", 0, "AWS no configurado. Sube las credenciales primero.")
+        return
     log(f"☁️ UPLOAD S3 START: {filename}", C_CYAN)
     report_progress(oid, "backup", "uploading", 10, "Iniciando subida a S3...")
     
@@ -794,6 +830,10 @@ def upload_s3(oid, filename):
         except: pass
 
 def list_s3(oid):
+    global AWS_ENABLED  # Declarado al inicio para poder modificarlo en el except
+    # Guardia: solo ejecutar si AWS está activado y las credenciales son válidas
+    if not AWS_ENABLED:
+        return
     try:
         s3 = get_aws_client('s3')
         bucket = config_secrets.AWS_BUCKET_BACKUP
@@ -822,10 +862,18 @@ def list_s3(oid):
             json.dump(files, f)
             
     except Exception as e:
-        if "ExpiredToken" not in str(e) and "InvalidAccessKeyId" not in str(e):
+        # Si el token caducó en medio de la ejecución, desactivar AWS para no seguir spameando
+        if any(k in str(e) for k in ["ExpiredToken", "InvalidAccessKeyId", "InvalidToken", "AuthFailure"]):
+            AWS_ENABLED = False
+            log("☁️ [AWS] Credenciales caducadas detectadas. S3 desactivado hasta reinicio.", C_YELLOW)
+        else:
             log(f"⚠️ Error List S3: {e}", C_RED)
 
 def restore_s3(oid, profile, filename):
+    if not AWS_ENABLED:
+        log("☁️ [AWS] restore_s3 ignorado: AWS deshabilitado.", C_YELLOW)
+        report_progress(oid, "backup", "error", 0, "AWS no configurado. Sube las credenciales primero.")
+        return
     log(f"☁️ RESTORE S3: {filename}", C_CYAN)
     report_progress(oid, "backup", "downloading", 10, "Iniciando descarga de S3...")
     
@@ -872,6 +920,10 @@ def restore_s3(oid, profile, filename):
 
 
 def delete_s3(oid, filename):
+    if not AWS_ENABLED:
+        log("☁️ [AWS] delete_s3 ignorado: AWS deshabilitado.", C_YELLOW)
+        report_progress(oid, "backup", "error", 0, "AWS no configurado. Sube las credenciales primero.")
+        return
     log(f"☁️ DELETE S3: {filename}", C_CYAN)
     
     if not filename:
@@ -919,6 +971,9 @@ def delete_s3(oid, filename):
 
 
 def create_ami(oid):
+    if not AWS_ENABLED:
+        log("☁️ [AWS] create_ami ignorado: AWS deshabilitado.", C_YELLOW)
+        return
     log(f"🔥 CREATE AMI (PANIC BUTTON): Cliente {oid}", C_RED)
     report_progress(oid, "ami", "starting", 5, "Verificando Cooldown...")
     
@@ -1745,9 +1800,9 @@ def uninstall_monitoring_stack(oid, profile):
 def update_tool_status(oid, tool_name, status):
     """
     Actualiza el estado de una herramienta en la base de datos.
+    NOTE: Disabled because k8s_tools does not have a status column in the current schema.
     """
-    cmd = f"""docker exec -i sylo-admin-mysql mysql -usylo_app -psylo_app_pass -D sylo_admin_db -e "UPDATE k8s_tools SET status='{status}' WHERE deployment_id={oid} AND tool_name='{tool_name}'" """
-    run_command(cmd, silent=True)
+    pass
 
 def delete_tool_record(oid, tool_name):
     """

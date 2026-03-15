@@ -70,6 +70,7 @@ data:
               - localhost
             labels:
               job: kubernetes-pods
+              cluster_id: ${NODE_NAME}
               __path__: /var/log/pods/*/*/*.log
         pipeline_stages:
           - cri: {}

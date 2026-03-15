@@ -74,7 +74,9 @@ if (isset($installed_tools) && in_array('monitoring', $installed_tools) && isset
     <div class="brand"><i class="bi bi-cpu-fill text-primary me-2"></i><strong>SYLO</strong>_OS</div>
     <div class="d-flex flex-column gap-1 p-2">
         <a href="../public/panel.php" class="nav-link"><i class="bi bi-plus-lg me-3"></i> <span data-i18n="dashboard.new_service">Nuevo Servicio</span></a>
-        <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#billingModal"><i class="bi bi-credit-card me-3"></i> <span data-i18n="dashboard.billing">Facturación</span></a>
+        <a href="tickets.php" class="nav-link"><i class="bi bi-life-preserver me-3"></i> Soporte (Tickets)</a>
+        <a href="billing.php" class="nav-link"><i class="bi bi-receipt me-3"></i> Facturas</a>
+        <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#billingModal"><i class="bi bi-credit-card me-3"></i> <span data-i18n="dashboard.billing">Resumen de Gastos</span></a>
         <div class="mt-4 px-4 mb-2 text-light-muted fw-bold" style="font-size: 0.7rem; letter-spacing: 1px; opacity: 0.6;" data-i18n="dashboard.my_clusters">MIS CLÚSTERES</div>
         <?php foreach($clusters as $c): 
             $cls = ($current && $c['id']==$current['id'])?'active':'';

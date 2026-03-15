@@ -403,13 +403,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && !in_arra
             @unlink($buzon_dir . "status_{$oid}.json");
         }
         
-        // CHAT
+        // CHAT (Legacy)
         if ($act == 'send_chat') {
             $data = ["id_cliente" => (int)$oid, "mensaje" => $_POST['message']];
             $ctx = stream_context_create(['http' => ['header'=>"Content-type: application/json\r\n",'method'=>'POST','content'=>json_encode($data),'timeout'=>2]]);
             @file_get_contents(API_URL_BASE . "/chat", false, $ctx);
             if(isset($_GET['ajax_action'])) { echo json_encode(['status' => 'ok']); exit; }
             return;
+        }
+
+        // ================= TICKETS =================
+        if ($act == 'create_ticket') {
+            $subject = $_POST['subject'] ?? 'Soporte';
+            $message = $_POST['message'] ?? '';
+            if(!empty($message)) {
+                $stmt = $conn->prepare("INSERT INTO tickets (user_id, subject) VALUES (?, ?)");
+                $stmt->execute([$user_id, $subject]);
+                $ticket_id = $conn->lastInsertId();
+                
+                $stmtMsg = $conn->prepare("INSERT INTO ticket_messages (ticket_id, sender, message) VALUES (?, 'client', ?)");
+                $stmtMsg->execute([$ticket_id, $message]);
+                echo json_encode(['status' => 'success', 'ticket_id' => $ticket_id]);
+            } else { echo json_encode(['status' => 'error', 'message' => 'El mensaje no puede estar vacío']); }
+            exit;
+        }
+
+        if ($act == 'reply_ticket') {
+            $ticket_id = (int)($_POST['ticket_id'] ?? 0);
+            $message = $_POST['message'] ?? '';
+            // Verify ownership
+            $stmt = $conn->prepare("SELECT id FROM tickets WHERE id=? AND user_id=?");
+            $stmt->execute([$ticket_id, $user_id]);
+            if ($stmt->fetch() && !empty($message)) {
+                $stmtMsg = $conn->prepare("INSERT INTO ticket_messages (ticket_id, sender, message) VALUES (?, 'client', ?)");
+                $stmtMsg->execute([$ticket_id, $message]);
+                // Update ticket timestamp
+                $conn->prepare("UPDATE tickets SET updated_at=NOW() WHERE id=?")->execute([$ticket_id]);
+                echo json_encode(['status' => 'success']);
+            } else { echo json_encode(['status' => 'error', 'message' => 'Ticket inválido o mensaje vacío']); }
+            exit;
         }
 
         $ctx = stream_context_create(['http' => ['header'=>"Content-type: application/json\r\n",'method'=>'POST','content'=>json_encode($data),'timeout'=>2]]);
@@ -601,6 +633,72 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $conn->prepare($sql)->execute([$_POST['full_name'], $email, $_POST['dni'], $_POST['telefono'], $_POST['company_name'], $_POST['calle'], $user_id]);
     header("Location: ../dashboard.php"); exit;
 }
+
+// GET TICKETS API
+if (isset($_GET['api_tickets'])) {
+    header('Content-Type: application/json');
+    $stmt = $conn->prepare("SELECT * FROM tickets WHERE user_id=? ORDER BY updated_at DESC");
+    $stmt->execute([$user_id]);
+    $tickets = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    echo json_encode($tickets);
+    exit;
+}
+
+if (isset($_GET['api_ticket_messages']) && isset($_GET['ticket_id'])) {
+    header('Content-Type: application/json');
+    $ticket_id = (int)$_GET['ticket_id'];
+    // Verify
+    $stmt = $conn->prepare("SELECT id FROM tickets WHERE id=? AND user_id=?");
+    $stmt->execute([$ticket_id, $user_id]);
+    if ($stmt->fetch()) {
+        $stmtM = $conn->prepare("SELECT * FROM ticket_messages WHERE ticket_id=? ORDER BY created_at ASC");
+        $stmtM->execute([$ticket_id]);
+        echo json_encode($stmtM->fetchAll(PDO::FETCH_ASSOC));
+    } else { echo json_encode(['error' => 'Unauthorized']); }
+    exit;
+}
+
+// GET INVOICES API (Billing)
+if (isset($_GET['api_invoices'])) {
+    header('Content-Type: application/json');
+    
+    // Auto-generate invoice for current month if it doesn't exist
+    $current_month = date('Y-m-01');
+    $stmt = $conn->prepare("SELECT id FROM invoices WHERE user_id=? AND issue_date=?");
+    $stmt->execute([$user_id, $current_month]);
+    if(!$stmt->fetch()) {
+        // Calculate total monthly costs based on active deployments
+        $stmtDeps = $conn->prepare("
+            SELECT d.*, p.name as plan_name, p.base_cpu as p_cpu, p.base_ram as p_ram 
+            FROM k8s_deployments d 
+            JOIN plans p ON d.plan_id=p.id 
+            WHERE d.user_id=? AND d.status='active'
+        ");
+        $stmtDeps->execute([$user_id]);
+        $active_deployments = $stmtDeps->fetchAll(PDO::FETCH_ASSOC);
+        
+        $total_monthly = 0;
+        foreach($active_deployments as $d) {
+            $p = match($d['plan_name']) { 'Bronce'=>5, 'Plata'=>15, 'Oro'=>30, default=>0 };
+            if($d['plan_name'] == 'Personalizado') {
+                $p = (intval($d['cpu_cores'])*5)+(intval($d['ram_gb'])*5);
+                if($d['db_enabled']) $p+=10; if($d['web_enabled']) $p+=10;
+            }
+            $total_monthly += $p;
+        }
+
+        if($total_monthly > 0) {
+            $stmtIns = $conn->prepare("INSERT INTO invoices (user_id, amount, status, issue_date) VALUES (?, ?, 'pending', ?)");
+            $stmtIns->execute([$user_id, $total_monthly, $current_month]);
+        }
+    }
+
+    $stmtInv = $conn->prepare("SELECT * FROM invoices WHERE user_id=? ORDER BY issue_date DESC");
+    $stmtInv->execute([$user_id]);
+    echo json_encode($stmtInv->fetchAll(PDO::FETCH_ASSOC));
+    exit;
+}
+
 $stmt = $conn->prepare("SELECT * FROM users WHERE id = ?"); $stmt->execute([$user_id]); 
 $user_info = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$user_info) $user_info = [];

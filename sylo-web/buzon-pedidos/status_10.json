@@ -1,0 +1,1 @@
+{"percent": 100, "message": "Despliegue finalizado.", "status": "completed", "metrics": {"cpu": 76.75, "ram": 47.11}, "ssh_cmd": "root@sylo", "web_url": "http://brrrrrr-7154.sylobi.org", "os_info": "ubuntu", "installed_tools": ["ubuntu", "nginx", "mysql"], "last_update": 1773241989.2970095}

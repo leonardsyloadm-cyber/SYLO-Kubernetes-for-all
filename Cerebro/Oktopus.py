@@ -281,7 +281,7 @@ class OktopusApp(ctk.CTk):
         ctk.CTkLabel(self.sidebar, text="🐙 OKTOPUS", font=("Montserrat", 30, "bold"), text_color=C_ACCENT_CYAN).pack(pady=(30, 5))
         ctk.CTkLabel(self.sidebar, text="V23 ROOT ACCESS", font=FONT_MONO, text_color=C_ACCENT_BLUE).pack(pady=(0, 40))
 
-        menu = {"DASHBOARD": "📊", "CEREBRO API": "🧠", "INFRAESTRUCTURA": "🏗️", "FINANZAS": "💰", "LOGS GLOBALES": "📜", "COMMS": "📡"}
+        menu = {"DASHBOARD": "📊", "CEREBRO API": "🧠", "INFRAESTRUCTURA": "🏗️", "FINANZAS": "💰", "LOGS GLOBALES": "📜", "COMMS": "📡", "TICKETS": "🎫"}
         for s, icon in menu.items():
             btn = ctk.CTkButton(self.sidebar, text=f"  {icon}  {s}", height=50, fg_color="transparent", anchor="w", 
                                 font=FONT_SUBHEAD, hover_color=C_BG_CARD_HOVER, command=lambda x=s: self.show_tab(x))
@@ -294,7 +294,7 @@ class OktopusApp(ctk.CTk):
         self.main_container = ctk.CTkFrame(self, fg_color=C_BG_MAIN); self.main_container.grid(row=0, column=1, sticky="nsew", padx=20, pady=20)
         self.main_container.grid_rowconfigure(0, weight=1); self.main_container.grid_columnconfigure(0, weight=1)
 
-        self.create_dashboard_tab(); self.create_api_tab(); self.create_infra_tab(); self.create_finance_tab(); self.create_console_tab(); self.create_chat_tab()
+        self.create_dashboard_tab(); self.create_api_tab(); self.create_infra_tab(); self.create_finance_tab(); self.create_console_tab(); self.create_chat_tab(); self.create_tickets_tab()
         self.show_tab("DASHBOARD")
 
     def show_tab(self, name):
@@ -467,6 +467,88 @@ class OktopusApp(ctk.CTk):
         self.master_console.tag_config("SHIELD_CRIT", foreground=C_DANGER)
         self.master_console.configure(state="disabled")
 
+    # --- TICKETS TAB ---
+    def create_tickets_tab(self):
+        f = ctk.CTkFrame(self.main_container, fg_color="transparent"); self.frames["TICKETS"] = f
+        h = ctk.CTkFrame(f, fg_color="transparent"); h.pack(fill="x", pady=20)
+        ctk.CTkLabel(h, text="🎫 Soporte Tickets", font=FONT_HEAD, text_color=C_ACCENT_CYAN).pack(side="left")
+        ctk.CTkButton(h, text="🔄 REFRESCAR", font=FONT_BODY, fg_color=C_ACCENT_BLUE, command=self.load_tickets).pack(side="right")
+        
+        # Split view: List on left, Chat on right
+        split = ctk.CTkFrame(f, fg_color="transparent"); split.pack(fill="both", expand=True)
+        split.grid_columnconfigure(0, weight=1); split.grid_columnconfigure(1, weight=2)
+        split.grid_rowconfigure(0, weight=1)
+        
+        # Left: Ticket List
+        self.tickets_scroll = ctk.CTkScrollableFrame(split, fg_color=C_BG_CARD, border_width=1, border_color=C_BORDER_GLOW)
+        self.tickets_scroll.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        
+        # Right: Ticket Chat/Details
+        self.ticket_detail_frame = ctk.CTkFrame(split, fg_color=C_BG_CARD, border_width=1, border_color=C_BORDER_GLOW)
+        self.ticket_detail_frame.grid(row=0, column=1, sticky="nsew")
+        self.ticket_detail_frame.grid_rowconfigure(1, weight=1); self.ticket_detail_frame.grid_columnconfigure(0, weight=1)
+        
+        self.current_ticket_id = None
+        
+        # Header
+        self.lbl_ticket_title = ctk.CTkLabel(self.ticket_detail_frame, text="Selecciona un ticket...", font=FONT_SUBHEAD, text_color=C_TEXT_WHITE)
+        self.lbl_ticket_title.grid(row=0, column=0, sticky="ew", padx=15, pady=15)
+        
+        # Messages
+        self.ticket_msgs = ctk.CTkTextbox(self.ticket_detail_frame, font=FONT_BODY, fg_color=C_CONSOLE_BG, text_color=C_TEXT_WHITE, wrap="word")
+        self.ticket_msgs.grid(row=1, column=0, sticky="nsew", padx=15, pady=5)
+        self.ticket_msgs.configure(state="disabled")
+        
+        # Input Area
+        inp_frame = ctk.CTkFrame(self.ticket_detail_frame, fg_color="transparent")
+        inp_frame.grid(row=2, column=0, sticky="ew", padx=15, pady=15)
+        
+        self.ticket_entry = ctk.CTkEntry(inp_frame, placeholder_text="Escribir respuesta...", font=FONT_BODY, height=40)
+        self.ticket_entry.pack(side="left", fill="x", expand=True, padx=(0, 10))
+        self.ticket_entry.bind("<Return>", lambda e: self.reply_ticket())
+        
+        btn_reply = ctk.CTkButton(inp_frame, text="ENVIAR RESP.", fg_color=C_ACCENT_CYAN, width=120, height=40, command=self.reply_ticket)
+        btn_reply.pack(side="right", padx=(0, 10))
+        
+        btn_close = ctk.CTkButton(inp_frame, text="CERRAR", fg_color=C_DANGER, width=80, height=40, command=self.close_ticket)
+        btn_close.pack(side="right")
+        
+        # We'll load initial tickets on transition
+
+    def load_tickets(self, event=None):
+        if not PYMYSQL_INSTALLED: return
+        for w in self.tickets_scroll.winfo_children(): w.destroy()
+        try:
+            conn = pymysql.connect(**DB_CONFIG, cursorclass=pymysql.cursors.DictCursor)
+            with conn.cursor() as c:
+                c.execute("SELECT t.id, t.subject, t.status, u.username FROM tickets t JOIN users u ON t.user_id = u.id ORDER BY t.updated_at DESC")
+                rows = c.fetchall()
+            conn.close()
+            
+            for r in rows:
+                bg = C_BG_CARD_HOVER if r['status'] == 'open' else C_BG_CARD
+                tc = C_WARNING if r['status'] == 'open' else C_TEXT_MUTED
+                f = ModernCard(self.tickets_scroll, fg_color=bg, hover_effect=True)
+                f.pack(fill="x", pady=2, padx=2)
+                
+                # Default closure variable binding trick loop over widgets inside
+                def make_lambda(tid, subj, u):
+                    return lambda e: self.open_ticket(tid, subj, u)
+
+                onclick = make_lambda(r['id'], r['subject'], r['username'])
+                
+                f.bind("<Button-1>", onclick)
+                
+                lbl = ctk.CTkLabel(f, text=f"#{r['id']} - {r['subject'][:20]}...", font=FONT_BODY, text_color=C_TEXT_WHITE)
+                lbl.pack(side="left", padx=10, pady=10)
+                lbl.bind("<Button-1>", onclick)
+                
+                stat = ctk.CTkLabel(f, text=r['status'].upper(), font=("Roboto", 10, "bold"), text_color=tc)
+                stat.pack(side="right", padx=10)
+                stat.bind("<Button-1>", onclick)
+        except Exception as e:
+            print(f"Error loading tickets: {e}")
+
     # --- CHAT TAB ---
     def create_chat_tab(self):
         f = ctk.CTkFrame(self.main_container, fg_color="transparent"); self.frames["COMMS"] = f
@@ -487,6 +569,65 @@ class OktopusApp(ctk.CTk):
         
         btn_send = ctk.CTkButton(input_frame, text="ENVIAR", fg_color=C_ACCENT_PURPLE, width=100, height=40, command=self.send_chat_msg)
         btn_send.pack(side="right")
+
+    def open_ticket(self, tid, subj, username):
+        self.current_ticket_id = tid
+        self.lbl_ticket_title.configure(text=f"Ticket #{tid}: {subj} (Cliente: {username})")
+        self.ticket_msgs.configure(state="normal")
+        self.ticket_msgs.delete("1.0", "end")
+        
+        try:
+            conn = pymysql.connect(**DB_CONFIG, cursorclass=pymysql.cursors.DictCursor)
+            with conn.cursor() as c:
+                c.execute("SELECT sender, message, created_at FROM ticket_messages WHERE ticket_id = %s ORDER BY created_at ASC", (tid,))
+                msgs = c.fetchall()
+            conn.close()
+            
+            for m in msgs:
+                sender = "Soporte (Tú)" if m['sender'] == 'admin' else f"Cliente ({username})"
+                time_str = m['created_at'].strftime('%d/%m %H:%M')
+                self.ticket_msgs.insert("end", f"[{time_str}] {sender}:\n{m['message']}\n\n")
+        except Exception as e:
+            self.ticket_msgs.insert("end", f"Error loading messages: {e}")
+            
+        self.ticket_msgs.see("end")
+        self.ticket_msgs.configure(state="disabled")
+
+    def reply_ticket(self):
+        if not self.current_ticket_id: return
+        msg = self.ticket_entry.get().strip()
+        if not msg: return
+        
+        self.ticket_entry.delete(0, "end")
+        try:
+            conn = pymysql.connect(**DB_CONFIG)
+            with conn.cursor() as c:
+                c.execute("INSERT INTO ticket_messages (ticket_id, sender, message) VALUES (%s, 'admin', %s)", (self.current_ticket_id, msg))
+                # Set status back to 'answered' so we don't count it as 'open' (which usually means waiting for our reply)
+                # However, your frontend might use 'answered' or 'open' depending on logic. I'll use 'answered'.
+                c.execute("UPDATE tickets SET updated_at = NOW(), status = 'answered' WHERE id = %s", (self.current_ticket_id,))
+            conn.commit()
+            conn.close()
+            self.log_to_console("TICKETS", f"Respuesta enviada a ticket #{self.current_ticket_id}", C_SUCCESS)
+            u = self.lbl_ticket_title.cget("text").split("Cliente: ")[1].strip(")")
+            subj = self.lbl_ticket_title.cget("text").split(":")[1].split("(")[0].strip()
+            self.open_ticket(self.current_ticket_id, subj, u)
+            self.load_tickets() # Refresh left list to update status
+        except Exception as e:
+            messagebox.showerror("Error", f"Fallo al enviar respuesta: {e}")
+
+    def close_ticket(self):
+        if not self.current_ticket_id: return
+        try:
+            conn = pymysql.connect(**DB_CONFIG)
+            with conn.cursor() as c:
+                c.execute("UPDATE tickets SET status = 'closed', updated_at = NOW() WHERE id = %s", (self.current_ticket_id,))
+            conn.commit()
+            conn.close()
+            self.load_tickets()
+            self.log_to_console("TICKETS", f"Ticked #{self.current_ticket_id} cerrado.", C_WARNING)
+        except Exception as e:
+            messagebox.showerror("Error", f"Fallo al cerrar ticket: {e}")
 
         # Start Polling
         self.last_msg_ts = 0.0

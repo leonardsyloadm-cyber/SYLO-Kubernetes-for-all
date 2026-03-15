@@ -537,6 +537,24 @@ def process_order(json_file):
             valid_tools = validate_tools(plan_raw, total_price, requested_tools)
             install_tools(target_container, valid_tools)
             
+            # 🔥 FIX: Si solicitaron monitoring, encolar el trabajo para el operator
+            if "monitoring" in valid_tools:
+                try:
+                    action_file = os.path.join(BUZON, f"accion_install_tool_{oid}.json")
+                    action_data = {
+                        "action": "INSTALL_TOOL",
+                        "deployment_id": str(oid),
+                        "tool": "monitoring",
+                        "subdomain": subdomain,
+                        "grafana_password": "admin",
+                        "timestamp": time.time()
+                    }
+                    with open(action_file, "w") as af:
+                        json.dump(action_data, af)
+                    log(f"📥 Cola de instalación de Monitoring activada para {oid}", Colors.CYAN)
+                except Exception as e:
+                    log(f"⚠️ Error encolando monitoring: {e}", Colors.RED)
+            
             # --- PERSIST TOOL INFO VIA API (SAFER) ---
             try:
                 import requests

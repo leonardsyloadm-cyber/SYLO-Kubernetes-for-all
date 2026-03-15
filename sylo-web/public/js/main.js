@@ -6,7 +6,6 @@ function hideM(id) { const el = document.getElementById(id); const m = bootstrap
 function openAuth() { openM('authModal'); }
 function openLegal() { new bootstrap.Offcanvas(document.getElementById('legalCanvas')).show(); }
 function viewTermsFromReg() { hideM('authModal'); openLegal(); }
-function toggleTheme() { document.body.dataset.theme = document.body.dataset.theme === 'dark' ? '' : 'dark'; }
 function toggleCard(el) { document.querySelectorAll('.card-stack-container').forEach(c => c !== el && c.classList.remove('active')); el.classList.toggle('active'); }
 function toggleReg() { const e = document.getElementById('t_e').checked; document.getElementById('fields-emp').style.display = e ? 'block' : 'none'; document.getElementById('fields-auto').style.display = e ? 'none' : 'block'; }
 function checkOther() { document.getElementById('reg_rs').style.display = (document.getElementById('reg_tipo_emp').value === 'Otro') ? 'block' : 'none'; }

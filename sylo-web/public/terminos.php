@@ -13,23 +13,23 @@ require_once 'php/auth.php';
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
     
     <style>
-        :root { --sylo-bg: #f8fafc; --sylo-text: #334155; --sylo-card: #ffffff; --sylo-accent: #2563eb; --input-bg: #f1f5f9; }
-        [data-theme="dark"] { --sylo-bg: #0f172a; --sylo-text: #f1f5f9; --sylo-card: #1e293b; --sylo-accent: #3b82f6; --input-bg: #334155; }
+        :root { --sylo-bg: #030712; --sylo-text: #f8fafc; --sylo-card: #111827; --sylo-accent: #8b5cf6; --input-bg: #1f2937; }
         
         body { font-family: 'Inter', sans-serif; background-color: var(--sylo-bg); color: var(--sylo-text); transition: 0.3s; }
-        .navbar { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(0,0,0,0.05); }
-        [data-theme="dark"] .navbar { background: rgba(15, 23, 42, 0.95); border-bottom: 1px solid rgba(255,255,255,0.1); }
-        [data-theme="dark"] .navbar-brand, [data-theme="dark"] .nav-link { color: white !important; }
+        .navbar { background: rgba(3, 7, 18, 0.75); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); border-bottom: 1px solid rgba(139, 92, 246, 0.2); }
+        .navbar-brand { font-weight: 900 !important; letter-spacing: 1px; color: #f8fafc !important; }
+        .nav-link { color: #cbd5e1 !important; transition: color 0.3s; }
+        .nav-link:hover { color: #8b5cf6 !important; }
         
-        .info-card, .bg-white { background-color: var(--sylo-card) !important; color: var(--sylo-text); }
-        [data-theme="dark"] .text-muted { color: #94a3b8 !important; }
-        [data-theme="dark"] .bg-light { background-color: #1e293b !important; border-color: #334155; }
-        [data-theme="dark"] .form-control, [data-theme="dark"] .form-select { background-color: var(--input-bg) !important; border-color: #475569 !important; color: #f8fafc !important; }
-        [data-theme="dark"] .form-control::placeholder, [data-theme="dark"] .form-select::placeholder { color: #cbd5e1 !important; opacity: 1 !important; }
-        [data-theme="dark"] .form-control::-webkit-input-placeholder, [data-theme="dark"] .form-select::-webkit-input-placeholder { color: #cbd5e1 !important; opacity: 1 !important; }
-        [data-theme="dark"] .form-control::-moz-placeholder, [data-theme="dark"] .form-select::-moz-placeholder { color: #cbd5e1 !important; opacity: 1 !important; }
-        [data-theme="dark"] .form-control:focus, [data-theme="dark"] .form-select:focus { background-color: #111827 !important; color: #ffffff !important; border-color: var(--sylo-accent) !important; box-shadow: 0 0 0 0.25rem rgba(139, 92, 246, 0.25) !important; }
-        [data-theme="dark"] .modal-content { background-color: var(--sylo-card); color: white; border: 1px solid rgba(139, 92, 246, 0.3) !important; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5) !important; }
+        .info-card, .bg-white { background-color: var(--sylo-card) !important; color: var(--sylo-text); border: 1px solid rgba(255,255,255,0.05); }
+        .text-muted { color: #94a3b8 !important; }
+        .bg-light { background-color: #111827 !important; border-color: rgba(255,255,255,0.05); }
+        .form-control, .form-select { background-color: var(--input-bg) !important; border-color: #374151 !important; color: #f8fafc !important; }
+        .form-control:focus, .form-select:focus { background-color: #111827 !important; color: #ffffff !important; border-color: var(--sylo-accent) !important; box-shadow: 0 0 0 0.25rem rgba(139, 92, 246, 0.25) !important; }
+        .form-control::placeholder, .form-select::placeholder { color: #cbd5e1 !important; opacity: 1 !important; }
+        .form-control::-webkit-input-placeholder, .form-select::-webkit-input-placeholder { color: #cbd5e1 !important; opacity: 1 !important; }
+        .form-control::-moz-placeholder, .form-select::-moz-placeholder { color: #cbd5e1 !important; opacity: 1 !important; }
+        .modal-content { background-color: var(--sylo-card); color: white; border: 1px solid rgba(139, 92, 246, 0.3) !important; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.5) !important; }
         
         .hero { padding: 140px 0 100px; background: linear-gradient(180deg, var(--sylo-bg) 0%, var(--sylo-card) 100%); }
         
@@ -94,7 +94,6 @@ require_once 'php/auth.php';
             <div class="collapse navbar-collapse justify-content-center" id="mainNav">
             </div>
             <div class="d-flex align-items-center gap-3">
-                <button class="btn btn-link nav-link p-0" onclick="toggleTheme()"><i class="fas fa-moon fa-lg"></i></button>
                 <script src="js/lang.js"></script>
                 <div class="lang-selector">
                     <button class="lang-btn lang-toggle-btn">
@@ -161,7 +160,6 @@ require_once 'php/auth.php';
     function openAuth(){openM('authModal');}
     function openLegal(){new bootstrap.Offcanvas(document.getElementById('legalCanvas')).show();}
     function viewTermsFromReg(){openLegal();} // No ocultamos authModal para no romper naveg
-    function toggleTheme(){document.body.dataset.theme=document.body.dataset.theme==='dark'?'':'dark';}
     function toggleReg(){const e=document.getElementById('t_e').checked;document.getElementById('fields-emp').style.display=e?'block':'none';document.getElementById('fields-auto').style.display=e?'none':'block';}
     function checkOther(){document.getElementById('reg_rs').style.display=(document.getElementById('reg_tipo_emp').value==='Otro')?'block':'none';}
 

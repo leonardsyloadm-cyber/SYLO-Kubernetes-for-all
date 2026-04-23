@@ -82,6 +82,7 @@ update_status 40 "Configurando Tofu..."
 kubectl config use-context "$CLUSTER_NAME" >> "$LOG_FILE" 2>&1
 cd "$SCRIPT_DIR"
 rm -f terraform.tfstate*
+rm -rf .terraform .terraform.lock.hcl
 tofu init -upgrade >> "$LOG_FILE" 2>&1
 
 # --- APPLY ---

@@ -4,18 +4,29 @@ require_once 'php/data.php';
 
 // FETCH MONITORING CREDENTIALS if installed (Hace que aparezcan las credenciales de grafana si lo tenemos instalado)
 $monitoring_creds = null;
-if (isset($installed_tools) && in_array('monitoring', $installed_tools) && isset($current['id'])) {
+$has_monitoring = false;
+
+// Query DB directly
+if (isset($current['id'])) {
     try {
-        $stmt = $conn->prepare("SELECT config_json FROM k8s_tools WHERE deployment_id = ? AND tool_name = 'monitoring'");
+        $stmt = $conn->prepare("SELECT tool_name FROM k8s_tools WHERE deployment_id = ?");
         $stmt->execute([$current['id']]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($row && !empty($row['config_json'])) {
-            $mon_cfg = json_decode($row['config_json'], true);
-            $monitoring_creds = [
-                'user' => 'admin',
-                'pass' => $mon_cfg['grafana_password'] ?? 'admin',
-                'url' => $mon_cfg['grafana_url'] ?? ('http://localhost:' . (3000 + intval($current['id'])))
-            ];
+        $installed_tools = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        
+        if (in_array('monitoring', $installed_tools)) {
+            $has_monitoring = true;
+            $stmt = $conn->prepare("SELECT config_json FROM k8s_tools WHERE deployment_id = ? AND tool_name = 'monitoring'");
+            $stmt->execute([$current['id']]);
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($row) {
+                // If config_json is empty, we still fallback to URL pattern
+                $mon_cfg = !empty($row['config_json']) ? json_decode($row['config_json'], true) : [];
+                $monitoring_creds = [
+                    'user' => 'admin',
+                    'pass' => $mon_cfg['grafana_password'] ?? 'admin',
+                    'url' => $mon_cfg['grafana_url'] ?? ('http://' . $_SERVER['SERVER_NAME'] . ':' . (3000 + intval($current['id'])))
+                ];
+            }
         }
     } catch(Exception $e) {}
 }
@@ -75,8 +86,7 @@ if (isset($installed_tools) && in_array('monitoring', $installed_tools) && isset
     <div class="d-flex flex-column gap-1 p-2">
         <a href="../public/panel.php" class="nav-link"><i class="bi bi-plus-lg me-3"></i> <span data-i18n="dashboard.new_service">Nuevo Servicio</span></a>
         <a href="tickets.php" class="nav-link"><i class="bi bi-life-preserver me-3"></i> Soporte (Tickets)</a>
-        <a href="billing.php" class="nav-link"><i class="bi bi-receipt me-3"></i> Facturas</a>
-        <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#billingModal"><i class="bi bi-credit-card me-3"></i> <span data-i18n="dashboard.billing">Resumen de Gastos</span></a>
+        <a href="#" class="nav-link" data-bs-toggle="modal" data-bs-target="#billingModal"><i class="bi bi-credit-card me-3"></i> <span data-i18n="dashboard.billing">Facturación</span></a>
         <div class="mt-4 px-4 mb-2 text-light-muted fw-bold" style="font-size: 0.7rem; letter-spacing: 1px; opacity: 0.6;" data-i18n="dashboard.my_clusters">MIS CLÚSTERES</div>
         <?php foreach($clusters as $c): 
             $cls = ($current && $c['id']==$current['id'])?'active':'';
@@ -257,11 +267,8 @@ if (isset($installed_tools) && in_array('monitoring', $installed_tools) && isset
                 </div>
                 
                 <?php
-                // Check if monitoring is already installed
-                $has_monitoring = false;
-                if (!empty($installed_tools)) {
-                    $has_monitoring = in_array('monitoring', $installed_tools);
-                }
+                // $has_monitoring is already set at the top from DB query
+                // No override needed here
                 ?>
                 
                 <div class="row g-3">
@@ -294,11 +301,11 @@ if (isset($installed_tools) && in_array('monitoring', $installed_tools) && isset
                             
                             <div class="mt-auto">
                                 <?php if ($has_monitoring): 
-                                    $g_url = $monitoring_creds['url'] ?? ('http://localhost:' . (3000 + intval($current['id'])));
+                                    $g_url = $monitoring_creds['url'] ?? ('http://' . $_SERVER['SERVER_NAME'] . ':' . (3000 + intval($current['id'])));
                                     // Hack: If DB has old 30{$id} format, we force fix it visually or rely on operator/DB fix.
                                     // Actually, we trust the DB or the calculation.
                                     // Prometheus: 3100 + ID
-                                    $p_url = 'http://localhost:' . (3100 + intval($current['id']));
+                                    $p_url = 'http://' . $_SERVER['SERVER_NAME'] . ':' . (3100 + intval($current['id']));
                                 ?>
                                     <a href="<?=$g_url?>" target="_blank" class="btn btn-success w-100 mb-2">
                                         <i class="bi bi-box-arrow-up-right me-2"></i>Abrir Grafana

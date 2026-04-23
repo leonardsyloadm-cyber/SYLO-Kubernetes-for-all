@@ -407,7 +407,7 @@ if (!isset($_SESSION['user_id'])) {
 
         function startPolling(oid, finalSpecs) {
             let i = setInterval(async () => {
-                const r = await fetch(`index.php?check_status=${oid}`);
+                const r = await fetch(`php/auth.php?check_status=${oid}`);
                 const s = await r.json();
                 document.getElementById('prog-bar').style.width = s.percent+"%";
                 document.getElementById('progress-text').innerText = s.message;

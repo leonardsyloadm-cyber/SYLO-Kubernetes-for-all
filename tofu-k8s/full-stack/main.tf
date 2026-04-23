@@ -378,6 +378,15 @@ resource "kubernetes_deployment_v1" "ssh_server" {
         }
       }
       spec {
+        init_container {
+          name    = "install-tools"
+          image   = "alpine:3.19"
+          command = ["/bin/sh", "-c", "apk add --no-cache htop procps net-tools && cp /usr/bin/htop /tools/ && cp /bin/ps /tools/ && cp /bin/netstat /tools/ 2>/dev/null || true"]
+          volume_mount {
+            name       = "tools-bin"
+            mount_path = "/tools"
+          }
+        }
         container {
           image = "lscr.io/linuxserver/openssh-server:latest"
           name  = "openssh"
@@ -404,6 +413,15 @@ resource "kubernetes_deployment_v1" "ssh_server" {
             name  = "SUDO_ACCESS"
             value = "true"
           }
+
+          volume_mount {
+            name       = "tools-bin"
+            mount_path = "/usr/local/bin"
+          }
+        }
+        volume {
+          name = "tools-bin"
+          empty_dir {}
         }
       }
     }

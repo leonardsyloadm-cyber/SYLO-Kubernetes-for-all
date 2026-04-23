@@ -169,9 +169,19 @@ $active_tab = "tickets";
     async function loadTickets() {
         try {
             const res = await fetch("php/data.php?api_tickets=1");
-            tickets = await res.json();
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const text = await res.text();
+            try {
+                tickets = JSON.parse(text);
+            } catch(jsonErr) {
+                console.error('Invalid JSON from api_tickets:', text.substring(0, 200));
+                throw new Error('Invalid JSON response');
+            }
             renderTicketList();
-        } catch(e) { console.error('Error loading tickets', e); }
+        } catch(e) {
+            console.error('Error loading tickets', e);
+            document.getElementById('ticketList').innerHTML = '<div class="text-center p-4 text-muted small"><i class="fas fa-exclamation-circle me-2"></i>Error cargando tickets. <a href="#" onclick="loadTickets()">Reintentar</a></div>';
+        }
     }
 
     function renderTicketList(filter = '') {

@@ -61,6 +61,16 @@ def report_progress(oid, percent, msg, status="creating"):
     tmp_path = file_path + ".tmp"
     # Usamos el status que nos pasen, si no, usa 'creating' para bloquear al Operator
     data = {"percent": percent, "message": msg, "status": status}
+    
+    try:
+        if os.path.exists(file_path):
+            with open(file_path, 'r') as f:
+                old_data = json.load(f)
+                old_data.update(data)
+                data = old_data
+    except Exception:
+        pass
+
     try:
         with open(tmp_path, 'w') as f: json.dump(data, f)
         os.chmod(tmp_path, 0o666)

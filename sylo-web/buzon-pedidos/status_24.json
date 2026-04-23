@@ -1,0 +1,1 @@
+{"percent": 100, "message": "Fallo cr\u00edtico Plata.", "status": "error", "metrics": {"cpu": 22.876740843798075, "ram": 90.37665845652802}, "web_url": "http://interno-6815.sylobi.org", "installed_tools": ["ubuntu", "mysql"], "last_update": 1776074008.7903442, "ssh_cmd": "Offline", "os_info": "Offline"}

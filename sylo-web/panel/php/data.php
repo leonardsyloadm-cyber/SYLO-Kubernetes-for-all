@@ -48,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && !in_arra
         $act = $_POST['action'];
         
         // 🛡️ CRITICAL: Verify User Owns This Deployment
-        if (!verifyOwnership($conn, $oid, $user_id)) {
+        if (!in_array($act, ['create_ticket', 'reply_ticket']) && !verifyOwnership($conn, $oid, $user_id)) {
             // Bypass IDOR for chat if the user has no deployments (orderId = 0)
             if ($act !== 'send_chat' || $oid !== 0) {
                 http_response_code(403);
@@ -544,17 +544,16 @@ if (isset($_GET['ajax_data'])) {
         if (isset($prog_data['web_url'])) $final_data['web_url'] = $prog_data['web_url'];
         if (isset($prog_data['os_info'])) $final_data['os_info'] = $prog_data['os_info'];
         
-        // Solo sobrescribir status si no es nulo
+        // Solo sobrescribir status si es un evento en tránsito claro (Ignorar estados estáticos residuales)
         if (isset($prog_data['status']) && !empty($prog_data['status'])) {
-             // FIX: Prevent stale 'creating' status from file overriding 'active' status from DB
-             $db_is_active = in_array(strtolower($final_data['status'] ?? ''), ['active', 'running', 'online']);
-             $file_is_creating = in_array(strtolower($prog_data['status']), ['creating', 'provisioning']);
+             $file_status = strtolower($prog_data['status']);
+             $transitional_ops = ['creating', 'provisioning', 'starting', 'stopping', 'restarting', 'web_updating', 'restoring', 'uploading', 'backup_processing', 'deleting', 'error', 'install_tool'];
              
-             if ($db_is_active && $file_is_creating) {
-                 // Ignore file status, keep DB status
-             } else {
+             // Si el archivo reporta un estado de transición temporal, o si ya no existe registro en la DB
+             if (in_array($file_status, $transitional_ops) || empty($final_data['status'])) {
                  $final_data['status'] = $prog_data['status'];
              }
+             // Si el progreso llega a 100% y dice 'completed' o 'active'/'stopped', no sobreescribir la Base de Datos
         } 
     }
 
@@ -791,7 +790,13 @@ if($clusters) {
             if(!empty($tools_db)) {
                 $installed_tools = $tools_db;
             } else {
-                $installed_tools = $d['installed_tools'] ?? [];
+                // Combina tools de BD y Status para no perder monitorizacion si el worker no lo reposta
+                $status_tools = $d['installed_tools'] ?? [];
+                if (!empty($status_tools)) {
+                    $installed_tools = array_unique(array_merge($tools_db, $status_tools));
+                } else {
+                    $installed_tools = $tools_db;
+                }
             }
         }
     }

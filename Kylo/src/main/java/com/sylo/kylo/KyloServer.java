@@ -14,49 +14,13 @@ public class KyloServer {
     public static void main(String[] args) {
         System.out.println("💎 KyloDB v34 AUTO-WIPE SERVER Online...");
 
-        // AUTO-WIPE LOGIC
-        // User requested: "cada vez que iniciemos el java ... se borren todos los datos actuales y se reinicie"
-        String[] wipePaths = {"kylo_system", "/app/kylo_storage"};
-        for (String path : wipePaths) {
-            java.io.File dir = new java.io.File(path);
-            if (dir.exists()) {
-                System.out.println("🧹 Auto-Wipe: Deleting " + path + "...");
-                deleteRecursively(dir);
-                System.out.println("✨ " + path + " Cleaned.");
-            }
-        }
-
+        // Auto-Wipe Logic Removed for Server Safety and Data Persistence
         // Init Engine
-        // Check if we are in Docker (Volume mounted at /app/kylo_storage)
-        java.io.File dockerDataDir = new java.io.File("/app/kylo_storage");
-        java.io.File dataDir;
-        java.io.File dbFile;
+        String dataDirPath = com.sylo.kylo.core.storage.StorageConfig.BASE_DIR;
 
-        if (dockerDataDir.exists() && dockerDataDir.isDirectory()) {
-            System.out.println("🐳 Docker environment detected. Using volume storage.");
-            dataDir = dockerDataDir;
-            dbFile = new java.io.File(dataDir, "kylo_storage.db");
-        } else {
-            System.out.println("💻 Local environment detected. Using local storage.");
-            dataDir = new java.io.File("kylo_system/data");
-            if (!dataDir.exists())
-                dataDir.mkdirs();
-            dbFile = new java.io.File(dataDir, "kylo_storage.db");
-        }
-
-        if (!dbFile.exists()) {
-            System.out.println("⚠️ Fresh DB detected. Wiping stale metadata to prevent corruption...");
-            // Clean up old single-file DB artifacts if they exist
-            new java.io.File("kylo_system/settings/catalog.dat").delete();
-            // Note: We are keeping catalog.dat but maybe we should ensure it matches new
-            // storage?
-            // Actually, if we switch to multi-file, the old Single File DB is useless.
-            // But Catalog.dat stores schema.
-            // Schema is fine. Data was the problem.
-        }
 
         // Use dataDir for Multi-File Storage
-        engine = new ExecutionEngine(dataDir.getAbsolutePath());
+        engine = new ExecutionEngine(dataDirPath);
 
         // Init default DB
         if (!SYSTEM_DBS.contains("default")) {
@@ -66,8 +30,7 @@ public class KyloServer {
         // Start Bootstrapper for Security
         new com.sylo.kylo.core.security.SystemBootstrapper(engine).bootstrap();
 
-        // Start Bootstrapper for Application (kylo_core)
-        new ApplicationBootstrapper(engine).bootstrap();
+        // Application Bootstrapper has been removed to avoid bloatware
 
         // Start Operation Impostor (MySQL Layer)
         new com.sylo.kylo.net.KyloProtocolServer(3308, engine).start();
@@ -114,15 +77,4 @@ public class KyloServer {
     // The previous WebServer code mocked execution.
     // I should update KyloWebServer to delegate to basic execution.
 
-    private static void deleteRecursively(java.io.File file) {
-        if (file.isDirectory()) {
-            java.io.File[] files = file.listFiles();
-            if (files != null) {
-                for (java.io.File c : files) {
-                    deleteRecursively(c);
-                }
-            }
-        }
-        file.delete();
-    }
 }

@@ -1,0 +1,8 @@
+{
+    "action": "INSTALL_TOOL",
+    "deployment_id": 12,
+    "tool": "monitoring",
+    "subdomain": "webr-9430",
+    "grafana_password": "admin",
+    "timestamp": 1777125003
+}

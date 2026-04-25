@@ -45,6 +45,7 @@ services:
     ports:
       - "8082:8080" # Mapeamos la GUI de Kylo al puerto 8082 de tu PC
       - "5000:5000" # Puerto de datos TCP de Kylo
+      - "3308:3308" # Protocolo MySQL para DBeaver
     networks:
       - sylo-network # Se conecta a la misma red para hablar con la web si hace falta
     restart: unless-stopped

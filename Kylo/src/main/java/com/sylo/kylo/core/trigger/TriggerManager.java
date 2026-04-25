@@ -8,7 +8,7 @@ import java.util.stream.Collectors;
 public class TriggerManager {
     private static TriggerManager instance;
     private Map<String, Trigger> triggers; // Key: db.triggerName
-    private static final String STORAGE_PATH = "kylo_system/settings/triggers.dat";
+    private static final String STORAGE_PATH = com.sylo.kylo.core.storage.StorageConfig.BASE_DIR + "/settings/triggers.dat";
 
     private TriggerManager() {
         triggers = new ConcurrentHashMap<>();

@@ -8,7 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ViewManager {
     private static ViewManager instance;
     private final Map<String, String> views; // viewName -> viewDefinition (SQL)
-    private final String metaFilePath = "kylo_system/views/views.dat";
+    private final String metaFilePath = com.sylo.kylo.core.storage.StorageConfig.BASE_DIR + "/views/views.dat";
 
     private ViewManager() {
         this.views = new ConcurrentHashMap<>();
@@ -61,7 +61,7 @@ public class ViewManager {
     }
 
     private void saveViews() {
-        File dir = new File("kylo_system/views");
+        File dir = new File(com.sylo.kylo.core.storage.StorageConfig.BASE_DIR + "/views");
         if (!dir.exists())
             dir.mkdirs();
 

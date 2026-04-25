@@ -1428,9 +1428,53 @@ def handle_plan_update(oid, profile, new_specs_arg):
         
         report_progress(oid, "plan_update", "active", 100, "Plan Actualizado Correctamente")
         log(f"✅ PLAN V{oid} ACTUALIZADO", C_GREEN)
-        
-        # Clean transient status immediately to unlock UI
-        try: os.remove(os.path.join(BUZON, f"status_{oid}.json"))
+
+        # --- FIX: Re-publish SSH credentials after plan update ---
+        # The status_{oid}.json gets wiped during plan update, losing ssh_cmd/ssh_pass.
+        # Re-read from DB and push to the API so the dashboard shows correct access info.
+        try:
+            cmd_creds = f'docker exec -i sylo-admin-mysql mysql -N -usylo_app -psylo_app_pass -D sylo_admin_db -e "SELECT subdomain, ssh_user, ip_address, os_image FROM k8s_deployments WHERE id={oid}"'
+            raw_creds = run_command(cmd_creds, silent=True).strip()
+            if raw_creds:
+                cred_parts = raw_creds.split('\t')
+                if len(cred_parts) >= 4:
+                    subdomain = cred_parts[0].strip()
+                    ssh_user  = cred_parts[1].strip()
+                    ip_addr   = cred_parts[2].strip()
+                    os_img    = cred_parts[3].strip()
+
+                    # Build ssh command (same pattern as the deploy script reports)
+                    # Try to get the actual ssh port from the cluster
+                    ssh_port_raw = run_command(
+                        f"minikube -p {profile} kubectl -- get svc ssh-service -o jsonpath='{{.spec.ports[0].nodePort}}' 2>/dev/null || echo ''",
+                        silent=True
+                    ).strip()
+                    ssh_port = ssh_port_raw if ssh_port_raw.isdigit() else "22"
+
+                    ssh_cmd = f"ssh {ssh_user}@{ip_addr} -p {ssh_port}"
+
+                    # OS display name
+                    os_display = os_img.capitalize()
+                    if "alpine" in os_img.lower(): os_display = "Alpine Linux"
+                    elif "ubuntu" in os_img.lower(): os_display = "Ubuntu Server LTS"
+                    elif "redhat" in os_img.lower(): os_display = "RedHat Enterprise"
+
+                    web_url = f"http://{subdomain}.sylobi.org" if subdomain and subdomain != "NULL" else ""
+
+                    requests.post(f"{API_URL}/reportar/metricas", json={
+                        "id_cliente": int(oid),
+                        "metrics": {"cpu": 0, "ram": 0},
+                        "ssh_cmd": ssh_cmd,
+                        "web_url": web_url,
+                        "os_info": os_display,
+                        "installed_tools": []
+                    }, timeout=2)
+                    log(f"✅ Credenciales SSH re-publicadas tras cambio de plan: {ssh_cmd}", C_GREEN)
+        except Exception as e_creds:
+            log(f"⚠️ No se pudieron re-publicar credenciales SSH: {e_creds}", C_GREY)
+
+        # Clean transient plan_status to unlock UI (keep status_{oid}.json intact now)
+        try: os.remove(os.path.join(BUZON, f"plan_status_{oid}.json"))
         except: pass
 
     except Exception as e:
@@ -1689,10 +1733,10 @@ def install_monitoring_stack(oid, profile, config):
             --set prometheus.prometheusSpec.resources.limits.cpu=200m \
             --set prometheus.prometheusSpec.retention=2d \
             --set grafana.adminPassword={grafana_password} \
-            --set grafana.resources.requests.memory=64Mi \
-            --set grafana.resources.limits.memory=128Mi \
-            --set grafana.resources.requests.cpu=20m \
-            --set grafana.resources.limits.cpu=100m \
+            --set grafana.resources.requests.memory=128Mi \
+            --set grafana.resources.limits.memory=300Mi \
+            --set grafana.resources.requests.cpu=50m \
+            --set grafana.resources.limits.cpu=200m \
             --set grafana.persistence.enabled=false \
             --set alertmanager.enabled=false \
             --set nodeExporter.enabled=false \

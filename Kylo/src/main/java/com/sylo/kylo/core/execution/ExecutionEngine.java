@@ -44,7 +44,7 @@ public class ExecutionEngine {
             String safeName = k.replaceAll(":", "_"); // Handle "DB:Table" format
             File dbFile = new File(dataDir, safeName + ".db");
             DiskManager dm = new DiskManager(dbFile.getAbsolutePath());
-            BufferPoolManager bpm = new BufferPoolManager(dm, 500); // 500 pages per table
+            BufferPoolManager bpm = new BufferPoolManager(k, dm); // Global Buffer Pool Wrapper
             HeapFile hf = new HeapFile(bpm);
             return new TableStorage(dm, bpm, hf);
         });

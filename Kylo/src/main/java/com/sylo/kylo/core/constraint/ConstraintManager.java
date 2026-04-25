@@ -11,7 +11,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ConstraintManager {
     private static ConstraintManager instance;
     private Map<String, List<Constraint>> tableConstraints; // Table -> Constraints
-    private static final String STORAGE_PATH = "kylo_system/settings/constraints.dat";
+    private static final String STORAGE_PATH = com.sylo.kylo.core.storage.StorageConfig.BASE_DIR + "/settings/constraints.dat";
 
     private ConstraintManager() {
         tableConstraints = new ConcurrentHashMap<>();

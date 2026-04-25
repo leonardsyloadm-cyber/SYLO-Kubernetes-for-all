@@ -8,7 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ViewManager {
     private static ViewManager instance;
     private Map<String, View> views;
-    private static final String STORAGE_PATH = "kylo_system/settings/views.dat";
+    private static final String STORAGE_PATH = com.sylo.kylo.core.storage.StorageConfig.BASE_DIR + "/settings/views.dat";
 
     private ViewManager() {
         views = new ConcurrentHashMap<>();

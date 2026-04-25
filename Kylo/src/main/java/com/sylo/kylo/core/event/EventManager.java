@@ -8,7 +8,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class EventManager {
     private static EventManager instance;
     private Map<String, Event> events;
-    private static final String STORAGE_PATH = "kylo_system/settings/events.dat";
+    private static final String STORAGE_PATH = com.sylo.kylo.core.storage.StorageConfig.BASE_DIR + "/settings/events.dat";
 
     private EventManager() {
         events = new ConcurrentHashMap<>();

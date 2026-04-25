@@ -190,11 +190,10 @@ public class Catalog {
     }
 
     // Persistence
-    private static final String STORAGE_PATH = "kylo_system/settings/catalog.dat";
 
     @SuppressWarnings("unchecked")
     private void load() {
-        java.io.File f = new java.io.File(STORAGE_PATH);
+        java.io.File f = new java.io.File(com.sylo.kylo.core.storage.StorageConfig.BASE_DIR, "catalog.dat");
         if (!f.exists())
             return;
         try (java.io.ObjectInputStream ois = new java.io.ObjectInputStream(new java.io.FileInputStream(f))) {
@@ -212,7 +211,7 @@ public class Catalog {
     }
 
     private void save() {
-        java.io.File f = new java.io.File(STORAGE_PATH);
+        java.io.File f = new java.io.File(com.sylo.kylo.core.storage.StorageConfig.BASE_DIR, "catalog.dat");
         f.getParentFile().mkdirs();
         try (java.io.ObjectOutputStream oos = new java.io.ObjectOutputStream(new java.io.FileOutputStream(f))) {
             Map<String, Object> data = new HashMap<>();

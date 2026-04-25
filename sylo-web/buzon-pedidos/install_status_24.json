@@ -1,1 +1,0 @@
-{"percent": 0, "msg": "Error: Helm install failed: Release \"sylo-monitor\" does not exist. Installing it now.", "status": "error", "action": "install_tool"}

@@ -7,7 +7,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public class RoutineManager {
     private static RoutineManager instance;
     private Map<String, Routine> routines; // Key: db.name
-    private static final String STORAGE_PATH = "kylo_system/settings/routines.dat";
+    private static final String STORAGE_PATH = com.sylo.kylo.core.storage.StorageConfig.BASE_DIR + "/settings/routines.dat";
 
     private RoutineManager() {
         routines = new ConcurrentHashMap<>();

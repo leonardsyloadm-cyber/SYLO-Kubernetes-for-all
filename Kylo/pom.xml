@@ -32,6 +32,13 @@
             <version>2.16.1</version>
         </dependency>
 
+        <!-- Robust SQL Parsing -->
+        <dependency>
+            <groupId>com.github.jsqlparser</groupId>
+            <artifactId>jsqlparser</artifactId>
+            <version>4.6</version>
+        </dependency>
+
         <!-- GraalVM Polyglot -->
         <dependency>
             <groupId>org.graalvm.sdk</groupId>

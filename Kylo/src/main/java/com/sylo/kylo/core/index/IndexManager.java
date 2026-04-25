@@ -11,9 +11,9 @@ public class IndexManager {
     private final Map<String, BPlusTreeIndex> activeIndices;
     private final Map<String, String> indexNames; // "Table.Column" -> "IndexName"
     private final java.util.List<com.sylo.kylo.core.catalog.ForeignKey> foreignKeys;
-    private final String metaFilePath = "kylo_system/indexes/index_roots.dat";
-    private final String namesFilePath = "kylo_system/indexes/index_names.dat";
-    private final String fkFilePath = "kylo_system/indexes/foreign_keys.dat";
+    private final String metaFilePath = com.sylo.kylo.core.storage.StorageConfig.BASE_DIR + "/indexes/index_roots.dat";
+    private final String namesFilePath = com.sylo.kylo.core.storage.StorageConfig.BASE_DIR + "/indexes/index_names.dat";
+    private final String fkFilePath = com.sylo.kylo.core.storage.StorageConfig.BASE_DIR + "/indexes/foreign_keys.dat";
 
     private IndexManager() {
         this.indexRootPages = new ConcurrentHashMap<>();
@@ -205,7 +205,7 @@ public class IndexManager {
     }
 
     private void saveIndexMetadata() {
-        File dir = new File("kylo_system/indexes");
+        File dir = new File(com.sylo.kylo.core.storage.StorageConfig.BASE_DIR + "/indexes");
         if (!dir.exists())
             dir.mkdirs();
 

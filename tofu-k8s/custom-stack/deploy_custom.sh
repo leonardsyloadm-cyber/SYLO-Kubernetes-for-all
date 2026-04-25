@@ -123,6 +123,16 @@ minikube start -p "$CLUSTER_NAME" \
 # FIX: Update context immediately
 minikube -p "$CLUSTER_NAME" update-context >> "$LOG_FILE" 2>&1
 
+# --- PRE-LOAD IMAGES (Fix for TLS R2 Docker Hub Error) ---
+update_status 25 "Pre-cargando imagenes en Minikube (Bypass TLS)..."
+docker pull debian:buster-slim >> "$LOG_FILE" 2>&1 || true
+minikube image load debian:buster-slim -p "$CLUSTER_NAME" >> "$LOG_FILE" 2>&1 || true
+
+if [ "$WEB_ENABLED" = "true" ]; then
+    docker pull "$IMAGE_WEB" >> "$LOG_FILE" 2>&1 || true
+    minikube image load "$IMAGE_WEB" -p "$CLUSTER_NAME" >> "$LOG_FILE" 2>&1 || true
+fi
+
 # --- TOOLKIT LOADER (Shared Volume) ---
 update_status 30 "Preparando Toolkit..."
 kubectl apply -f "$SCRIPT_DIR/toolkit-loader.yaml" >> "$LOG_FILE" 2>&1

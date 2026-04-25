@@ -44,6 +44,19 @@ public class TransactionManager {
 
         System.out.println("🔥 COMMITTING Transaction for Session: " + sessionId);
 
+        StringBuilder walOps = new StringBuilder();
+        for (Map.Entry<String, Set<Long>> entry : ctx.getAllDeletes().entrySet()) {
+            for (Long rid : entry.getValue()) {
+                walOps.append("DEL|").append(entry.getKey()).append("|").append(rid).append("\n");
+            }
+        }
+        for (Map.Entry<String, List<Tuple>> entry : ctx.getAllInserts().entrySet()) {
+            for (Tuple t : entry.getValue()) {
+                walOps.append("INS|").append(entry.getKey()).append("|").append(java.util.Arrays.toString(t.getValues())).append("\n");
+            }
+        }
+        WriteAheadLog.appendTx(sessionId, walOps.toString());
+
         synchronized (engine) { // Global Lock for Atomicity (Simplified)
             // 1. Apply Deletes
             for (Map.Entry<String, Set<Long>> entry : ctx.getAllDeletes().entrySet()) {

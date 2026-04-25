@@ -251,7 +251,7 @@ $active_tab = "tickets";
         msgWindow.innerHTML = '<div class="text-center text-muted py-3"><div class="spinner-border spinner-border-sm" role="status"></div></div>';
 
         try {
-            const res = await fetch(\`php/data.php?api_ticket_messages=1&ticket_id=\${id}\`);
+            const res = await fetch(`php/data.php?api_ticket_messages=1&ticket_id=${id}`);
             const messages = await res.json();
             
             msgWindow.innerHTML = '';
@@ -260,14 +260,14 @@ $active_tab = "tickets";
                 const time = new Date(m.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
                 const clazz = isClient ? 'bubble-client' : 'bubble-admin ms-auto';
                 
-                msgWindow.innerHTML += \`
-                    <div class="d-flex flex-column mb-3" style="align-items: \${isClient ? 'flex-end' : 'flex-start'}">
-                        <small class="text-muted mb-1 px-1" style="font-size:0.7rem">\${isClient ? 'Tú' : 'Sylo Support'} • \${time}</small>
-                        <div class="chat-bubble \${clazz} shadow-sm">
-                            \${m.message.replace(/\\n/g, '<br>')}
+                msgWindow.innerHTML += `
+                    <div class="d-flex flex-column mb-3" style="align-items: ${isClient ? 'flex-end' : 'flex-start'}">
+                        <small class="text-muted mb-1 px-1" style="font-size:0.7rem">${isClient ? 'Tú' : 'Sylo Support'} • ${time}</small>
+                        <div class="chat-bubble ${clazz} shadow-sm">
+                            ${m.message.replace(/\n/g, '<br>')}
                         </div>
                     </div>
-                \`;
+                `;
             });
             msgWindow.scrollTop = msgWindow.scrollHeight;
         } catch(e) {

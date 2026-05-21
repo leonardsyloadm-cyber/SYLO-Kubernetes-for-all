@@ -21,6 +21,9 @@ public class KyloServer {
 
         // Use dataDir for Multi-File Storage
         engine = new ExecutionEngine(dataDirPath);
+        
+        // Recover WAL
+        com.sylo.kylo.core.transaction.WriteAheadLog.recover(engine);
 
         // Init default DB
         if (!SYSTEM_DBS.contains("default")) {
@@ -34,6 +37,9 @@ public class KyloServer {
 
         // Start Operation Impostor (MySQL Layer)
         new com.sylo.kylo.net.KyloProtocolServer(3308, engine).start();
+        
+        // Start Operation Impostor (Redis Layer)
+        new com.sylo.kylo.net.redis.KyloRedisServer(6379, engine).start();
 
         // Start Sylo Architect (Web Server)
         try {

@@ -23,4 +23,13 @@ public class Schema implements java.io.Serializable {
     public Column getColumn(int index) {
         return columns.get(index);
     }
+
+    public int getColumnIndex(String name) {
+        for (int i = 0; i < columns.size(); i++) {
+            if (columns.get(i).getName().equalsIgnoreCase(name)) {
+                return i;
+            }
+        }
+        return -1;
+    }
 }

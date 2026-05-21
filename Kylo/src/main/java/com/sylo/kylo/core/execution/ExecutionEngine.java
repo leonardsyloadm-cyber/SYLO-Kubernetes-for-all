@@ -156,7 +156,12 @@ public class ExecutionEngine {
             }
         } catch (Exception e) {
             System.err.println("Index insertion failed: " + e.getMessage() + ". Rolling back Heap Insert.");
-            deleteTupleByRid(tableName, rid);
+            try {
+                deleteTupleByRid(tableName, rid);
+            } catch (Exception fatal) {
+                System.err.println("FATAL: Heap rollback failed after index error. State corrupted.");
+                throw new RuntimeException("FATAL Corruption: " + fatal.getMessage(), fatal);
+            }
             throw new RuntimeException("Transaction Aborted: " + e.getMessage() + " (State: " + tableName + ")", e);
         }
     }
@@ -246,7 +251,7 @@ public class ExecutionEngine {
         return scan;
     }
 
-    public void createIndex(String tableName, String columnName, String indexName) {
+    public synchronized void createIndex(String tableName, String columnName, String indexName) {
         Catalog catalog = Catalog.getInstance();
         if (catalog.getTableSchema(tableName) == null)
             throw new IllegalArgumentException("Table not found");
@@ -293,7 +298,7 @@ public class ExecutionEngine {
         System.out.println("Index build complete.");
     }
 
-    public void createIndex(String tableName, String columnName) {
+    public synchronized void createIndex(String tableName, String columnName) {
         createIndex(tableName, columnName, "IDX_" + System.currentTimeMillis());
     }
 

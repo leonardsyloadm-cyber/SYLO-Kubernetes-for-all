@@ -11,11 +11,20 @@ import java.util.regex.*;
 import com.sylo.kylo.core.constraint.Constraint;
 import com.sylo.kylo.core.constraint.ConstraintManager;
 
+import net.sf.jsqlparser.parser.CCJSqlParserUtil;
+import net.sf.jsqlparser.statement.Statement;
+import net.sf.jsqlparser.statement.select.Select;
+import net.sf.jsqlparser.statement.select.PlainSelect;
+import net.sf.jsqlparser.statement.select.SelectItem;
+import net.sf.jsqlparser.statement.insert.Insert;
+import net.sf.jsqlparser.expression.operators.relational.ExpressionList;
+import net.sf.jsqlparser.expression.Expression;
+
 public class KyloProcessor {
 
-    private static final Pattern CREATE_PATTERN = Pattern.compile("\\((.*?)\\)");
+    private static final Pattern CREATE_PATTERN = Pattern.compile("\\((.*)\\)");
     private static final Pattern INSERT_PATTERN = Pattern
-            .compile("INSERT\\s+INTO\\s+(\\w+)\\s*(?:\\((.*?)\\))?\\s*VALUES\\s*\\((.*?)\\)", Pattern.CASE_INSENSITIVE);
+            .compile("INSERT\\s+INTO\\s+([a-zA-Z0-9_:\\.]+)\\s*(?:\\((.*?)\\))?\\s*VALUES\\s*\\((.*?)\\)", Pattern.CASE_INSENSITIVE);
 
     public static class KyloResponse {
         public boolean success;
@@ -57,6 +66,13 @@ public class KyloProcessor {
 
         String verb = parts[0].toUpperCase();
 
+        Statement parsedStmt = null;
+        try {
+            parsedStmt = CCJSqlParserUtil.parse(q);
+        } catch (Exception e) {
+            // Ignore, we will fallback to old parser
+        }
+
         if (verb.equals("USE")) {
             if (parts.length > 1) {
                 currentDB = parts[1];
@@ -68,27 +84,62 @@ public class KyloProcessor {
         switch (verb) {
 
             case "INSERT":
+                String tName;
+                List<String> rawValues = new ArrayList<>();
+                
+                if (parsedStmt instanceof Insert) {
+                    Insert ins = (Insert) parsedStmt;
+                    net.sf.jsqlparser.schema.Table table = ins.getTable();
+                    tName = table.getSchemaName() != null ? table.getSchemaName() + ":" + table.getName() : table.getName();
+                    if (ins.getItemsList() instanceof ExpressionList) {
+                        ExpressionList expList = (ExpressionList) ins.getItemsList();
+                        for (Expression expr : expList.getExpressions()) {
+                            String val = expr.toString();
+                            if (val.startsWith("'") && val.endsWith("'")) {
+                                val = val.substring(1, val.length() - 1);
+                            }
+                            rawValues.add(val);
+                        }
+                    } else {
+                        throw new Exception("Unsupported Insert values format");
+                    }
+                } else {
+                    Matcher mIns = INSERT_PATTERN.matcher(q);
+                    if (!mIns.find())
+                        throw new Exception("Sintaxis INSERT inválida.");
+                    tName = mIns.group(1);
+                    String valsDef = mIns.group(3);
+                    boolean insideQuote = false;
+                    StringBuilder currentVal = new StringBuilder();
+                    for (char c : valsDef.toCharArray()) {
+                        if (c == '\'') {
+                            insideQuote = !insideQuote;
+                            currentVal.append(c); // Keep quotes for now, strip later
+                        } else if (c == ',' && !insideQuote) {
+                            rawValues.add(currentVal.toString().trim());
+                            currentVal.setLength(0);
+                        } else {
+                            currentVal.append(c);
+                        }
+                    }
+                    rawValues.add(currentVal.toString().trim());
+                    for (int i = 0; i < rawValues.size(); i++) {
+                        String v = rawValues.get(i);
+                        if (v.startsWith("'") && v.endsWith("'") && v.length() >= 2) {
+                            rawValues.set(i, v.substring(1, v.length() - 1));
+                        }
+                    }
+                }
 
-                Matcher mIns = INSERT_PATTERN.matcher(q);
-                if (!mIns.find())
-                    throw new Exception("Sintaxis INSERT inválida.");
-                String tName = mIns.group(1);
-                String valsDef = mIns.group(3);
-                String fullTableName = tName.contains(":") ? tName : (currentDB + ":" + tName);
+                String fullTableName = normalizeTableName(tName, currentDB);
 
                 Schema schema = Catalog.getInstance()
                         .getTableSchema(fullTableName);
                 if (schema == null)
                     throw new Exception("Tabla no existe: " + fullTableName);
 
-                List<String> rawValues = new ArrayList<>();
-                Matcher vm = Pattern.compile("'([^']*)'|([^,]+)")
-                        .matcher(valsDef);
-                while (vm.find())
-                    rawValues.add(vm.group(1) != null ? vm.group(1) : vm.group(2).trim());
-
                 if (rawValues.size() != schema.getColumnCount())
-                    throw new Exception("Column count mismatch");
+                    throw new Exception("Column count mismatch. Expected: " + schema.getColumnCount() + ", Got: " + rawValues.size() + ". Values: " + rawValues);
                 Object[] tupleData = new Object[schema.getColumnCount()];
                 for (int i = 0; i < schema.getColumnCount(); i++) {
                     tupleData[i] = parseValue(schema.getColumn(i).getType(), rawValues.get(i));
@@ -97,69 +148,209 @@ public class KyloProcessor {
                 res.message = "Insertado en Disk Page.";
                 break;
 
+            case "UPDATE":
+                String upTable;
+                String setClause;
+                String upWhere = null;
+                Pattern pUp = Pattern.compile("UPDATE\\s+([a-zA-Z0-9_:\\.]+)\\s+SET\\s+(.+?)(?:\\s+WHERE\\s+(.+))?", Pattern.CASE_INSENSITIVE);
+                Matcher mUp = pUp.matcher(q);
+                if (mUp.find()) {
+                    upTable = mUp.group(1);
+                    setClause = mUp.group(2).trim();
+                    if (mUp.group(3) != null) {
+                        upWhere = mUp.group(3).trim();
+                    }
+                } else {
+                    throw new Exception("Sintaxis UPDATE inválida.");
+                }
+
+                String fullUpTable = normalizeTableName(upTable, currentDB);
+                Schema upSchema = Catalog.getInstance().getTableSchema(fullUpTable);
+                if (upSchema == null) throw new Exception("Tabla no existe: " + fullUpTable);
+
+                java.util.function.Predicate<Tuple> upPredicate = t -> true;
+                if (upWhere != null) {
+                    upPredicate = WhereEvaluator.buildPredicate(upWhere, upSchema);
+                }
+
+                // Simple SET parsing: col1 = 'val1', col2 = 123
+                Map<Integer, Object> updates = new HashMap<>();
+                for (String assignment : setClause.split(",")) {
+                    String[] partsAssignment = assignment.split("=");
+                    if (partsAssignment.length == 2) {
+                        String colName = partsAssignment[0].trim();
+                        String val = partsAssignment[1].trim();
+                        if (val.startsWith("'") && val.endsWith("'")) val = val.substring(1, val.length() - 1);
+                        int colIdx = upSchema.getColumnIndex(colName);
+                        if (colIdx != -1) {
+                            updates.put(colIdx, parseValue(upSchema.getColumn(colIdx).getType(), val));
+                        } else {
+                            throw new Exception("Columna no encontrada para UPDATE: " + colName);
+                        }
+                    }
+                }
+
+                // We don't have an updateTuple in ExecutionEngine, so we delete and insert
+                int updatedCount = 0;
+                List<Object[]> toInsert = new ArrayList<>();
+                // Select first
+                LogicalPlanner upPlanner = new LogicalPlanner(engine);
+                PlanNode upPlan = upPlanner.createSelectPlan(fullUpTable, upWhere);
+                if (upPlan != null) {
+                    upPlan.open();
+                    try {
+                        Tuple t;
+                        while ((t = upPlan.next()) != null) {
+                            // Create new tuple
+                            Object[] newData = new Object[upSchema.getColumnCount()];
+                            for(int i=0; i<upSchema.getColumnCount(); i++) {
+                                newData[i] = updates.containsKey(i) ? updates.get(i) : t.getValue(i);
+                            }
+                            toInsert.add(newData);
+                        }
+                    } finally {
+                        upPlan.close();
+                    }
+                }
+                
+                // Delete old
+                engine.deleteTuple(fullUpTable, upPredicate);
+                
+                // Insert new
+                for(Object[] tData : toInsert) {
+                    engine.insertTuple(fullUpTable, tData);
+                    updatedCount++;
+                }
+
+                res.message = "Actualizadas " + updatedCount + " filas.";
+                break;
+
+            case "DELETE":
+                String delTable;
+                String delWhere = null;
+                Pattern pDel = Pattern.compile("DELETE\\s+FROM\\s+([a-zA-Z0-9_:\\.]+)(?:\\s+WHERE\\s+(.+))?", Pattern.CASE_INSENSITIVE);
+                Matcher mDel = pDel.matcher(q);
+                if (mDel.find()) {
+                    delTable = mDel.group(1);
+                    if (mDel.group(2) != null) {
+                        delWhere = mDel.group(2).trim();
+                    }
+                } else {
+                    throw new Exception("Sintaxis DELETE inválida.");
+                }
+
+                String fullDelTable = normalizeTableName(delTable, currentDB);
+                Schema delSchema = Catalog.getInstance().getTableSchema(fullDelTable);
+                if (delSchema == null) throw new Exception("Tabla no existe: " + fullDelTable);
+
+                java.util.function.Predicate<Tuple> delPredicate = t -> true;
+                if (delWhere != null) {
+                    // Simple equality parsing for Redis: WHERE r_key = 'val'
+                    Pattern pEq = Pattern.compile("(\\w+)\\s*=\\s*'(.*)'");
+                    Matcher mEq = pEq.matcher(delWhere);
+                    if (mEq.find()) {
+                        String col = mEq.group(1);
+                        String val = mEq.group(2);
+                        int colIdx = delSchema.getColumnIndex(col);
+                        if (colIdx != -1) {
+                            delPredicate = t -> {
+                                Object v = t.getValue(colIdx);
+                                return v != null && v.toString().equals(val);
+                            };
+                        }
+                    } else {
+                        // Fallback to WhereEvaluator for complex queries if needed
+                        delPredicate = WhereEvaluator.buildPredicate(delWhere, delSchema);
+                    }
+                }
+
+                int deletedCount = engine.deleteTuple(fullDelTable, delPredicate);
+                res.message = "Borradas " + deletedCount + " filas.";
+                break;
+
             case "SELECT":
                 String st = null;
                 String whereClause = null;
                 String colStr = null;
 
-                // Regex-based SELECT parser
-                // Pattern: SELECT <columns> FROM <table> [WHERE <condition>]
-                // Supports tables/views with spaces or special chars
-                Pattern pSel = Pattern.compile("SELECT\\s+(.+?)\\s+FROM\\s+(.+?)(?:\\s+WHERE\\s+(.+)|$)",
-                        Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
-                Matcher mSel = pSel.matcher(q);
-
-                if (mSel.matches()) {
-                    colStr = mSel.group(1).trim();
-                    st = mSel.group(2).trim();
-                    if (mSel.group(3) != null) {
-                        whereClause = mSel.group(3).trim();
+                if (parsedStmt instanceof Select) {
+                    Select select = (Select) parsedStmt;
+                    if (select.getSelectBody() instanceof PlainSelect) {
+                        PlainSelect plainSelect = (PlainSelect) select.getSelectBody();
+                        
+                        if (plainSelect.getFromItem() instanceof net.sf.jsqlparser.schema.Table) {
+                            net.sf.jsqlparser.schema.Table table = (net.sf.jsqlparser.schema.Table) plainSelect.getFromItem();
+                            st = table.getSchemaName() != null ? table.getSchemaName() + ":" + table.getName() : table.getName();
+                        } else {
+                            st = plainSelect.getFromItem().toString().replaceAll("^['\"]|['\"]$", "");
+                        }
+                        
+                        if (plainSelect.getWhere() != null) {
+                            whereClause = plainSelect.getWhere().toString();
+                        }
+                        StringBuilder sb = new StringBuilder();
+                        for (int i = 0; i < plainSelect.getSelectItems().size(); i++) {
+                            sb.append(plainSelect.getSelectItems().get(i).toString());
+                            if (i < plainSelect.getSelectItems().size() - 1) sb.append(",");
+                        }
+                        colStr = sb.toString();
+                    } else {
+                        throw new Exception("Unsupported Select statement body");
                     }
-                    // Handle potential quotes in table name
-                    st = st.replaceAll("^['\"]|['\"]$", "");
-
                 } else {
-                    // Fallback to naive splitting if regex fails
-                    int fromIdx = -1;
-                    for (int i = 0; i < parts.length; i++) {
-                        if (parts[i].equalsIgnoreCase("FROM"))
-                            fromIdx = i;
+                    // Regex-based SELECT parser Fallback
+                    Pattern pSel = Pattern.compile("SELECT\\s+(.+?)\\s+FROM\\s+(.+?)(?:\\s+WHERE\\s+(.+)|$)",
+                            Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+                    Matcher mSel = pSel.matcher(q);
+
+                    if (mSel.matches()) {
+                        colStr = mSel.group(1).trim();
+                        st = mSel.group(2).trim();
+                        if (mSel.group(3) != null) {
+                            whereClause = mSel.group(3).trim();
+                        }
+                        st = st.replaceAll("^['\"]|['\"]$", "");
+                    } else {
+                        int fromIdx = -1;
+                        for (int i = 0; i < parts.length; i++) {
+                            if (parts[i].equalsIgnoreCase("FROM"))
+                                fromIdx = i;
+                        }
+                        if (fromIdx == -1)
+                            throw new Exception("Sintaxis SELECT inválida (Falta FROM)");
+
+                        st = parts[fromIdx + 1];
+
+                        int start = q.toUpperCase().indexOf(" WHERE ");
+                        if (start != -1)
+                            whereClause = q.substring(start + 7).trim();
+
+                        colStr = "";
+                        for (int i = 1; i < fromIdx; i++)
+                            colStr += parts[i] + " ";
+                        colStr = colStr.trim();
                     }
-                    if (fromIdx == -1)
-                        throw new Exception("Sintaxis SELECT inválida (Falta FROM)");
-
-                    st = parts[fromIdx + 1];
-
-                    // Try to reconstruct where if it exists
-                    int start = q.toUpperCase().indexOf(" WHERE ");
-                    if (start != -1)
-                        whereClause = q.substring(start + 7).trim();
-
-                    // Reconstruct cols
-                    colStr = "";
-                    for (int i = 1; i < fromIdx; i++)
-                        colStr += parts[i] + " ";
-                    colStr = colStr.trim();
                 }
 
-                String fullT = st.contains(":") ? st : (currentDB + ":" + st);
+                String fullT = normalizeTableName(st, currentDB);
 
                 // --- VIEW RESOLUTION START ---
                 String resolvedQuery = resolveViewQuery(fullT, 0);
                 if (resolvedQuery != null) {
                     System.out.println("DEBUG: View '" + fullT + "' resolved to: " + resolvedQuery);
 
-                    String viewDef = resolvedQuery;
-                    String finalQuery = viewDef;
+                    String finalQuery = resolvedQuery;
 
                     if (whereClause != null) {
                         if (finalQuery.toUpperCase().contains(" WHERE ")) {
+                            // Wrap original WHERE clause in parens to preserve precedence of ORs
+                            finalQuery = finalQuery.replaceFirst("(?i)\\bWHERE\\b\\s+(.+)", "WHERE ($1)");
                             finalQuery += " AND (" + whereClause + ")";
                         } else {
                             finalQuery += " WHERE " + whereClause;
                         }
                     }
-                    return executeKyloQL(finalQuery, engine, res, currentDB);
+                    System.out.println("DEBUG RECURSIVE: " + finalQuery); return executeKyloQL(finalQuery, engine, res, currentDB);
                 }
                 // --- VIEW RESOLUTION END ---
 
@@ -304,7 +495,7 @@ public class KyloProcessor {
                         throw new Exception("No se pudo parsear el nombre de la vista.");
                     }
 
-                    String fullViewName = viewName.contains(":") ? viewName : (currentDB + ":" + viewName);
+                    String fullViewName = normalizeTableName(viewName, currentDB);
                     ViewManager.getInstance().createView(fullViewName, definition);
                     res.message = "Vista '" + fullViewName + "' creada.";
                 } else if (parts.length > 1 && parts[1].equalsIgnoreCase("TABLE")) {
@@ -342,17 +533,17 @@ public class KyloProcessor {
                         KyloType type = parseType(typeStr);
                         columns.add(new Column(colName, type, false));
                     }
-                    String k = tbl.contains(":") ? tbl : (currentDB + ":" + tbl);
+                    String k = normalizeTableName(tbl, currentDB);
                     Schema createSchema = new Schema(columns);
                     Catalog.getInstance().createTable(k, createSchema);
                     res.message = "Tabla Creada (Storage Engine) en " + currentDB;
                 } else if (parts.length > 1 && parts[1].equalsIgnoreCase("INDEX")) {
-                    Pattern pIdx = Pattern.compile("ON\\s+(\\w+)\\s*\\(([^)]+)\\)", Pattern.CASE_INSENSITIVE);
+                    Pattern pIdx = Pattern.compile("ON\\s+([a-zA-Z0-9_:\\.]+)\\s*\\(([^)]+)\\)", Pattern.CASE_INSENSITIVE);
                     Matcher mIdx = pIdx.matcher(q);
                     if (mIdx.find()) {
                         String t = mIdx.group(1);
                         String colsGroup = mIdx.group(2);
-                        String indexT = t.contains(":") ? t : (currentDB + ":" + t);
+                        String indexT = normalizeTableName(t, currentDB);
                         if (ViewManager.getInstance().isView(indexT))
                             throw new Exception("No puedes indexar una Vista.");
 
@@ -650,18 +841,38 @@ public class KyloProcessor {
 
     }
 
+    private static String normalizeTableName(String tName, String currentDB) {
+        if (tName == null) return null;
+        tName = tName.replace("\"", "").replace("'", "").replace("`", "");
+        if (tName.contains(".")) {
+            tName = tName.replace(".", ":");
+        }
+        return tName.contains(":") ? tName : (currentDB + ":" + tName);
+    }
+
     private static KyloType parseType(String typeStr) {
-        if (typeStr.contains("INT"))
+        String upperType = typeStr.toUpperCase();
+        if (upperType.equals("INT") || upperType.equals("INTEGER"))
             return new KyloInt();
-        if (typeStr.contains("BIGINT"))
+        if (upperType.equals("BIGINT"))
             return new KyloBigInt();
-        if (typeStr.contains("TEXT") || typeStr.contains("VARCHAR"))
-            return new KyloVarchar(255);
-        if (typeStr.contains("BOOLEAN"))
+        if (upperType.equals("TEXT") || upperType.startsWith("VARCHAR")) {
+            // Extract length if VARCHAR(X)
+            int length = 255;
+            Matcher m = Pattern.compile("VARCHAR\\s*\\((\\d+)\\)").matcher(upperType);
+            if (m.find()) {
+                length = Integer.parseInt(m.group(1));
+            }
+            return new KyloVarchar(length);
+        }
+        if (upperType.equals("BOOLEAN") || upperType.equals("BOOL"))
             return new KyloBoolean();
-        if (typeStr.contains("UUID"))
+        if (upperType.equals("UUID"))
             return new KyloUuid();
-        return new KyloVarchar(100);
+            
+        // Default fallback with a warning
+        System.err.println("Warning: Unrecognized type '" + typeStr + "', defaulting to VARCHAR(255).");
+        return new KyloVarchar(255);
     }
 
     private static Object parseValue(KyloType type, String raw) {

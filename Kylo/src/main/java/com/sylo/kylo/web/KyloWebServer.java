@@ -22,7 +22,7 @@ public class KyloWebServer {
 
     public KyloWebServer(ExecutionEngine executionEngine) throws IOException {
         this.executionEngine = executionEngine;
-        this.server = HttpServer.create(new InetSocketAddress(8081), 0);
+        this.server = HttpServer.create(new InetSocketAddress(8080), 0);
 
         // Static Content
         server.createContext("/", new StaticHandler());
@@ -37,7 +37,7 @@ public class KyloWebServer {
     }
 
     public void start() {
-        System.out.println("Sylo Architect Web Interface running on http://localhost:8081");
+        System.out.println("Sylo Architect Web Interface running on http://localhost:8080");
         server.start();
     }
 

@@ -1314,6 +1314,28 @@ def process_metrics():
         except Exception as e:
             # log(f"Metrics loop error: {e}", C_RED)
             time.sleep(1)
+            
+        # --- FIX: ZOMBIE DETECTION (REBOOT RESILIENCE) ---
+        # Si un contenedor debería estar activo pero no está en 'docker ps' (ej: tras reiniciar el PC),
+        # lo reportamos como Offline para que el Frontend muestre el botón de "Encender Servidor".
+        try:
+            db_active = run_command('docker exec -i sylo-admin-mysql mysql -N -usylo_app -psylo_app_pass -D sylo_admin_db -e "SELECT id FROM k8s_deployments WHERE status IN (\'active\', \'online\', \'running\')" 2>/dev/null', silent=True).strip()
+            if db_active and raw is not None:
+                for line in db_active.splitlines():
+                    if line.isdigit():
+                        zoid = int(line)
+                        if f"sylo-cliente-{zoid}" not in raw:
+                            try:
+                                requests.post(f"{API_URL}/reportar/metricas", json={
+                                    "id_cliente": zoid, 
+                                    "metrics": {"cpu": 0, "ram": 0}, 
+                                    "ssh_cmd": "Offline", 
+                                    "web_url": "", 
+                                    "os_info": "Offline", 
+                                    "installed_tools": []
+                                }, timeout=1)
+                            except: pass
+        except: pass
         
         time.sleep(2)
 
@@ -1739,8 +1761,8 @@ def install_monitoring_stack(oid, profile, config):
             --set grafana.resources.limits.cpu=200m \
             --set grafana.persistence.enabled=false \
             --set alertmanager.enabled=false \
-            --set nodeExporter.enabled=false \
-            --set kubeStateMetrics.enabled=false \
+            --set nodeExporter.enabled=true \
+            --set kubeStateMetrics.enabled=true \
             --set prometheus.prometheusSpec.scrapeInterval=1m \
             --set grafana.service.type=ClusterIP \
             --timeout 10m \

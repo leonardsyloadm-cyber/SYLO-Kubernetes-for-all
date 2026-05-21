@@ -105,42 +105,6 @@ public class LogicalPlanner {
     }
 
     private Predicate<Tuple> parsePredicate(String where, Schema schema) {
-        // Basic parser for "col = val"
-        // Valid for "sexo = true", "id = 1", etc.
-        Pattern eqPattern = Pattern.compile("(\\w+)\\s*=\\s*(?:'([^']*)'|([^\\s]+))");
-        Matcher m = eqPattern.matcher(where);
-
-        if (m.find()) {
-            final String colName = m.group(1);
-            String valStr = m.group(2) != null ? m.group(2) : m.group(3);
-
-            // Find column index
-            int idx = -1;
-            com.sylo.kylo.core.structure.KyloType type = null;
-            for (int i = 0; i < schema.getColumnCount(); i++) {
-                if (schema.getColumn(i).getName().equals(colName)) {
-                    idx = i;
-                    type = schema.getColumn(i).getType();
-                    break;
-                }
-            }
-
-            if (idx == -1)
-                return null; // Column not found
-
-            final int colIdx = idx;
-            final Object targetVal = parseValue(type, valStr);
-
-            return new Predicate<Tuple>() {
-                @Override
-                public boolean test(Tuple t) {
-                    Object val = t.getValue(colIdx);
-                    if (val == null)
-                        return targetVal == null;
-                    return val.equals(targetVal);
-                }
-            };
-        }
-        return null;
+        return WhereEvaluator.buildPredicate(where, schema);
     }
 }

@@ -1,8 +1,8 @@
 package com.sylo.kylo.core.storage;
 
-import java.util.LinkedHashMap;
 import java.util.Map;
-import java.util.ArrayList;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 public class BufferPoolManager {
     private final DiskManager diskManager;
@@ -14,27 +14,15 @@ public class BufferPoolManager {
     private static class CachedPage {
         final Page page;
         final DiskManager diskManager;
+        final ReentrantReadWriteLock lock = new ReentrantReadWriteLock();
+        
         CachedPage(Page page, DiskManager diskManager) {
             this.page = page;
             this.diskManager = diskManager;
         }
     }
     
-    private static final LinkedHashMap<String, CachedPage> globalPageTable = 
-            new LinkedHashMap<String, CachedPage>(MAX_GLOBAL_PAGES, 0.75f, true) {
-        @Override
-        protected boolean removeEldestEntry(Map.Entry<String, CachedPage> eldest) {
-            if (size() > MAX_GLOBAL_PAGES) {
-                CachedPage cp = eldest.getValue();
-                if (cp.page != null && cp.page.isDirty()) {
-                    cp.diskManager.writePage(cp.page.getPageId(), cp.page);
-                    cp.page.setDirty(false);
-                }
-                return true;
-            }
-            return false;
-        }
-    };
+    private static final ConcurrentHashMap<String, CachedPage> globalPageTable = new ConcurrentHashMap<>();
 
     public BufferPoolManager(String tableName, DiskManager diskManager) {
         this.tableName = tableName;
@@ -47,50 +35,77 @@ public class BufferPoolManager {
 
     public Page fetchPage(PageId pageId) {
         String key = getGlobalKey(pageId);
-        synchronized(globalPageTable) {
-            CachedPage cp = globalPageTable.get(key);
-            if (cp != null) {
-                return cp.page;
-            }
-        }
         
-        Page page = new Page(pageId);
-        diskManager.readPage(pageId, page);
-        page.refresh();
+        CachedPage cp = globalPageTable.computeIfAbsent(key, k -> {
+            evictIfNeeded();
+            Page newPage = new Page(pageId);
+            diskManager.readPage(pageId, newPage);
+            newPage.refresh();
+            return new CachedPage(newPage, diskManager);
+        });
         
-        synchronized(globalPageTable) {
-            globalPageTable.put(key, new CachedPage(page, diskManager));
-        }
-        return page;
+        return cp.page;
     }
 
     public Page newPage() {
         PageId pageId = diskManager.allocatePage();
+        String key = getGlobalKey(pageId);
+        
+        evictIfNeeded();
         Page page = new Page(pageId);
-        synchronized(globalPageTable) {
-            globalPageTable.put(getGlobalKey(pageId), new CachedPage(page, diskManager));
-        }
+        CachedPage cp = new CachedPage(page, diskManager);
+        globalPageTable.put(key, cp);
+        
         return page;
+    }
+
+    private void evictIfNeeded() {
+        if (globalPageTable.size() >= MAX_GLOBAL_PAGES) {
+            // Approximate LRU via random eviction to avoid blocking
+            for (Map.Entry<String, CachedPage> entry : globalPageTable.entrySet()) {
+                CachedPage cp = entry.getValue();
+                if (cp.lock.writeLock().tryLock()) {
+                    try {
+                        if (cp.page != null && cp.page.isDirty()) {
+                            cp.diskManager.writePage(cp.page.getPageId(), cp.page);
+                            cp.page.setDirty(false);
+                        }
+                        globalPageTable.remove(entry.getKey());
+                        return; // Evicted one page
+                    } finally {
+                        cp.lock.writeLock().unlock();
+                    }
+                }
+            }
+        }
     }
 
     public void flushPage(PageId pageId) {
         String key = getGlobalKey(pageId);
-        synchronized(globalPageTable) {
-            CachedPage cp = globalPageTable.get(key);
-            if (cp != null && cp.page.isDirty()) {
-                diskManager.writePage(pageId, cp.page);
-                cp.page.setDirty(false);
+        CachedPage cp = globalPageTable.get(key);
+        if (cp != null) {
+            cp.lock.writeLock().lock();
+            try {
+                if (cp.page != null && cp.page.isDirty()) {
+                    cp.diskManager.writePage(pageId, cp.page);
+                    cp.page.setDirty(false);
+                }
+            } finally {
+                cp.lock.writeLock().unlock();
             }
         }
     }
 
     public void flushAllPages() {
-        synchronized(globalPageTable) {
-            for (CachedPage cp : new ArrayList<>(globalPageTable.values())) {
+        for (CachedPage cp : globalPageTable.values()) {
+            cp.lock.writeLock().lock();
+            try {
                 if (cp.page != null && cp.page.isDirty()) {
                     cp.diskManager.writePage(cp.page.getPageId(), cp.page);
                     cp.page.setDirty(false);
                 }
+            } finally {
+                cp.lock.writeLock().unlock();
             }
         }
     }

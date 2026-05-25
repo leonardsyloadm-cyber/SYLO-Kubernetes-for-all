@@ -37,6 +37,14 @@ public class SystemBootstrapper {
         catalog.createTable("kylo_system:triggers", defineTriggersSchema());
         catalog.createTable("kylo_system:events", defineEventsSchema());
 
+        // Oracle Compatibility: DUAL Table
+        catalog.createTable("kylo_system:dual", defineDualSchema());
+        try {
+            if (executionEngine.scanTable("kylo_system:dual").isEmpty()) {
+                executionEngine.insertTuple("kylo_system:dual", new Object[]{"X"});
+            }
+        } catch (Exception e) {}
+
         // 2b. Sanitize System Constraints (Prevent corruption from bad previous runs)
         com.sylo.kylo.core.constraint.ConstraintManager cm = com.sylo.kylo.core.constraint.ConstraintManager
                 .getInstance();
@@ -157,6 +165,12 @@ public class SystemBootstrapper {
         cols.add(new Column("execute_at", new KyloVarchar(30), true));
         cols.add(new Column("interval_value", new KyloInt(), true));
         cols.add(new Column("interval_field", new KyloVarchar(20), true));
+        return new Schema(cols);
+    }
+
+    private Schema defineDualSchema() {
+        List<Column> cols = new ArrayList<>();
+        cols.add(new Column("DUMMY", new KyloVarchar(1), false));
         return new Schema(cols);
     }
 

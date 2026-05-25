@@ -59,7 +59,10 @@ public class KyloProcessor {
 
     private static String executeKyloQL(String query, ExecutionEngine engine, KyloResponse res, String currentDB)
             throws Exception {
-        String q = query.trim();
+        // Oracle Dialect Translation Interceptor
+        String translatedQuery = OracleDialectTranslator.translate(query);
+        String q = translatedQuery.trim();
+        
         String[] parts = q.split("\\s+");
         if (parts.length == 0)
             return currentDB;
@@ -852,14 +855,14 @@ public class KyloProcessor {
 
     private static KyloType parseType(String typeStr) {
         String upperType = typeStr.toUpperCase();
-        if (upperType.equals("INT") || upperType.equals("INTEGER"))
+        if (upperType.equals("INT") || upperType.equals("INTEGER") || upperType.equals("NUMBER"))
             return new KyloInt();
         if (upperType.equals("BIGINT"))
             return new KyloBigInt();
-        if (upperType.equals("TEXT") || upperType.startsWith("VARCHAR")) {
-            // Extract length if VARCHAR(X)
+        if (upperType.equals("TEXT") || upperType.startsWith("VARCHAR") || upperType.startsWith("VARCHAR2")) {
+            // Extract length if VARCHAR(X) or VARCHAR2(X)
             int length = 255;
-            Matcher m = Pattern.compile("VARCHAR\\s*\\((\\d+)\\)").matcher(upperType);
+            Matcher m = Pattern.compile("VARCHAR2?\\s*\\((\\d+)\\)").matcher(upperType);
             if (m.find()) {
                 length = Integer.parseInt(m.group(1));
             }

@@ -1059,7 +1059,7 @@ def process_task_queue():
                 elif act == "DELETE_S3": 
                     log(f"🔍 DEBUG JSON: {d}", C_YELLOW)
                     threading.Thread(target=delete_s3, args=(oid, d.get('filename'))).start()
-                elif act == "CREATE_AMI": threading.Thread(target=create_ami, args=(oid,)).start()
+                # elif act == "CREATE_AMI": threading.Thread(target=create_ami, args=(oid,)).start()
                 
             except Exception as e: log(f"⚠️ Error: {e}", C_RED)
         

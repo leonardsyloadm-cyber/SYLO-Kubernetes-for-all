@@ -72,8 +72,8 @@ class LanguageManager {
             .lang-selector { position: relative; display: inline-block; margin-left:10px; }
             .lang-btn { background: transparent; border: 1px solid rgba(100,116,139,0.3); color: inherit; padding: 4px 10px; border-radius: 20px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-size: 0.85rem; transition: all 0.2s; }
             .lang-btn:hover { border-color: var(--sylo-accent, #3b82f6); background: rgba(59, 130, 246, 0.1); }
-            .lang-dropdown { display: none; position: absolute; top: 110%; right: 0; background: var(--sylo-card, #fff); border: 1px solid rgba(100,116,139,0.2); border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); overflow: hidden; z-index: 10000; min-width: 140px; }
-            [data-theme="dark"] .lang-dropdown { background: #1e293b; border-color: #334155; }
+            .lang-dropdown { display: none; position: absolute; top: 110%; right: 0; background: var(--sylo-card, #fff); border: 1px solid rgba(100,116,139,0.2); border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); overflow: hidden; z-index: 10000; min-width: 140px; color: #333333; }
+            [data-theme="dark"] .lang-dropdown { background: #1e293b; border-color: #334155; color: #f8fafc; }
             .lang-dropdown.show { display: block; animation: fadeIn 0.1s ease-out; }
             .lang-opt { display: flex; align-items: center; padding: 8px 16px; width: 100%; text-align: left; background: none; border: none; color: inherit; cursor: pointer; transition: background 0.2s; font-size: 0.9rem; }
             .lang-opt:hover { background: rgba(59, 130, 246, 0.1); color: var(--sylo-accent, #3b82f6); }

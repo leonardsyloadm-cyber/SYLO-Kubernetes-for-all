@@ -434,15 +434,7 @@ if (isset($current['id'])) {
                             <i class="bi bi-sliders me-2"></i><span data-i18n="dashboard.change_plan">Cambiar Plan</span>
                         </button>
                         
-                        <!-- PANIC BUTTON (AWS AMI) -->
-                        <div class="position-relative">
-                            <button id="btn-panic-ami" class="btn btn-danger w-100 fw-bold border border-danger shadow-glow-red" onclick="createAMI()">
-                                <i class="bi bi-radioactive me-2"></i>PANIC BUTTON: CREAR AMI
-                            </button>
-                            <div id="ami-countdown" class="text-center small text-danger mt-1 fw-bold" style="display:none; text-shadow: 0 0 5px rgba(220,53,69,0.5);">
-                                <i class="bi bi-hourglass-split me-1"></i>Cooldown: <span id="ami-hours">24</span>h restantes
-                            </div>
-                        </div>
+                        <!-- PANIC BUTTON (AWS AMI) DEPRECATED AND REMOVED -->
 
                         <button class="btn btn-outline-danger btn-sm" onclick="destroyK8s()">
                             <i class="bi bi-radioactive me-2"></i><span data-i18n="dashboard.destroy_k8s">Destruir Kubernetes</span>

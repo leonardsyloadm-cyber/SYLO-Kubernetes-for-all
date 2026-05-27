@@ -288,8 +288,8 @@ class OktopusApp(ctk.CTk):
             btn.pack(fill="x", padx=10, pady=5); self.menu_btns[s] = btn
 
         f_side = ctk.CTkFrame(self.sidebar, fg_color="transparent"); f_side.pack(side="bottom", fill="x", pady=20, padx=10)
-        ctk.CTkButton(f_side, text="DATA STUDIO", fg_color=C_ACCENT_BLUE, font=FONT_SUBHEAD, height=40, command=self.open_db_explorer).pack(fill="x", pady=5)
-        ctk.CTkButton(f_side, text="HIBERNAR TODO", fg_color=C_DANGER, font=FONT_SUBHEAD, height=40, command=self.hibernate_all).pack(fill="x", pady=5)
+        # ctk.CTkButton(f_side, text="DATA STUDIO", fg_color=C_ACCENT_BLUE, font=FONT_SUBHEAD, height=40, command=self.open_db_explorer).pack(fill="x", pady=5)
+        # ctk.CTkButton(f_side, text="HIBERNAR TODO", fg_color=C_DANGER, font=FONT_SUBHEAD, height=40, command=self.hibernate_all).pack(fill="x", pady=5)
 
         self.main_container = ctk.CTkFrame(self, fg_color=C_BG_MAIN); self.main_container.grid(row=0, column=1, sticky="nsew", padx=20, pady=20)
         self.main_container.grid_rowconfigure(0, weight=1); self.main_container.grid_columnconfigure(0, weight=1)
@@ -315,7 +315,7 @@ class OktopusApp(ctk.CTk):
         ctk.CTkLabel(f, text="Servicios", font=FONT_HEAD, text_color=C_TEXT_WHITE).pack(anchor="w", pady=(20, 10))
         st = ModernCard(f); st.pack(fill="x", ipady=20, padx=5)
         
-        keys = ["API GATEWAY", "WEB SERVER", "DATABASE", "OPERATOR", "ORCHESTRATOR", "BRAIN", "DNS SERVER", "KERNEL GHOST"]
+        keys = ["API GATEWAY", "WEB SERVER", "DATABASE", "OPERATOR", "ORCHESTRATOR", "BRAIN", "DNS SERVER"]
         for i, s in enumerate(keys):
             sf = ctk.CTkFrame(st, fg_color="transparent"); sf.pack(side="left", expand=True)
             led = LEDIndicator(sf, s); led.pack()
@@ -333,7 +333,7 @@ class OktopusApp(ctk.CTk):
         self.create_worker_ctrl(wf, "orchestrator_sylo.py", "ORCHESTRATOR")
         self.create_worker_ctrl(wf, "sylo_brain.py", "BRAIN", teleport=True) # Teleport habilitado para BRAIN
         self.create_worker_ctrl(wf, "sylo_dns.py", "DNS SERVER")
-        self.create_worker_ctrl(wf, "ghost_monitor.py", "KERNEL GHOST") # Nuevo servicio eBPF
+        # self.create_worker_ctrl(wf, "ghost_monitor.py", "KERNEL GHOST") # Nuevo servicio eBPF
 
         # --- SYLO MESH OPS ---
         ctk.CTkLabel(f, text="Sylo Mesh Ops", font=FONT_HEAD, text_color=C_ACCENT_BLUE).pack(anchor="w", pady=(30, 10))
@@ -791,8 +791,7 @@ class OktopusApp(ctk.CTk):
             "operator_sylo.py": "OPERATOR", 
             "orchestrator_sylo.py": "ORCHESTRATOR", 
             "sylo_brain.py": "BRAIN",
-            "sylo_dns.py": "DNS SERVER",
-            "ghost_monitor.py": "KERNEL GHOST"  # <--- INTEGRACION VISUAL
+            "sylo_dns.py": "DNS SERVER"
         }
         for s, w in self.worker_widgets.items():
             if s == "API_SRV": continue
@@ -833,7 +832,7 @@ class OktopusApp(ctk.CTk):
 
     def start_worker(self, s):
         # --- 🔥 LÓGICA ESPECIAL PARA DNS Y GHOST (REQUIERE SUDO) 🔥 ---
-        if s in ["sylo_dns.py", "ghost_monitor.py"]:
+        if s in ["sylo_dns.py"]:
             dialog = ctk.CTkInputDialog(text=f"El servicio {s} requiere permisos de ROOT.\nIntroduce contraseña de SUDO:", title="Autenticación Requerida")
             pwd = dialog.get_input()
             if not pwd: return
@@ -841,8 +840,7 @@ class OktopusApp(ctk.CTk):
             try:
                 l = open(f"/tmp/sylo_{s}.log", "w")
                 
-                # FIX: ghost_monitor necesita librerías del sistema (BCC), no del venv.
-                python_exec = "/usr/bin/python3" if s == "ghost_monitor.py" else sys.executable
+                python_exec = sys.executable
                 
                 # Ejecutamos sudo -S (lee password de stdin)
                 proc = subprocess.Popen(
@@ -870,7 +868,7 @@ class OktopusApp(ctk.CTk):
         pid = self.find_process(s); 
         if pid: 
             # --- 🔥 LÓGICA ESPECIAL PARA DNS Y GHOST (REQUIERE SUDO) 🔥 ---
-            if s in ["sylo_dns.py", "ghost_monitor.py"]:
+            if s in ["sylo_dns.py"]:
                 dialog = ctk.CTkInputDialog(text=f"Detener {s} requiere permisos de ROOT.\nIntroduce contraseña de SUDO:", title="Autenticación Requerida")
                 pwd = dialog.get_input()
                 if not pwd: return
@@ -1174,7 +1172,7 @@ def run_headless():
 
     # 2. Start Workers (Auto-Start for Server Mode)
     # Lista de workers a arrancar automáticamente en modo servidor
-    workers_to_start = ["operator_sylo.py", "orchestrator_sylo.py", "sylo_brain.py", "sylo_dns.py", "ghost_monitor.py"]
+    workers_to_start = ["operator_sylo.py", "orchestrator_sylo.py", "sylo_brain.py", "sylo_dns.py"]
     running_workers = {}
 
     is_root = os.geteuid() == 0
@@ -1185,10 +1183,10 @@ def run_headless():
             log_file = open(log_path, "w")
             
             # Logic for Root/Privileged workers
-            if w_name in ["sylo_dns.py", "ghost_monitor.py"]:
+            if w_name in ["sylo_dns.py"]:
                 if is_root:
                     # We are already root, simply spawn
-                    python_exec = "/usr/bin/python3" if w_name == "ghost_monitor.py" else sys.executable
+                    python_exec = sys.executable
                     p = subprocess.Popen([python_exec, "-u", os.path.join(WORKER_DIR, w_name)], stdout=log_file, stderr=subprocess.STDOUT)
                     running_workers[w_name] = p
                     print(f"🚀 [OKTOPUS] {w_name} Iniciado (PID: {p.pid})")

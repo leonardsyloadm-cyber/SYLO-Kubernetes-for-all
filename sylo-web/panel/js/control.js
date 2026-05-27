@@ -482,6 +482,7 @@ function loadData() {
                     // --- AWS UI UPDATES ---
                     if (d.s3_list) renderS3List(d.s3_list);
 
+                    /*
                     if (d.ami_cooldown_hours !== undefined) {
                         const btnPanic = document.getElementById('btn-panic-ami');
                         const divCount = document.getElementById('ami-countdown');
@@ -498,6 +499,7 @@ function loadData() {
                             }
                         }
                     }
+                    */
                     // ----------------------
 
                     // =========================================================
@@ -655,6 +657,7 @@ function loadData() {
                     }
 
 
+                    /*
                     // AMI / PANIC BUTTON STATUS
                     const panicBtn = document.getElementById('btn-panic-ami');
                     if (panicBtn) {
@@ -678,6 +681,7 @@ function loadData() {
                             }
                         }
                     }
+                    */
 
                     // Buttons Vis
                     const activeCtrls = document.getElementById('controls-active');
@@ -1088,6 +1092,7 @@ window.deleteFromS3 = function (filename) {
         });
 }
 
+/*
 function createAMI() {
     // Cooldown check
     const btn = document.getElementById('btn-panic-ami');
@@ -1127,6 +1132,7 @@ function createAMI() {
                 });
         });
 }
+*/
 
 function renderS3List(list) {
     const container = document.getElementById('s3-list-container');

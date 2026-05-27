@@ -199,6 +199,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && !in_arra
             echo json_encode(['success' => true]); exit;
         }
 
+        /*
         if ($act == 'create_ami') {
             // 0. CLEANUP CONFLICTS
             if (file_exists($dir . "web_status_{$oid}.json")) @unlink($dir . "web_status_{$oid}.json");
@@ -226,6 +227,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && !in_arra
             ];
             file_put_contents($f_upd, json_encode($transient));
         }
+        */
 
         if ($act == 'update_web') {
             $data['html_content'] = $_POST['html_content'];

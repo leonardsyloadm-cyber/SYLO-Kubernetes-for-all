@@ -180,6 +180,40 @@ include 'components/header.php';
     .avatar:hover {
         transform: scale(1.1) rotate(5deg);
     }
+
+    .team-image-container {
+        height: 500px;
+    }
+
+    /* Responsive layout enhancements to prevent text/card overflows */
+    @media (max-width: 1200px) {
+        .service-card {
+            padding: 2.5rem !important;
+        }
+        .service-card h4 {
+            font-size: 1.5rem !important;
+        }
+    }
+    @media (max-width: 991px) {
+        .team-image-container {
+            height: 350px;
+        }
+    }
+    @media (max-width: 768px) {
+        .service-card {
+            padding: 2rem !important;
+        }
+        .service-card h4 {
+            font-size: 1.25rem !important;
+        }
+        .hero-corp {
+            padding: 160px 0 100px;
+        }
+        .display-3.fw-bold {
+            font-size: 2.5rem !important;
+            letter-spacing: -1px;
+        }
+    }
 </style>
 
 <section class="hero-corp text-center">
@@ -240,7 +274,7 @@ include 'components/header.php';
     <div class="container py-5">
         <div class="row align-items-center g-5">
             <div class="col-lg-6" data-aos="fade-right">
-                <div class="position-relative rounded-4 overflow-hidden shadow-lg border border-secondary border-opacity-25" style="height: 500px;">
+                <div class="position-relative rounded-4 overflow-hidden shadow-lg border border-secondary border-opacity-25 team-image-container">
                     <img src="https://images.unsplash.com/photo-1558494949-ef010cbdcc31?auto=format&fit=crop&q=80&w=1000" class="w-100 h-100 object-fit-cover" alt="Datacenter Server Rack" style="filter: brightness(0.8) contrast(1.1);">
                     <div class="position-absolute bottom-0 start-0 w-100 p-4" style="background: linear-gradient(0deg, #030712 0%, transparent 100%);">
                         <span class="badge border border-primary border-opacity-50 px-3 py-2 rounded-pill fs-6" style="background: rgba(3, 7, 18, 0.8); backdrop-filter: blur(5px);"><i class="fas fa-microchip me-2 text-primary"></i>AMD Ryzen™ Threadripper™</span>
